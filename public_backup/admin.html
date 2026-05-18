@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DietHub Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --lime:#C8F560;--orange:#FF7A3D;--coral:#FF5757;
+  --yellow:#FFD63D;--green:#2D6A4F;--mint:#74C69D;
+  --dark:#1A1A2E;--bg:#F0F7F4;--card:#fff;
+  --text:#1A1A2E;--muted:#6B7280;--border:#E8EDF2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+.nav{background:var(--dark);padding:0 32px;height:68px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.nav-logo{display:flex;align-items:center;gap:12px}
+.logo-dot{width:40px;height:40px;background:linear-gradient(135deg,var(--lime),var(--orange));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+.logo-text{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:900;color:#fff}
+.admin-badge{background:var(--orange);color:#fff;font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:20px;margin-right:8px}
+.logout-btn{background:rgba(255,87,87,0.2);border:1px solid rgba(255,87,87,0.4);color:#ff8a8a;cursor:pointer;font-size:0.85rem;font-family:'Cairo',sans-serif;padding:8px 16px;border-radius:10px;transition:all 0.2s}
+.logout-btn:hover{background:rgba(255,87,87,0.3)}
+
+.tabs{display:flex;gap:4px;padding:0 32px;background:#fff;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{padding:16px 20px;font-size:0.9rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all 0.2s;display:flex;align-items:center;gap:6px}
+.tab.active{color:var(--green);border-bottom-color:var(--lime)}
+
+.main{padding:32px;max-width:1200px;margin:0 auto}
+.panel{display:none}.panel.active{display:block}
+
+/* STAT CARDS */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+@media(max-width:800px){.stats-row{grid-template-columns:1fr 1fr}.main{padding:16px}.tabs{padding:0 12px}}
+@media(max-width:600px){.stats-row{grid-template-columns:1fr 1fr}.main{padding:10px}.tabs{padding:0 6px}.tab{padding:10px 8px;font-size:0.78rem}}
+@media(max-width:480px){.stats-row{grid-template-columns:1fr}.main{padding:8px}}
+.stat-card{background:#fff;border-radius:20px;padding:24px;border:1px solid var(--border);position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:-20px;left:-20px;width:80px;height:80px;border-radius:50%;opacity:0.1}
+.stat-lime::before{background:var(--lime)}
+.stat-orange::before{background:var(--orange)}
+.stat-coral::before{background:var(--coral)}
+.stat-mint::before{background:var(--mint)}
+.stat-val{font-size:2.2rem;font-weight:700;margin-bottom:4px}
+.stat-label{font-size:0.8rem;color:var(--muted);font-weight:600}
+.stat-change{font-size:0.75rem;margin-top:6px}
+
+.card{background:#fff;border-radius:20px;padding:24px;border:1px solid var(--border);margin-bottom:20px}
+.card-title{font-size:0.85rem;font-weight:700;color:var(--muted);margin-bottom:16px;text-transform:uppercase;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center}
+.sec-title{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;margin-bottom:20px}
+
+/* FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:20px}
+@media(max-width:900px){.form-grid{grid-template-columns:1fr 1fr}}
+.form-field label{display:block;font-size:0.78rem;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px}
+.form-field input,.form-field select{width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:0.9rem;font-family:'Cairo',sans-serif;outline:none;transition:all 0.2s}
+.form-field input:focus,.form-field select:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(45,106,79,0.1)}
+
+.btn-add{padding:12px 20px;background:linear-gradient(135deg,var(--lime),#A8E063);border:none;border-radius:12px;color:var(--dark);font-size:0.9rem;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;white-space:nowrap;transition:all 0.2s}
+.btn-add:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,245,96,0.4)}
+
+/* TABLE */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.875rem}
+th{background:var(--bg);padding:10px 14px;text-align:right;color:var(--muted);font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover{background:rgba(240,247,244,0.5)}
+
+.plan-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:700}
+.plan-basic{background:#E8EDF2;color:var(--muted)}
+.plan-standard{background:#E6F1FB;color:#185FA5}
+.plan-premium{background:#E1F5EE;color:var(--green)}
+.plan-vip{background:#FAEEDA;color:#854F0B}
+.plan-elite{background:var(--dark);color:var(--lime)}
+.status-active{color:var(--green);font-weight:700}
+.status-inactive{color:var(--coral);font-weight:700}
+
+.btn-sm{padding:5px 12px;border-radius:8px;border:none;font-size:0.75rem;cursor:pointer;font-family:'Cairo',sans-serif;font-weight:600;transition:all 0.2s}
+.btn-danger{background:rgba(255,87,87,0.1);color:var(--coral)}
+.btn-danger:hover{background:var(--coral);color:#fff}
+.btn-toggle{background:rgba(45,106,79,0.1);color:var(--green)}
+.btn-toggle:hover{background:var(--green);color:#fff}
+
+/* PLAN BARS */
+.plan-bar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.plan-bar-label{width:80px;font-size:0.8rem;font-weight:600;text-align:right}
+.plan-bar-track{flex:1;height:8px;background:var(--bg);border-radius:4px;overflow:hidden}
+.plan-bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--lime),var(--mint))}
+.plan-bar-count{font-size:0.8rem;font-weight:700;color:var(--green);min-width:24px}
+
+/* MRR */
+.mrr-display{font-size:2.8rem;font-weight:900;font-family:'Playfair Display',serif;color:var(--green)}
+.mrr-label{font-size:0.85rem;color:var(--muted);margin-top:4px}
+
+.msg{padding:10px 16px;border-radius:12px;font-size:0.85rem;margin-bottom:12px;display:none}
+.msg-ok{background:rgba(45,106,79,0.1);border:1px solid rgba(45,106,79,0.3);color:var(--green)}
+.msg-err{background:rgba(255,87,87,0.1);border:1px solid rgba(255,87,87,0.3);color:var(--coral)}
+
+.empty{text-align:center;padding:40px;color:var(--muted);font-size:0.9rem}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">
+    <div class="logo-dot">🥗</div>
+    <span class="logo-text">DietHub</span>
+    <span class="admin-badge">ADMIN</span>
+  </div>
+  <button class="logout-btn" onclick="location.href='/diet/logout'">خروج ←</button>
+</nav>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(this,'overview')">📊 نظرة عامة</div>
+  <div class="tab" onclick="switchTab(this,'users')">👥 المستخدمون</div>
+  <div class="tab" onclick="switchTab(this,'subs')">💳 الاشتراكات</div>
+  <div class="tab" onclick="switchTab(this,'prices')">🛒 إدارة الأسعار</div>
+</div>
+
+<div class="main">
+
+<!-- OVERVIEW -->
+<div class="panel active" id="p-overview">
+  <div class="stats-row">
+    <div class="stat-card stat-lime">
+      <div class="stat-val" style="color:var(--green)" id="st-total">—</div>
+      <div class="stat-label">إجمالي المستخدمين</div>
+      <div class="stat-change" style="color:var(--mint)">↑ نمو مستمر</div>
+    </div>
+    <div class="stat-card stat-orange">
+      <div class="stat-val" style="color:var(--orange)" id="st-active">—</div>
+      <div class="stat-label">مستخدمون نشطون</div>
+    </div>
+    <div class="stat-card stat-coral">
+      <div class="stat-val" style="color:var(--coral)" id="st-subs">—</div>
+      <div class="stat-label">اشتراكات فعالة</div>
+    </div>
+    <div class="stat-card stat-mint">
+      <div class="stat-val" style="color:var(--green)" id="st-mrr">—</div>
+      <div class="stat-label">إيرادات شهرية (MRR)</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <div class="card-title">توزيع الباقات</div>
+      <div id="planBars"><div class="empty">جاري التحميل...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">إسقاط الإيرادات</div>
+      <div style="text-align:center;padding:16px 0">
+        <div class="mrr-display" id="mrrDisplay">—</div>
+        <div class="mrr-label">إيرادات شهرية حالية</div>
+        <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="background:var(--bg);border-radius:12px;padding:14px;text-align:center">
+            <div style="font-size:1.2rem;font-weight:700;color:var(--orange)" id="q3proj">—</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:4px">هدف الشهر 3</div>
+          </div>
+          <div style="background:var(--bg);border-radius:12px;padding:14px;text-align:center">
+            <div style="font-size:1.2rem;font-weight:700;color:var(--green)" id="q6proj">—</div>
+            <div style="font-size:0.75rem;color:var(--muted);margin-top:4px">هدف الشهر 6</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- USERS -->
+<div class="panel" id="p-users">
+  <div class="sec-title">إدارة المستخدمين</div>
+  <div class="card">
+    <div class="card-title">إضافة مستخدم جديد</div>
+    <div class="msg msg-ok" id="addMsg"></div>
+    <div class="form-grid">
+      <div class="form-field"><label>اسم المستخدم</label><input type="text" id="nu-usr" placeholder="username"></div>
+      <div class="form-field"><label>كلمة المرور</label><input type="text" id="nu-pwd" placeholder="password"></div>
+      <div class="form-field"><label>البريد الإلكتروني</label><input type="email" id="nu-email" placeholder="email@example.com"></div>
+      <div class="form-field"><label>الباقة</label>
+        <select id="nu-plan">
+          <option value="basic">Basic — 99 ج</option>
+          <option value="standard">Standard — 179 ج</option>
+          <option value="premium" selected>Premium — 249 ج</option>
+          <option value="vip">VIP — 349 ج</option>
+          <option value="elite">Elite — 449 ج</option>
+        </select>
+      </div>
+      <button class="btn-add" onclick="addUser()">+ إضافة</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>قائمة المستخدمين</span>
+      <span id="userCount" style="background:var(--bg);padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:700">0</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>المستخدم</th><th>البريد</th><th>الباقة</th>
+          <th>الحالة</th><th>الدور</th><th>تاريخ الإنشاء</th><th>إجراءات</th>
+        </tr></thead>
+        <tbody id="usersTbody"><tr><td colspan="8" class="empty">جاري التحميل...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- SUBSCRIPTIONS -->
+<div class="panel" id="p-subs">
+  <div class="sec-title">الاشتراكات الفعالة</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>المستخدم</th><th>الباقة</th><th>تاريخ البدء</th>
+          <th>تاريخ الانتهاء</th><th>المبلغ</th><th>الحالة</th><th>رقم الدفع</th>
+        </tr></thead>
+        <tbody id="subsTbody"><tr><td colspan="8" class="empty">جاري التحميل...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- PRICES -->
+<div class="panel" id="p-prices">
+  <div class="sec-title">إدارة أسعار السوق</div>
+  <div class="card">
+    <div class="card-title">
+      <span>أسعار المنتجات الأسبوعية</span>
+      <button class="btn-add" onclick="savePrices()" style="font-size:0.8rem;padding:8px 16px">حفظ التحديث ✓</button>
+    </div>
+    <div class="table-wrap">
+      <table id="pricesEditTable">
+        <thead><tr>
+          <th style="text-align:right">المنتج</th><th>الكمية</th>
+          <th>كارفور</th><th>مترو</th><th>رويال</th><th>تلبات</th>
+        </tr></thead>
+        <tbody id="pricesEditBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+async function api(url, opts={}) {
+  const r = await fetch(url, { headers:{'Content-Type':'application/json'}, ...opts });
+  return r.json();
+}
+
+async function loadOverview() {
+  const s = await api('/diet/api/admin/stats');
+  document.getElementById('st-total').textContent = s.totalUsers;
+  document.getElementById('st-active').textContent = s.activeUsers;
+  document.getElementById('st-subs').textContent = s.activeSubs;
+  document.getElementById('st-mrr').textContent = s.mrr.toLocaleString() + ' ج';
+  document.getElementById('mrrDisplay').textContent = s.mrr.toLocaleString() + ' ج';
+  document.getElementById('q3proj').textContent = Math.round(s.mrr * 8).toLocaleString() + ' ج';
+  document.getElementById('q6proj').textContent = Math.round(s.mrr * 20).toLocaleString() + ' ج';
+  const maxCount = Math.max(...s.planBreakdown.map(p=>p.count), 1);
+  const planColors = { basic:'#E8EDF2', standard:'#B5D4F4', premium:'#9FE1CB', vip:'#FAC775', elite:'var(--lime)' };
+  document.getElementById('planBars').innerHTML = s.planBreakdown.map(p=>`
+    <div class="plan-bar">
+      <div class="plan-bar-label">${p.plan}</div>
+      <div class="plan-bar-track"><div class="plan-bar-fill" style="width:${p.count/maxCount*100}%;background:${planColors[p.plan]}"></div></div>
+      <div class="plan-bar-count">${p.count}</div>
+    </div>`).join('');
+}
+
+async function loadUsers() {
+  const users = await api('/diet/api/admin/users');
+  document.getElementById('userCount').textContent = users.length;
+  const planClass = { basic:'plan-basic', standard:'plan-standard', premium:'plan-premium', vip:'plan-vip', elite:'plan-elite' };
+  document.getElementById('usersTbody').innerHTML = users.map((u,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td><strong>${u.username}</strong></td>
+      <td style="font-size:0.8rem;color:var(--muted)">${u.email||'—'}</td>
+      <td><span class="plan-badge ${planClass[u.plan]||'plan-basic'}">${u.plan||'basic'}</span></td>
+      <td class="${u.active?'status-active':'status-inactive'}">${u.active?'✓ نشط':'✗ موقوف'}</td>
+      <td style="font-size:0.8rem">${u.role}</td>
+      <td style="font-size:0.8rem;color:var(--muted)">${u.created}</td>
+      <td style="display:flex;gap:6px">
+        ${u.username!=='admin'?`
+          <button class="btn-sm btn-toggle" onclick="toggleUser('${u.id}')">${u.active?'إيقاف':'تفعيل'}</button>
+          <button class="btn-sm btn-danger" onclick="deleteUser('${u.id}','${u.username}')">حذف</button>
+        `:'<span style="font-size:0.75rem;color:var(--muted)">—</span>'}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="8" class="empty">لا يوجد مستخدمون</td></tr>';
+}
+
+async function loadSubs() {
+  const subs = await api('/diet/api/admin/subscriptions');
+  const users = await api('/diet/api/admin/users');
+  const planClass = { basic:'plan-basic', standard:'plan-standard', premium:'plan-premium', vip:'plan-vip', elite:'plan-elite' };
+  document.getElementById('subsTbody').innerHTML = subs.map((s,i)=>{
+    const u = users.find(u=>u.id===s.userId);
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${u?.username||s.userId}</strong></td>
+      <td><span class="plan-badge ${planClass[s.plan]||'plan-basic'}">${s.plan}</span></td>
+      <td style="font-size:0.82rem">${s.startDate}</td>
+      <td style="font-size:0.82rem">${s.endDate}</td>
+      <td style="font-weight:700;color:var(--green)">${s.amount} ج</td>
+      <td class="${s.status==='active'?'status-active':'status-inactive'}">${s.status==='active'?'✓ فعال':'✗ منتهي'}</td>
+      <td style="font-size:0.8rem;color:var(--muted)">${s.paymentRef}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="empty">لا يوجد اشتراكات</td></tr>';
+}
+
+async function loadPricesEdit() {
+  const data = await api('/diet/api/food-prices');
+  document.getElementById('pricesEditBody').innerHTML = (data.items||[]).map((item,i)=>`
+    <tr>
+      <td style="font-weight:600">${item.name}<div style="font-size:0.75rem;color:var(--muted)">${item.nameEn}</div></td>
+      <td style="color:var(--muted)">${item.unit}</td>
+      <td><input type="number" value="${item.carrefour||''}" onchange="updatePrice(${i},'carrefour',this.value)" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:8px;font-family:'Cairo',sans-serif"></td>
+      <td><input type="number" value="${item.metro||''}" onchange="updatePrice(${i},'metro',this.value)" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:8px;font-family:'Cairo',sans-serif"></td>
+      <td><input type="number" value="${item.royal||''}" onchange="updatePrice(${i},'royal',this.value)" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:8px;font-family:'Cairo',sans-serif"></td>
+      <td><input type="number" value="${item.talabat||''}" onchange="updatePrice(${i},'talabat',this.value)" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:8px;font-family:'Cairo',sans-serif"></td>
+    </tr>`).join('');
+  window._pricesData = data;
+}
+
+function updatePrice(idx, store, val) {
+  if (window._pricesData) window._pricesData.items[idx][store] = parseInt(val)||0;
+}
+
+async function savePrices() {
+  if (!window._pricesData) return;
+  const r = await api('/diet/api/admin/food-prices', { method:'POST', body: JSON.stringify({ items: window._pricesData.items }) });
+  if (r.ok) showMsg('addMsg','✓ تم حفظ الأسعار بنجاح','ok');
+}
+
+async function addUser() {
+  const usr = document.getElementById('nu-usr').value.trim();
+  const pwd = document.getElementById('nu-pwd').value.trim();
+  const email = document.getElementById('nu-email').value.trim();
+  const plan = document.getElementById('nu-plan').value;
+  if (!usr || !pwd) { showMsg('addMsg','يرجى ملء اسم المستخدم وكلمة المرور','err'); return; }
+  const r = await api('/diet/api/admin/users', { method:'POST', body: JSON.stringify({username:usr,password:pwd,email,plan,role:'user'}) });
+  if (r.ok) {
+    showMsg('addMsg','✓ تم إضافة المستخدم بنجاح','ok');
+    document.getElementById('nu-usr').value = '';
+    document.getElementById('nu-pwd').value = '';
+    document.getElementById('nu-email').value = '';
+    loadUsers(); loadOverview();
+  } else { showMsg('addMsg', r.error||'خطأ','err'); }
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`هل تريد حذف المستخدم: ${name}؟`)) return;
+  const r = await api(`/diet/api/admin/users/${id}`, { method:'DELETE' });
+  if (r.ok) { loadUsers(); loadOverview(); }
+}
+
+async function toggleUser(id) {
+  await api(`/diet/api/admin/users/${id}/toggle`, { method:'POST' });
+  loadUsers(); loadOverview();
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = `msg msg-${type}`;
+  el.style.display = 'block';
+  setTimeout(()=>el.style.display='none', 3000);
+}
+
+function switchTab(el, id) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('p-'+id).classList.add('active');
+  if (id==='users') loadUsers();
+  if (id==='subs') loadSubs();
+  if (id==='prices') loadPricesEdit();
+}
+
+loadOverview();
+</script>
+</body>
+</html>

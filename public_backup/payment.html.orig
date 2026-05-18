@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DietHub — اشترك الآن</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--lime:#C8F560;--orange:#FF7A3D;--green:#2D6A4F;--mint:#74C69D;--dark:#1A1A2E;--bg:#F0F7F4;--border:#E8EDF2;--muted:#6B7280}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--dark);min-height:100vh}
+.header{background:var(--dark);padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-dot{width:36px;height:36px;background:linear-gradient(135deg,var(--lime),var(--orange));border-radius:10px;display:flex;align-items:center;justify-content:center}
+.logo-text{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:900;color:#fff}
+.expired-banner{background:linear-gradient(135deg,#FF5757,var(--orange));padding:20px 32px;text-align:center;color:#fff}
+.expired-title{font-size:1.2rem;font-weight:700;margin-bottom:4px}
+.expired-sub{font-size:0.88rem;opacity:0.9}
+.main{max-width:960px;margin:0 auto;padding:32px 24px}
+.plans-title{font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:700;text-align:center;margin-bottom:8px}
+.plans-sub{text-align:center;color:var(--muted);margin-bottom:32px;font-size:0.9rem}
+.plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px}
+.plan-card{background:#fff;border-radius:20px;padding:24px;border:2px solid var(--border);text-align:center;cursor:pointer;transition:all 0.2s;position:relative}
+.plan-card:hover{border-color:var(--green);transform:translateY(-3px);box-shadow:0 10px 32px rgba(0,0,0,0.1)}
+.plan-card.selected{border-color:var(--green);background:linear-gradient(135deg,#F0FFF4,#E8F5E9)}
+.plan-card.popular::before{content:'الأكثر طلباً';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;font-size:0.7rem;font-weight:700;padding:3px 12px;border-radius:20px;white-space:nowrap}
+.plan-name{font-size:1rem;font-weight:700;margin-bottom:4px}
+.plan-price{font-size:2rem;font-weight:700;color:var(--green);margin:8px 0 4px}
+.plan-per{font-size:0.78rem;color:var(--muted);margin-bottom:12px}
+.plan-feature{font-size:0.78rem;color:var(--muted);margin:4px 0;text-align:right}
+.plan-feature::before{content:'✓ ';color:var(--green);font-weight:700}
+.checkout-box{background:#fff;border-radius:20px;padding:28px;border:1px solid var(--border);max-width:500px;margin:0 auto}
+.checkout-title{font-size:1.1rem;font-weight:700;margin-bottom:20px}
+.form-field{margin-bottom:16px}
+.form-field label{display:block;font-size:0.8rem;font-weight:600;color:var(--muted);margin-bottom:6px}
+.form-field input{width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:12px;font-family:'Cairo',sans-serif;font-size:0.9rem;outline:none;transition:all 0.2s;color:var(--dark)}
+.form-field input:focus{border-color:var(--green);background:#fff}
+.order-summary{background:var(--bg);border-radius:12px;padding:16px;margin-bottom:20px}
+.order-row{display:flex;justify-content:space-between;font-size:0.88rem;margin-bottom:6px}
+.order-total{font-weight:700;font-size:1rem;border-top:1px solid var(--border);padding-top:10px;margin-top:6px}
+.btn-pay{width:100%;padding:16px;background:linear-gradient(135deg,var(--lime),#A8E063);border:none;border-radius:14px;font-size:1rem;font-weight:700;color:var(--dark);cursor:pointer;font-family:'Cairo',sans-serif;transition:all 0.2s;letter-spacing:0.3px}
+.btn-pay:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(200,245,96,0.5)}
+.paymob-note{text-align:center;font-size:0.75rem;color:var(--muted);margin-top:12px;display:flex;align-items:center;justify-content:center;gap:6px}
+.selected-plan-summary{text-align:center;margin-bottom:20px;padding:12px;background:linear-gradient(135deg,#E8F5E9,#F0FFF4);border-radius:12px;border:1px solid rgba(45,106,79,0.2)}
+.selected-plan-name{font-size:1rem;font-weight:700;color:var(--green)}
+.selected-plan-price{font-size:1.8rem;font-weight:700;color:var(--dark)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-dot">🥗</div>
+    <span class="logo-text">DietHub</span>
+  </div>
+  <a href="/diet/logout" style="color:rgba(255,255,255,0.6);font-size:0.85rem;text-decoration:none">خروج</a>
+</div>
+
+<div class="expired-banner">
+  <div class="expired-title">⏰ انتهت فترة التجربة المجانية</div>
+  <div class="expired-sub">استمر في رحلتك الصحية — اشترك الآن للوصول الكامل</div>
+</div>
+
+<div class="main">
+  <div class="plans-title">اختر باقتك</div>
+  <div class="plans-sub">جميع الباقات تشمل خطط الوجبات المخصصة، مقارنة الأسعار، والتحاليل المقترحة</div>
+
+  <div class="plans-grid">
+    <div class="plan-card" onclick="selectPlan(this,'basic',99)">
+      <div class="plan-name">Basic</div>
+      <div class="plan-price">99</div>
+      <div class="plan-per">جنيه / شهر</div>
+      <div class="plan-feature">خطة وجبات أسبوعية</div>
+      <div class="plan-feature">4 أنظمة غذائية</div>
+      <div class="plan-feature">مطبخ مصري أصيل</div>
+    </div>
+    <div class="plan-card" onclick="selectPlan(this,'standard',179)">
+      <div class="plan-name">Standard</div>
+      <div class="plan-price">179</div>
+      <div class="plan-per">جنيه / شهر</div>
+      <div class="plan-feature">كل Basic +</div>
+      <div class="plan-feature">قائمة تسوق تفصيلية</div>
+      <div class="plan-feature">مقارنة أسعار السوق</div>
+    </div>
+    <div class="plan-card popular" onclick="selectPlan(this,'premium',249)">
+      <div class="plan-name">Premium</div>
+      <div class="plan-price">249</div>
+      <div class="plan-per">جنيه / شهر</div>
+      <div class="plan-feature">كل Standard +</div>
+      <div class="plan-feature">دليل التحاليل الطبية</div>
+      <div class="plan-feature">توصيات مكملات</div>
+    </div>
+    <div class="plan-card" onclick="selectPlan(this,'vip',349)">
+      <div class="plan-name">VIP</div>
+      <div class="plan-price">349</div>
+      <div class="plan-per">جنيه / شهر</div>
+      <div class="plan-feature">كل Premium +</div>
+      <div class="plan-feature">ميزانية يومية مخصصة</div>
+      <div class="plan-feature">تنبيهات تليجرام</div>
+    </div>
+    <div class="plan-card" onclick="selectPlan(this,'elite',449)">
+      <div class="plan-name">Elite</div>
+      <div class="plan-price">449</div>
+      <div class="plan-per">جنيه / شهر</div>
+      <div class="plan-feature">كل VIP +</div>
+      <div class="plan-feature">برنامج نشاط يومي</div>
+      <div class="plan-feature">توصيات خليجية</div>
+    </div>
+  </div>
+
+  <div class="checkout-box" id="checkoutBox" style="display:none">
+    <div class="selected-plan-summary">
+      <div class="selected-plan-name" id="selectedPlanName">Premium</div>
+      <div class="selected-plan-price"><span id="selectedPlanPrice">249</span> جنيه / شهر</div>
+    </div>
+    <div class="checkout-title">معلومات الدفع</div>
+    <div class="form-field">
+      <label>البريد الإلكتروني</label>
+      <input type="email" id="payEmail" placeholder="email@example.com">
+    </div>
+    <div class="form-field">
+      <label>رقم الهاتف</label>
+      <input type="tel" id="payPhone" placeholder="01XXXXXXXXX">
+    </div>
+    <div class="order-summary">
+      <div class="order-row"><span>الباقة المختارة</span><span id="osPlan">—</span></div>
+      <div class="order-row"><span>مدة الاشتراك</span><span>30 يوم</span></div>
+      <div class="order-row order-total"><span>الإجمالي</span><span id="osTotal">— جنيه</span></div>
+    </div>
+    <button class="btn-pay" onclick="initiatePayment()">ادفع الآن عبر Paymob 🔒</button>
+    <div class="paymob-note">🔒 الدفع آمن عبر Paymob · فيزا · ماستركارد · فوري</div>
+  </div>
+</div>
+
+<script>
+let selectedPlan = null;
+let selectedAmount = 0;
+
+const params = new URLSearchParams(window.location.search);
+if (params.get('plan')) {
+  const planMap = { basic:99, standard:179, premium:249, vip:349, elite:449 };
+  const plan = params.get('plan');
+  const amount = parseInt(params.get('amount')) || planMap[plan] || 249;
+  document.querySelectorAll('.plan-card').forEach(c => {
+    if (c.querySelector('.plan-name')?.textContent?.toLowerCase() === plan) selectPlan(c, plan, amount);
+  });
+  if (params.get('email')) document.getElementById('payEmail').value = params.get('email');
+}
+
+function selectPlan(el, plan, amount) {
+  document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedPlan = plan;
+  selectedAmount = amount;
+  document.getElementById('selectedPlanName').textContent = plan.charAt(0).toUpperCase()+plan.slice(1);
+  document.getElementById('selectedPlanPrice').textContent = amount;
+  document.getElementById('osPlan').textContent = plan.charAt(0).toUpperCase()+plan.slice(1);
+  document.getElementById('osTotal').textContent = amount + ' جنيه';
+  document.getElementById('checkoutBox').style.display = 'block';
+  document.getElementById('checkoutBox').scrollIntoView({ behavior:'smooth' });
+}
+
+async function initiatePayment() {
+  const email = document.getElementById('payEmail').value;
+  const phone = document.getElementById('payPhone').value;
+  if (!email || !phone) { alert('يرجى ملء البريد الإلكتروني ورقم الهاتف'); return; }
+  if (!selectedPlan) { alert('يرجى اختيار باقة'); return; }
+  const r = await fetch('/diet/api/payment/initiate', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ plan:selectedPlan, amount:selectedAmount, email, phone })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    alert('سيتم تحويلك لصفحة Paymob\n\nملاحظة: قم بإضافة مفتاح Paymob API في ملف .env على السيرفر لتفعيل الدفع الفعلي\n\nPaymob API Key: PAYMOB_API_KEY');
+  }
+}
+</script>
+</body>
+</html>

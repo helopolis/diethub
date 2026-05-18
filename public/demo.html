@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DietHub — تجربة مجانية</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--lime:#C8F560;--orange:#FF7A3D;--green:#2D6A4F;--mint:#74C69D;--dark:#1A1A2E;--bg:#F0F7F4;--border:#E8EDF2;--muted:#6B7280;--coral:#FF5757}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height:100vh}
+
+/* HERO */
+.hero-section{background:linear-gradient(135deg,var(--dark) 0%,#0D2818 50%,var(--green) 100%);padding:60px 32px 80px;text-align:center;position:relative;overflow:hidden}
+.hero-section::before{content:'🥗';position:absolute;top:-20px;right:5%;font-size:8rem;opacity:0.06;animation:float 6s ease-in-out infinite}
+.hero-section::after{content:'💊';position:absolute;bottom:-20px;left:5%;font-size:6rem;opacity:0.06;animation:float 8s ease-in-out infinite 2s}
+@keyframes float{0%,100%{transform:translateY(0) rotate(0);}50%{transform:translateY(-20px) rotate(5deg);}}
+.demo-badge{display:inline-block;background:var(--lime);color:var(--dark);font-size:0.78rem;font-weight:700;padding:5px 16px;border-radius:20px;margin-bottom:20px}
+.hero-title{font-family:'Playfair Display',serif;font-size:3rem;font-weight:900;margin-bottom:16px;line-height:1.2}
+.hero-title span{color:var(--lime)}
+.hero-sub{font-size:1rem;opacity:0.8;max-width:560px;margin:0 auto 32px;line-height:1.6}
+.cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn-primary{padding:14px 32px;background:linear-gradient(135deg,var(--lime),#A8E063);border:none;border-radius:14px;color:var(--dark);font-size:1rem;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;transition:all 0.2s;text-decoration:none;display:inline-block}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(200,245,96,0.4)}
+.btn-secondary{padding:14px 28px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);border-radius:14px;color:#fff;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:'Cairo',sans-serif;text-decoration:none;display:inline-block;transition:all 0.2s}
+.btn-secondary:hover{background:rgba(255,255,255,0.2)}
+
+/* STATS */
+.stats-row{display:flex;gap:32px;justify-content:center;flex-wrap:wrap;padding:32px;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.08)}
+.stat{text-align:center}
+.stat-num{font-size:2rem;font-weight:700;color:var(--lime)}
+.stat-label{font-size:0.8rem;opacity:0.7;margin-top:4px}
+
+/* DEMO CONTENT */
+.demo-section{max-width:1000px;margin:0 auto;padding:48px 24px}
+.section-label{display:inline-block;background:rgba(200,245,96,0.15);color:var(--lime);font-size:0.75rem;font-weight:700;padding:4px 12px;border-radius:20px;margin-bottom:12px;letter-spacing:0.5px}
+.section-title{font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:700;margin-bottom:8px}
+.section-sub{font-size:0.9rem;opacity:0.7;margin-bottom:32px}
+
+.day-preview{background:rgba(255,255,255,0.06);border-radius:20px;padding:24px;margin-bottom:24px;border:1px solid rgba(255,255,255,0.1)}
+.day-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.day-name-demo{font-size:1.1rem;font-weight:700}
+.day-cost{background:rgba(200,245,96,0.15);color:var(--lime);font-size:0.88rem;font-weight:700;padding:4px 14px;border-radius:20px}
+.meal-row-demo{display:grid;grid-template-columns:80px 1fr auto;gap:14px;align-items:start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)}
+.meal-row-demo:last-child{border-bottom:none}
+.meal-type-d{font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:10px;background:rgba(255,255,255,0.08);text-align:center}
+.meal-title-d{font-size:0.9rem;font-weight:700;margin-bottom:4px}
+.meal-ing-d{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.ing-tag-d{background:rgba(255,255,255,0.08);border-radius:6px;padding:2px 8px;font-size:0.7rem;color:rgba(255,255,255,0.7)}
+.ing-qty-d{color:var(--lime);font-weight:700}
+.macros-d{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.macro-d{font-size:0.7rem;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.06)}
+.meal-price-d{font-size:1rem;font-weight:700;color:var(--lime);text-align:center}
+
+/* LOCKED */
+.locked-overlay{background:rgba(13,28,24,0.92);border-radius:20px;padding:40px 24px;text-align:center;border:1px solid rgba(200,245,96,0.2);position:relative;overflow:hidden;margin-bottom:24px}
+.lock-icon{font-size:3rem;margin-bottom:12px}
+.lock-title{font-size:1.2rem;font-weight:700;margin-bottom:8px}
+.lock-sub{font-size:0.88rem;opacity:0.7;margin-bottom:20px;max-width:400px;margin-left:auto;margin-right:auto}
+.locked-days{display:flex;gap:8px;justify-content:center;margin-bottom:20px;flex-wrap:wrap}
+.locked-day{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:8px 14px;font-size:0.82rem;color:rgba(255,255,255,0.4)}
+
+/* FEATURES */
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:48px}
+.feature-card{background:rgba(255,255,255,0.05);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.08);transition:all 0.2s}
+.feature-card:hover{background:rgba(255,255,255,0.08);transform:translateY(-2px)}
+.feature-icon{font-size:1.8rem;margin-bottom:10px}
+.feature-title{font-size:0.95rem;font-weight:700;margin-bottom:6px}
+.feature-desc{font-size:0.8rem;opacity:0.7;line-height:1.5}
+
+/* PRICING */
+.pricing-section{background:rgba(255,255,255,0.04);border-radius:24px;padding:40px 32px;margin-bottom:48px;border:1px solid rgba(255,255,255,0.08)}
+.plans-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:24px}
+.plan-d{background:rgba(255,255,255,0.06);border-radius:14px;padding:18px;text-align:center;border:1px solid rgba(255,255,255,0.1);transition:all 0.2s;cursor:pointer;text-decoration:none;color:#fff;display:block}
+.plan-d:hover{background:rgba(200,245,96,0.15);border-color:var(--lime)}
+.plan-d.popular-d{border-color:var(--lime);background:rgba(200,245,96,0.1)}
+.plan-name-d{font-size:0.9rem;font-weight:700;margin-bottom:6px}
+.plan-price-d{font-size:1.8rem;font-weight:700;color:var(--lime)}
+.plan-per-d{font-size:0.72rem;opacity:0.6;margin-bottom:10px}
+.plan-feat-d{font-size:0.72rem;opacity:0.7;margin:3px 0}
+
+/* REGISTER FORM */
+.register-section{background:rgba(200,245,96,0.08);border-radius:24px;padding:40px 32px;text-align:center;border:1px solid rgba(200,245,96,0.2)}
+.reg-title{font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;margin-bottom:8px}
+.reg-title span{color:var(--lime)}
+.reg-sub{font-size:0.9rem;opacity:0.7;margin-bottom:24px}
+.reg-form{max-width:440px;margin:0 auto}
+.reg-input{width:100%;padding:14px 18px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:12px;color:#fff;font-size:0.95rem;font-family:'Cairo',sans-serif;margin-bottom:12px;outline:none;transition:all 0.2s}
+.reg-input:focus{border-color:var(--lime);background:rgba(200,245,96,0.08)}
+.reg-input::placeholder{color:rgba(255,255,255,0.4)}
+.trial-note{font-size:0.78rem;opacity:0.6;margin-top:12px}
+.trial-note span{color:var(--lime)}
+.rating-preview{display:flex;align-items:center;gap:12px;justify-content:center;margin:20px 0;opacity:0.8}
+.rating-stars-p{font-size:1.2rem}
+@media(max-width:768px){.hero-section{padding:36px 16px 48px}.demo-section{padding:24px 16px}.locked-overlay{padding:24px 16px}.reg-form{max-width:100%}}
+@media(max-width:480px){.hero-section{padding:24px 12px 36px}}
+
+/* LANG TOGGLE */
+.demo-nav{position:fixed;top:0;left:0;right:0;z-index:999;display:flex;justify-content:space-between;align-items:center;padding:12px 24px;background:rgba(26,26,46,0.95);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,0.08)}
+.nav-logo-d{font-weight:700;font-size:1.1rem;color:#C8F560}
+.lang-toggle-d{display:flex;gap:4px;background:rgba(255,255,255,0.08);border-radius:20px;padding:3px}
+.lang-btn-d{padding:5px 14px;border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer;background:none;color:rgba(255,255,255,0.6);transition:all 0.2s}
+.lang-btn-d.active{background:#C8F560;color:#1A1A2E}
+.hero-section{padding-top:100px!important}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="demo-nav">
+  <div class="nav-logo-d">DietHub 🥗</div>
+  <div class="lang-toggle-d">
+    <button class="lang-btn-d active" id="dBtnAr" onclick="setDemoLang('ar')">عربي</button>
+    <button class="lang-btn-d" id="dBtnEn" onclick="setDemoLang('en')">EN</button>
+  </div>
+</div>
+<div class="hero-section">
+  <div class="demo-badge">🆓 تجربة مجانية 14 يوم</div>
+  <h1 class="hero-title">نظامك الغذائي <span>بأسعار</span><br>المطبخ المصري</h1>
+  <p class="hero-sub">خطط وجبات مخصصة يومية بمكونات حقيقية من كارفور ومترو ورويال هاوس — مع مقارنة الأسعار والتحاليل المقترحة والمكملات الموصى بها</p>
+  <div class="cta-row">
+    <a href="/diet/login" class="btn-primary">ابدأ تجربتك المجانية ←</a>
+    <a href="#demo-preview" class="btn-secondary">شاهد كيف يعمل</a>
+  </div>
+  <div class="rating-preview">
+    <div class="rating-stars-p">⭐⭐⭐⭐⭐</div>
+    <div id="heroRating" style="font-size:0.85rem;opacity:0.8">4.8 من 5 · 120 تقييم</div>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-row">
+  <div class="stat"><div class="stat-num">4</div><div class="stat-label">أنظمة غذائية</div></div>
+  <div class="stat"><div class="stat-num">7</div><div class="stat-label">أيام خطة كاملة</div></div>
+  <div class="stat"><div class="stat-num">4</div><div class="stat-label">أسواق مقارنة</div></div>
+  <div class="stat"><div class="stat-num">8</div><div class="stat-label">تحاليل مقترحة</div></div>
+  <div class="stat"><div class="stat-num">14</div><div class="stat-label">يوم تجربة مجانية</div></div>
+</div>
+
+<!-- DEMO PREVIEW -->
+<div class="demo-section" id="demo-preview">
+  <div class="section-label">معاينة مجانية</div>
+  <div class="section-title">خطة يوم كاملة — نظام Atkins</div>
+  <div class="section-sub">هذا مثال حقيقي من الخطة — سجل للحصول على 7 أيام كاملة مع ميزانيتك المخصصة</div>
+
+  <div class="day-preview" id="demoDay">
+    <div class="day-header">
+      <div class="day-name-demo">📅 الأحد — Atkins المرحلة الأولى</div>
+      <div class="day-cost" id="demoCost">التكلفة: ... جنيه</div>
+    </div>
+    <div id="demoDayContent"><div style="text-align:center;padding:32px;opacity:0.5">⏳ جاري التحميل...</div></div>
+  </div>
+
+  <!-- LOCKED DAYS -->
+  <div class="locked-overlay">
+    <div class="lock-icon">🔒</div>
+    <div class="lock-title">6 أيام إضافية مخفية</div>
+    <div class="lock-sub">سجل مجاناً للحصول على خطة 7 أيام كاملة مع المكونات والكميات والأسعار</div>
+    <div class="locked-days">
+      <div class="locked-day">الاثنين 🔒</div>
+      <div class="locked-day">الثلاثاء 🔒</div>
+      <div class="locked-day">الأربعاء 🔒</div>
+      <div class="locked-day">الخميس 🔒</div>
+      <div class="locked-day">الجمعة 🔒</div>
+      <div class="locked-day">السبت 🔒</div>
+    </div>
+    <a href="/diet/login" class="btn-primary">سجل مجاناً وافتح الخطة الكاملة ←</a>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<div class="demo-section">
+  <div class="section-label">المميزات</div>
+  <div class="section-title">كل ما تحتاجه في مكان واحد</div>
+  <div class="features-grid">
+    <div class="feature-card"><div class="feature-icon">🥗</div><div class="feature-title">خطة وجبات يومية كاملة</div><div class="feature-desc">إفطار وغداء وعشاء وسناك مع الكميات بالجرام لكل مكون</div></div>
+    <div class="feature-card"><div class="feature-icon">💰</div><div class="feature-title">ميزانية يومية مخصصة</div><div class="feature-desc">حدد ميزانيتك من 100 إلى 500 جنيه وتتكيف الخطة معها تلقائياً</div></div>
+    <div class="feature-card"><div class="feature-icon">🛒</div><div class="feature-title">مقارنة أسعار السوق</div><div class="feature-desc">كارفور vs مترو vs رويال هاوس vs تلبات — اشتري من الأرخص دائماً</div></div>
+    <div class="feature-card"><div class="feature-icon">🔬</div><div class="feature-title">دليل التحاليل الطبية</div><div class="feature-desc">8 تحاليل مقترحة مع أسعار من 3 معامل وجدول المتابعة</div></div>
+    <div class="feature-card"><div class="feature-icon">💊</div><div class="feature-title">توصيات المكملات</div><div class="feature-desc">أوميجا 3، واي بروتين، كرياتين — بروابط أمازون مصر مباشرة</div></div>
+    <div class="feature-card"><div class="feature-icon">🏋️</div><div class="feature-title">برنامج نشاط يومي</div><div class="feature-desc">مبتدئ أو متوسط أو متقدم — تمارين مناسبة لنظامك الغذائي</div></div>
+    <div class="feature-card"><div class="feature-icon">🌍</div><div class="feature-title">ثنائي اللغة</div><div class="feature-desc">عربي وإنجليزي — مناسب لمصر والخليج والمغتربين</div></div>
+    <div class="feature-card"><div class="feature-icon">📊</div><div class="feature-title">4 أنظمة غذائية</div><div class="feature-desc">Atkins · Keto · Mediterranean · Diabetic — اختر الأنسب لك</div></div>
+  </div>
+</div>
+
+<!-- PRICING -->
+<div class="demo-section">
+  <div class="pricing-section">
+    <div class="section-label">الأسعار</div>
+    <div class="section-title">باقات لكل ميزانية</div>
+    <div class="plans-row">
+      <a href="/diet/login" class="plan-d">
+        <div class="plan-name-d">Basic</div>
+        <div class="plan-price-d">99</div>
+        <div class="plan-per-d">جنيه / شهر</div>
+        <div class="plan-feat-d">✓ خطة وجبات</div>
+        <div class="plan-feat-d">✓ 4 أنظمة</div>
+      </a>
+      <a href="/diet/login" class="plan-d">
+        <div class="plan-name-d">Standard</div>
+        <div class="plan-price-d">179</div>
+        <div class="plan-per-d">جنيه / شهر</div>
+        <div class="plan-feat-d">✓ + قائمة تسوق</div>
+        <div class="plan-feat-d">✓ مقارنة أسعار</div>
+      </a>
+      <a href="/diet/login" class="plan-d popular-d">
+        <div class="plan-name-d">Premium ⭐</div>
+        <div class="plan-price-d">249</div>
+        <div class="plan-per-d">جنيه / شهر</div>
+        <div class="plan-feat-d">✓ + التحاليل</div>
+        <div class="plan-feat-d">✓ المكملات</div>
+      </a>
+      <a href="/diet/login" class="plan-d">
+        <div class="plan-name-d">VIP</div>
+        <div class="plan-price-d">349</div>
+        <div class="plan-per-d">جنيه / شهر</div>
+        <div class="plan-feat-d">✓ + ميزانية</div>
+        <div class="plan-feat-d">✓ تليجرام</div>
+      </a>
+      <a href="/diet/login" class="plan-d">
+        <div class="plan-name-d">Elite</div>
+        <div class="plan-price-d">449</div>
+        <div class="plan-per-d">جنيه / شهر</div>
+        <div class="plan-feat-d">✓ + نشاط يومي</div>
+        <div class="plan-feat-d">✓ دعم خليجي</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- REGISTER CTA -->
+<div class="demo-section">
+  <div class="register-section">
+    <h2 class="reg-title">ابدأ <span>مجاناً</span> اليوم</h2>
+    <p class="reg-sub">أنشئ حسابك في دقيقة — 14 يوم تجربة مجانية كاملة</p>
+    <div class="reg-form">
+      <input class="reg-input" type="text" id="demoUsr" placeholder="اسم المستخدم *">
+      <input class="reg-input" type="password" id="demoPwd" placeholder="كلمة المرور * (6+ أحرف)">
+      <input class="reg-input" type="email" id="demoEmail" placeholder="البريد الإلكتروني (اختياري)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <input class="reg-input" style="margin-bottom:0" type="number" id="demoWeight" placeholder="الوزن كجم" min="30" max="250">
+        <input class="reg-input" style="margin-bottom:0" type="number" id="demoHeight" placeholder="الطول سم" min="100" max="230">
+      </div>
+      <select class="reg-input" id="demoDiet" style="background:rgba(255,255,255,0.08);color:#fff;margin-bottom:12px">
+        <option value="atkins" style="background:#1a1a2e">Atkins آتكينز</option>
+        <option value="keto" style="background:#1a1a2e">Keto كيتو</option>
+        <option value="mediterranean" style="background:#1a1a2e">Mediterranean متوسطي</option>
+        <option value="diabetic" style="background:#1a1a2e">Diabetic سكري</option>
+      </select>
+      <div id="demoRegErr" style="color:#ff8a8a;font-size:0.82rem;margin-bottom:8px;display:none;text-align:right"></div>
+      <button class="btn-primary" onclick="demoRegister()" style="width:100%;font-size:1rem;padding:14px 20px">ابدأ تجربتك المجانية مجاناً ←</button>
+    </div>
+    <p class="trial-note" style="margin-top:14px">✓ تجربة مجانية <span>14 يوم</span> · ✓ إلغاء في أي وقت · ✓ بدون بطاقة</p>
+    <p style="margin-top:10px;font-size:0.78rem;opacity:0.5">لديك حساب؟ <a href="/diet/login" style="color:var(--lime)">سجل دخول</a></p>
+  </div>
+</div>
+
+<script>
+async function loadDemo() {
+  const data = await fetch('/diet/api/demo/meal-plan').then(r=>r.json()).catch(()=>null);
+  if (!data?.week?.[0]) return;
+  const day = data.week[0];
+  let cost = 0;
+  let html = '';
+  day.meals.forEach(meal => {
+    cost += meal.price || 0;
+    const ingTags = meal.ingredients.map(i => `<span class="ing-tag-d">${i.item} <span class="ing-qty-d">${i.qty.split('/')[0].trim()}</span></span>`).join('');
+    html += `<div class="meal-row-demo">
+      <div class="meal-type-d">${meal.type}</div>
+      <div>
+        <div class="meal-title-d">${meal.name}</div>
+        <div class="meal-ing-d">${ingTags}</div>
+        <div class="macros-d">
+          <span class="macro-d">${meal.cal} kcal</span>
+          <span class="macro-d">P: ${meal.protein}</span>
+          <span class="macro-d">C: ${meal.carbs}</span>
+        </div>
+      </div>
+      <div class="meal-price-d">${meal.price} ج</div>
+    </div>`;
+  });
+  document.getElementById('demoDayContent').innerHTML = html;
+  document.getElementById('demoCost').textContent = `التكلفة: ${cost} جنيه`;
+}
+
+async function loadRatings() {
+  const data = await fetch('/diet/api/ratings').then(r=>r.json()).catch(()=>null);
+  if (data?.total > 0) {
+    document.getElementById('heroRating').textContent = `${data.average} من 5 · ${data.total} تقييم`;
+  }
+}
+
+loadDemo();
+loadRatings();
+
+async function demoRegister(){
+  const usr=document.getElementById('demoUsr').value.trim();
+  const pwd=document.getElementById('demoPwd').value;
+  const errEl=document.getElementById('demoRegErr');
+  if(!usr||!pwd){errEl.textContent='اسم المستخدم وكلمة المرور مطلوبان';errEl.style.display='block';return;}
+  if(pwd.length<6){errEl.textContent='كلمة المرور 6 أحرف على الأقل';errEl.style.display='block';return;}
+  const body={
+    username:usr,password:pwd,
+    email:document.getElementById('demoEmail').value.trim(),
+    diet:document.getElementById('demoDiet').value,
+    weight:document.getElementById('demoWeight').value,
+    height:document.getElementById('demoHeight').value
+  };
+  try{
+    const r=await fetch('/diet/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.ok&&d.token){
+      document.cookie=`dh_token=${d.token};path=/;max-age=28800`;
+      window.location.href='/diet/dashboard';
+    }else{errEl.textContent=d.error||'حدث خطأ';errEl.style.display='block';}
+  }catch{errEl.textContent='حدث خطأ، حاول مرة أخرى';errEl.style.display='block';}
+}
+</script>
+
+<script>
+// ── LANGUAGE ──────────────────────────────────────────────────────────────────
+const DEMO_STRINGS = {
+  ar: {
+    badge: '🆓 تجربة مجانية 14 يوم',
+    title: 'نظامك الغذائي <span>بأسعار</span><br>المطبخ المصري',
+    sub: 'خطط وجبات مخصصة يومية بمكونات حقيقية من كارفور ومترو ورويال هاوس — مع مقارنة الأسعار والتحاليل المقترحة والمكملات الموصى بها',
+    cta1: 'ابدأ تجربتك المجانية ←',
+    cta2: 'شاهد كيف يعمل',
+    stat1: 'أنظمة غذائية', stat2: 'أيام خطة كاملة', stat3: 'أسواق مقارنة', stat4: 'تحاليل مقترحة', stat5: 'يوم تجربة مجانية',
+    demoLabel: 'معاينة مجانية',
+    demoTitle: 'خطة يوم كاملة — نظام Atkins',
+    demoSub: 'هذا مثال حقيقي من الخطة — سجل للحصول على 7 أيام كاملة مع ميزانيتك المخصصة',
+    dayName: '📅 الأحد — Atkins المرحلة الأولى',
+    costLabel: 'التكلفة',
+    currency: 'جنيه',
+    lockedTitle: '6 أيام إضافية مخفية',
+    lockedSub: 'سجل مجاناً للحصول على خطة 7 أيام كاملة مع المكونات والكميات والأسعار',
+  },
+  en: {
+    badge: '🆓 14-Day Free Trial',
+    title: 'Your Diet Plan <span>at Egyptian</span><br>Market Prices',
+    sub: 'Personalized daily meal plans with real ingredients from Carrefour, Metro & Royal House — with price comparison, recommended lab tests & supplements',
+    cta1: 'Start Free Trial →',
+    cta2: 'See How It Works',
+    stat1: 'Diet Programs', stat2: 'Days Full Plan', stat3: 'Markets Compared', stat4: 'Lab Tests', stat5: 'Day Free Trial',
+    demoLabel: 'Free Preview',
+    demoTitle: 'Full Day Plan — Atkins Diet',
+    demoSub: 'This is a real example from the plan — sign up to get a full 7-day plan with your custom budget',
+    dayName: '📅 Sunday — Atkins Phase 1',
+    costLabel: 'Daily Cost',
+    currency: 'EGP',
+    lockedTitle: '6 More Days Locked',
+    lockedSub: 'Sign up free to unlock the full 7-day plan with ingredients, quantities and prices',
+  }
+};
+
+function setDemoLang(lang) {
+  const s = DEMO_STRINGS[lang];
+  const isAr = lang === 'ar';
+  document.getElementById('htmlRoot')?.setAttribute('lang', lang);
+  document.getElementById('htmlRoot')?.setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  document.querySelector('html').setAttribute('lang', lang);
+  document.querySelector('html').setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  document.getElementById('dBtnAr').classList.toggle('active', isAr);
+  document.getElementById('dBtnEn').classList.toggle('active', !isAr);
+
+  const badge = document.querySelector('.demo-badge');
+  if (badge) badge.textContent = s.badge;
+  const title = document.querySelector('.hero-title');
+  if (title) title.innerHTML = s.title;
+  const sub = document.querySelector('.hero-sub');
+  if (sub) sub.textContent = s.sub;
+  const cta1 = document.querySelector('.btn-primary');
+  if (cta1) cta1.textContent = s.cta1;
+  const cta2 = document.querySelector('.btn-secondary');
+  if (cta2) cta2.textContent = s.cta2;
+
+  const statLabels = document.querySelectorAll('.stat-label');
+  const statKeys = ['stat1','stat2','stat3','stat4','stat5'];
+  statLabels.forEach((el,i) => { if(statKeys[i]) el.textContent = s[statKeys[i]]; });
+
+  const sectionLabel = document.querySelector('.section-label');
+  if (sectionLabel) sectionLabel.textContent = s.demoLabel;
+  const sectionTitle = document.querySelector('.section-title');
+  if (sectionTitle) sectionTitle.textContent = s.demoTitle;
+  const sectionSub = document.querySelector('.section-sub');
+  if (sectionSub) sectionSub.textContent = s.demoSub;
+  const dayName = document.querySelector('.day-name-demo');
+  if (dayName) dayName.textContent = s.dayName;
+
+  const lockTitle = document.querySelector('.lock-title');
+  if (lockTitle) lockTitle.textContent = s.lockedTitle;
+  const lockSub = document.querySelector('.lock-sub');
+  if (lockSub) lockSub.textContent = s.lockedSub;
+
+  window._demoLang = lang;
+  window._demoCurrency = s.currency;
+  window._demoCostLabel = s.costLabel;
+}
+
+// ── LIVE PRICES from food_prices.json ────────────────────────────────────────
+async function loadLivePrices() {
+  try {
+    const r = await fetch('/diet/api/demo/meal-plan');
+    const data = await r.json();
+    if (!data || !data.meals) return;
+    // Re-render cost with live prices
+    let cost = 0;
+    data.meals.forEach(m => { cost += m.price || 0; });
+    const currency = window._demoCurrency || 'جنيه';
+    const costLabel = window._demoCostLabel || 'التكلفة';
+    const costEl = document.getElementById('demoCost');
+    if (costEl) costEl.textContent = `${costLabel}: ${cost} ${currency}`;
+  } catch(e) {}
+}
+
+window.setDemoLang = setDemoLang;
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(loadLivePrices, 1500);
+});
+</script>
+
+</body>
+</html>

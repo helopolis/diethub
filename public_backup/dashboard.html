@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html id="htmlRoot" lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>DietHub — لوحة التحكم</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cairo:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --lime:#C8F560;--orange:#FF7A3D;--coral:#FF5757;
+  --yellow:#FFD63D;--green:#2D6A4F;--mint:#74C69D;
+  --dark:#1A1A2E;--bg:#F0F7F4;--card:#fff;
+  --text:#1A1A2E;--muted:#6B7280;--border:#E8EDF2;
+  --shadow:0 4px 20px rgba(0,0,0,0.06);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+[lang="en"] body,[lang="en"] *{font-family:'Inter','Cairo',sans-serif}
+
+/* NAV */
+.nav{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}
+.nav-logo{display:flex;align-items:center;gap:10px}
+.logo-dot{width:38px;height:38px;background:linear-gradient(135deg,var(--lime),var(--orange));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+.logo-text{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:900;color:var(--dark)}
+.nav-right{display:flex;align-items:center;gap:12px}
+.trial-badge{background:linear-gradient(135deg,var(--yellow),var(--orange));color:var(--dark);font-size:0.72rem;font-weight:700;padding:4px 12px;border-radius:20px}
+.lang-toggle{display:flex;background:var(--bg);border-radius:20px;padding:3px;border:1px solid var(--border)}
+.lang-btn{padding:5px 12px;border-radius:16px;border:none;background:transparent;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Cairo',sans-serif;color:var(--muted);transition:all 0.2s}
+.lang-btn.active{background:#fff;color:var(--green);box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.user-pill{background:var(--bg);border:1px solid var(--border);border-radius:24px;padding:5px 14px 5px 6px;display:flex;align-items:center;gap:8px;font-size:0.82rem;font-weight:600}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--mint),var(--green));display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:700}
+.logout-btn{background:none;border:1px solid rgba(255,87,87,0.3);color:var(--coral);cursor:pointer;font-size:0.8rem;font-family:'Cairo',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s}
+.logout-btn:hover{background:var(--coral);color:#fff}
+
+/* TABS */
+.tabs{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto}
+.tab{padding:14px 18px;font-size:0.85rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:all 0.2s;display:flex;align-items:center;gap:6px}
+.tab.active{color:var(--green);border-bottom-color:var(--lime)}
+.tab:hover:not(.active){color:var(--text)}
+
+/* MAIN */
+.main{padding:24px;max-width:1140px;margin:0 auto}
+.panel{display:none}.panel.active{display:block}
+
+/* HERO */
+.hero{background:linear-gradient(135deg,#1B4332 0%,var(--green) 60%,#40916C 100%);border-radius:20px;padding:28px 32px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden}
+.hero::before{content:'🥗';position:absolute;bottom:-20px;left:24px;font-size:5rem;opacity:0.12}
+.hero::after{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:rgba(200,245,96,0.12);border-radius:50%}
+.hero-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;position:relative;z-index:1}
+.hero-greeting{font-size:0.85rem;opacity:0.7;margin-bottom:6px}
+.hero-name{font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:900;margin-bottom:4px}
+.hero-sub{font-size:0.88rem;opacity:0.8}
+.trial-info{background:rgba(255,255,255,0.12);border-radius:12px;padding:12px 18px;text-align:center;min-width:140px}
+.trial-days{font-size:2rem;font-weight:700;color:var(--lime)}
+.trial-label{font-size:0.75rem;opacity:0.8;margin-top:2px}
+.hero-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:20px;position:relative;z-index:1}
+.hstat{background:rgba(255,255,255,0.1);border-radius:10px;padding:10px 18px;text-align:center;border:1px solid rgba(255,255,255,0.15)}
+.hstat-val{font-size:1.3rem;font-weight:700;color:var(--lime)}
+.hstat-label{font-size:0.72rem;opacity:0.7;margin-top:2px}
+
+/* GRID */
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+@media(max-width:768px){.grid-3,.grid-2{grid-template-columns:1fr}.nav{padding:0 12px;height:56px}.nav-right{gap:6px}.logo-text{font-size:1.1rem}.trial-badge{display:none}.main{padding:12px}.hero{padding:18px 16px;border-radius:14px}.hero-name{font-size:1.4rem}.hero-stats{gap:8px}.hstat{padding:8px 12px}.tabs{padding:0 8px}.tab{padding:10px 10px;font-size:0.78rem}.week-strip{grid-template-columns:repeat(7,1fr);gap:3px}.day-box{padding:6px 2px}.supp-grid{grid-template-columns:1fr 1fr}.lab-card{grid-template-columns:auto 1fr;gap:8px}.level-btns{flex-wrap:wrap}.budget-section{padding:14px}.meal-table{font-size:0.8rem}}
+@media(max-width:480px){.nav-right .user-pill span:not(.avatar){display:none}.hero-top{flex-direction:column}.trial-info{width:100%;min-width:unset}.hero-stats{gap:6px}.hstat{flex:1;min-width:80px}.tab{padding:8px 6px;font-size:0.72rem}.supp-grid{grid-template-columns:1fr}.lab-card{grid-template-columns:1fr}.week-strip{gap:2px}.day-name{font-size:0.6rem}.day-act{font-size:0.65rem}.act-row{grid-template-columns:36px 1fr auto}.act-icon-box{width:36px;height:36px;font-size:1rem}.main{padding:8px}}
+.card{background:#fff;border-radius:16px;padding:20px;border:1px solid var(--border);box-shadow:var(--shadow)}
+.card-title{font-size:0.82rem;font-weight:700;color:var(--muted);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.5px}
+.stat-val{font-size:1.8rem;font-weight:700;margin-bottom:4px}
+.stat-label{font-size:0.78rem;color:var(--muted)}
+
+/* SECTION HEADER */
+.sec-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.sec-title{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700}
+.sec-badge{background:var(--lime);color:var(--dark);font-size:0.72rem;font-weight:700;padding:4px 12px;border-radius:20px}
+
+/* DIET PILLS */
+.diet-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.diet-pill{padding:7px 16px;border-radius:20px;border:2px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Cairo',sans-serif}
+.diet-pill.active{background:var(--green);border-color:var(--green);color:#fff}
+
+/* BUDGET SECTION */
+.budget-section{background:linear-gradient(135deg,#FFF8F0,#FFF5E6);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid rgba(255,122,61,0.2)}
+.budget-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.budget-title{font-size:0.9rem;font-weight:700;color:var(--dark)}
+.budget-value{font-size:1.8rem;font-weight:700;color:var(--orange)}
+.budget-sub{font-size:0.78rem;color:var(--muted);margin-top:2px}
+input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
+.budget-markers{display:flex;justify-content:space-between;font-size:0.7rem;color:var(--muted);margin-top:4px}
+
+/* WEEKLY MEAL TABLE */
+.week-nav{display:flex;gap:6px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
+.day-tab{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s;font-family:'Cairo',sans-serif}
+.day-tab.active{background:var(--green);border-color:var(--green);color:#fff}
+
+.meal-table{width:100%;border-collapse:collapse}
+.meal-table thead tr{background:var(--bg)}
+.meal-table th{padding:10px 14px;text-align:right;font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.3px;border-bottom:2px solid var(--border)}
+.meal-table th:last-child{text-align:center}
+.meal-table td{padding:14px;border-bottom:1px solid var(--border);vertical-align:top}
+.meal-table tr:last-child td{border-bottom:none}
+.meal-table tr:hover{background:rgba(240,247,244,0.5)}
+.meal-type-cell{min-width:80px}
+.meal-type-badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:700;background:var(--bg);color:var(--muted)}
+.meal-type-badge.breakfast{background:#FFF8E1;color:#B45309}
+.meal-type-badge.lunch{background:#E8F5E9;color:#1B5E20}
+.meal-type-badge.dinner{background:#E3F2FD;color:#0D47A1}
+.meal-type-badge.snack{background:#FCE4EC;color:#880E4F}
+.meal-name-main{font-size:0.9rem;font-weight:700;margin-bottom:4px}
+.meal-name-sub{font-size:0.78rem;color:var(--muted)}
+.ingredients-list{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px}
+.ingredient-tag{background:var(--bg);border-radius:6px;padding:3px 8px;font-size:0.72rem;color:var(--muted);border:1px solid var(--border);display:flex;align-items:center;gap:4px}
+.ingredient-qty{font-weight:700;color:var(--green)}
+.macro-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.macro-tag{font-size:0.72rem;padding:2px 8px;border-radius:6px}
+.macro-cal{background:#FFF3E0;color:#E65100}
+.macro-p{background:#E8F5E9;color:#1B5E20}
+.macro-c{background:#E3F2FD;color:#0D47A1}
+.macro-f{background:#FCE4EC;color:#880E4F}
+.meal-price-cell{text-align:center;min-width:80px}
+.meal-price{font-size:1rem;font-weight:700;color:var(--green)}
+.meal-price.over-budget{color:var(--coral)}
+.price-note{font-size:0.7rem;color:var(--muted);margin-top:2px}
+
+.day-summary{background:linear-gradient(135deg,var(--bg),#E8F5E9);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border:1px solid rgba(45,106,79,0.15)}
+.day-total-price{font-size:1.1rem;font-weight:700;color:var(--green)}
+.day-within{font-size:0.78rem;padding:3px 10px;border-radius:10px;font-weight:600}
+.within-yes{background:#E8F5E9;color:var(--green)}
+.within-no{background:#FFEBEE;color:var(--coral)}
+
+/* FOOD PRICE TABLE */
+.price-table{width:100%;border-collapse:collapse;font-size:0.85rem}
+.price-table th{background:var(--bg);padding:10px 12px;text-align:center;color:var(--muted);font-size:0.75rem;font-weight:700;border-bottom:2px solid var(--border)}
+.price-table th:first-child,.price-table th:nth-child(2){text-align:right}
+.price-table td{padding:12px;border-bottom:1px solid var(--border);text-align:center;vertical-align:middle}
+.price-table tr:hover{background:rgba(240,247,244,0.5)}
+.price-table tr:last-child td{border-bottom:none}
+.item-name{font-weight:700;font-size:0.88rem}
+.item-qty{font-size:0.75rem;color:var(--muted);margin-top:2px}
+.category-tag{font-size:0.7rem;padding:2px 7px;border-radius:6px;font-weight:600}
+.cat-protein{background:#E8F5E9;color:#1B5E20}
+.cat-dairy{background:#E3F2FD;color:#0D47A1}
+.cat-vegetables{background:#F1F8E9;color:#33691E}
+.cat-fats{background:#FFF8E1;color:#F57F17}
+.best-price{color:var(--green);font-weight:700;background:#E8F5E9;border-radius:6px;padding:2px 8px}
+.price-cell{font-size:0.85rem}
+.savings-badge{font-size:0.7rem;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);padding:2px 8px;border-radius:10px;font-weight:700}
+
+/* LAB CARDS */
+.lab-grid{display:grid;gap:12px}
+.lab-card{background:#fff;border-radius:14px;padding:16px 18px;border:1px solid var(--border);display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start;transition:box-shadow 0.2s}
+.lab-card:hover{box-shadow:0 4px 16px rgba(0,0,0,0.08)}
+.lab-card.urgent{border-right:4px solid var(--coral)}
+.lab-card.routine{border-right:4px solid var(--mint)}
+.lab-indicator{width:10px;height:10px;border-radius:50%;margin-top:4px;flex-shrink:0}
+.urgent-dot{background:var(--coral)}
+.routine-dot{background:var(--mint)}
+.lab-title{font-size:0.92rem;font-weight:700;margin-bottom:3px}
+.lab-ar{font-size:0.8rem;color:var(--muted);margin-bottom:6px}
+.lab-why{font-size:0.78rem;color:var(--muted);line-height:1.5;margin-bottom:8px}
+.lab-tags{display:flex;gap:6px;flex-wrap:wrap}
+.lab-tag{font-size:0.7rem;padding:2px 8px;border-radius:6px;font-weight:600}
+.tag-urgent{background:#FFEBEE;color:var(--coral)}
+.tag-freq{background:var(--bg);color:var(--muted)}
+.lab-prices{text-align:right}
+.lab-best{font-size:1rem;font-weight:700;color:var(--green)}
+.lab-best-label{font-size:0.7rem;color:var(--muted);margin-top:2px}
+.lab-compare{display:flex;gap:8px;margin-top:8px;font-size:0.75rem;flex-wrap:wrap}
+.lab-price-item{background:var(--bg);border-radius:6px;padding:3px 8px;color:var(--muted)}
+
+/* SUPPLEMENT GRID */
+.supp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.supp-card{background:#fff;border-radius:14px;padding:18px;border:1px solid var(--border);transition:all 0.2s}
+.supp-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.1)}
+.supp-icon{font-size:1.8rem;margin-bottom:10px}
+.supp-name{font-size:0.9rem;font-weight:700;margin-bottom:6px}
+.supp-why{font-size:0.78rem;color:var(--muted);line-height:1.5;margin-bottom:10px}
+.supp-footer{display:flex;justify-content:space-between;align-items:center}
+.supp-price{font-size:0.9rem;font-weight:700;color:var(--green)}
+.supp-link{font-size:0.78rem;color:var(--orange);text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,122,61,0.3);border-radius:8px;transition:all 0.2s}
+.supp-link:hover{background:var(--orange);color:#fff}
+
+/* ACTIVITY */
+.level-btns{display:flex;gap:8px;margin-bottom:16px}
+.level-btn{padding:8px 18px;border-radius:20px;border:2px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Cairo',sans-serif}
+.level-btn.active{background:var(--green);border-color:var(--green);color:#fff}
+.week-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:18px}
+.day-box{background:var(--bg);border-radius:10px;padding:10px 4px;text-align:center;border:1px solid var(--border)}
+.day-box.rest{opacity:0.5}
+.day-box.today{background:var(--lime);border-color:var(--lime)}
+.day-name{font-size:0.68rem;color:var(--muted);margin-bottom:4px}
+.day-act{font-size:0.72rem;font-weight:700}
+.act-row{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:start;padding:12px 0;border-bottom:1px solid var(--border)}
+.act-row:last-child{border-bottom:none}
+.act-icon-box{width:44px;height:44px;border-radius:12px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+.act-name{font-size:0.9rem;font-weight:700}
+.act-desc{font-size:0.78rem;color:var(--muted);margin-top:3px;line-height:1.4}
+.act-meta{text-align:right;white-space:nowrap}
+.act-cal{font-size:0.88rem;font-weight:700;color:var(--orange)}
+.act-dur{font-size:0.75rem;color:var(--muted);margin-top:2px}
+
+/* PROGRESS BARS */
+.prog-row{margin-bottom:14px}
+.prog-labels{display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:5px}
+.prog-bar{background:var(--bg);border-radius:20px;height:8px;overflow:hidden}
+.prog-fill{height:100%;border-radius:20px;transition:width 1.2s ease}
+.fill-green{background:linear-gradient(90deg,var(--lime),var(--mint))}
+.fill-orange{background:linear-gradient(90deg,var(--orange),var(--yellow))}
+.fill-coral{background:linear-gradient(90deg,var(--coral),var(--orange))}
+
+/* RATING */
+.rating-form{background:linear-gradient(135deg,#FFFBF0,#FFF8E1);border-radius:16px;padding:24px;border:1px solid rgba(255,211,61,0.3);margin-top:20px}
+.stars{display:flex;gap:6px;margin:12px 0}
+.star{font-size:2rem;cursor:pointer;opacity:0.3;transition:all 0.2s;user-select:none}
+.star.active{opacity:1;transform:scale(1.1)}
+.rating-input{width:100%;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;font-family:'Cairo',sans-serif;font-size:0.9rem;margin-bottom:10px;outline:none}
+.rating-input:focus{border-color:var(--yellow)}
+.btn-rate{padding:12px 24px;background:linear-gradient(135deg,var(--yellow),var(--orange));border:none;border-radius:12px;color:var(--dark);font-size:0.9rem;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;transition:all 0.2s}
+.btn-rate:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(255,211,61,0.4)}
+.existing-ratings{margin-top:16px}
+.rating-card{background:#fff;border-radius:10px;padding:14px;margin-bottom:8px;border:1px solid var(--border)}
+.rating-stars{color:var(--yellow);font-size:0.9rem;margin-bottom:4px}
+.rating-comment{font-size:0.85rem;color:var(--text);margin-bottom:4px}
+.rating-meta{font-size:0.75rem;color:var(--muted)}
+.avg-rating{display:flex;align-items:center;gap:12px;padding:16px;background:var(--bg);border-radius:12px;margin-bottom:16px}
+.avg-number{font-size:3rem;font-weight:700;font-family:'Playfair Display',serif;color:var(--green)}
+.avg-stars{color:var(--yellow);font-size:1.2rem}
+.avg-label{font-size:0.8rem;color:var(--muted);margin-top:4px}
+
+/* ALERTS */
+.alert{border-radius:12px;padding:12px 16px;font-size:0.85rem;font-weight:600;margin-bottom:10px}
+.alert-warning{background:#FFF3E0;border:1px solid rgba(255,122,61,0.3);color:#E65100}
+.alert-success{background:#E8F5E9;border:1px solid rgba(45,106,79,0.3);color:var(--green)}
+.alert-info{background:#E3F2FD;border:1px solid rgba(33,150,243,0.3);color:#0D47A1}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--green);color:#fff;padding:12px 24px;border-radius:14px;font-weight:600;font-size:0.88rem;z-index:1000;transition:transform 0.4s;box-shadow:0 8px 24px rgba(0,0,0,0.15)}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">
+    <div class="logo-dot">🥗</div>
+    <span class="logo-text">DietHub</span>
+  </div>
+  <div class="nav-right">
+    <div class="trial-badge" id="trialBadge" style="display:none"></div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" id="btnAr" onclick="setLang('ar')">عربي</button>
+      <button class="lang-btn" id="btnEn" onclick="setLang('en')">EN</button>
+    </div>
+    <div class="user-pill">
+      <div class="avatar" id="userInitial">M</div>
+      <span id="userName">...</span>
+    </div>
+    <button class="logout-btn" onclick="location.href='/diet/logout'" id="btnLogout">خروج ←</button>
+  </div>
+</nav>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(this,'home')" data-ar="🏠 الرئيسية" data-en="🏠 Home">🏠 الرئيسية</div>
+  <div class="tab" onclick="switchTab(this,'meals')" data-ar="🥗 خطة الوجبات" data-en="🥗 Meal Plan">🥗 خطة الوجبات</div>
+  <div class="tab" onclick="switchTab(this,'prices')" data-ar="🛒 أسعار السوق" data-en="🛒 Market Prices">🛒 أسعار السوق</div>
+  <div class="tab" onclick="switchTab(this,'labs')" data-ar="🔬 التحاليل" data-en="🔬 Lab Tests">🔬 التحاليل</div>
+  <div class="tab" onclick="switchTab(this,'supps')" data-ar="💊 المكملات" data-en="💊 Supplements">💊 المكملات</div>
+  <div class="tab" onclick="switchTab(this,'activity')" data-ar="🏋️ النشاط" data-en="🏋️ Activity">🏋️ النشاط</div>
+  <div class="tab" onclick="switchTab(this,'rating')" data-ar="⭐ التقييم" data-en="⭐ Rate Us">⭐ التقييم</div>
+</div>
+
+<div class="main">
+
+<!-- HOME -->
+<div class="panel active" id="p-home">
+  <div class="hero">
+    <div class="hero-top">
+      <div>
+        <div class="hero-greeting" id="hGreeting">أهلاً وسهلاً 👋</div>
+        <div class="hero-name" id="hName">مرحباً</div>
+        <div class="hero-sub" id="hSub">اشتراكك نشط · رحلتك نحو صحة أفضل تبدأ اليوم</div>
+      </div>
+      <div class="trial-info" id="trialInfo" style="display:none">
+        <div class="trial-days" id="trialDays">14</div>
+        <div class="trial-label" id="trialLabel">يوم متبقي</div>
+      </div>
+    </div>
+    <div class="hero-stats">
+      <div class="hstat"><div class="hstat-val" id="hDiet">—</div><div class="hstat-label" id="lDiet">النظام الغذائي</div></div>
+      <div class="hstat"><div class="hstat-val" id="hBudget">—</div><div class="hstat-label" id="lBudget">ميزانية يومية</div></div>
+      <div class="hstat"><div class="hstat-val">1,650</div><div class="hstat-label" id="lCal">سعرات يومية</div></div>
+      <div class="hstat"><div class="hstat-val" style="color:var(--coral)">3</div><div class="hstat-label" id="lLabs">تحاليل عاجلة</div></div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="stat-val" style="color:var(--green)" id="hsDiet">—</div>
+      <div class="stat-label" id="lsDiet">النظام الغذائي</div>
+    </div>
+    <div class="card">
+      <div class="stat-val" style="color:var(--orange)">1,650</div>
+      <div class="stat-label" id="lsCal">سعرات يومية</div>
+    </div>
+    <div class="card">
+      <div class="stat-val" style="color:var(--coral)">3</div>
+      <div class="stat-label" id="lsLabs">تحاليل عاجلة</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title" id="ltProgress">📊 التقدم الأسبوعي</div>
+      <div class="prog-row">
+        <div class="prog-labels"><span id="lProtein">البروتين اليومي</span><span style="font-weight:700;color:var(--green)">120g / 130g</span></div>
+        <div class="prog-bar"><div class="prog-fill fill-green" style="width:92%"></div></div>
+      </div>
+      <div class="prog-row">
+        <div class="prog-labels"><span id="lCarbs">الكربوهيدرات</span><span style="font-weight:700;color:var(--orange)">18g / 20g</span></div>
+        <div class="prog-bar"><div class="prog-fill fill-orange" style="width:90%"></div></div>
+      </div>
+      <div class="prog-row">
+        <div class="prog-labels"><span id="lWorkouts">التمارين الأسبوعية</span><span style="font-weight:700;color:var(--coral)">3 / 5</span></div>
+        <div class="prog-bar"><div class="prog-fill fill-coral" style="width:60%"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="ltAlerts">🔔 تنبيهات مهمة</div>
+      <div class="alert alert-warning">⚠️ <span id="aLipid">موعد تحليل دهون الدم الشهري اقترب</span></div>
+      <div class="alert alert-success">✅ <span id="aMeal">خطة الوجبات محدثة بأحدث أسعار السوق</span></div>
+      <div class="alert alert-info">💡 <span id="aTip">اشرب 2.5 لتر ماء يومياً مع نظام Atkins</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- MEALS -->
+<div class="panel" id="p-meals">
+  <div class="sec-hdr">
+    <div class="sec-title" id="mTitle">🥗 خطة الوجبات الأسبوعية</div>
+    <div class="sec-badge" id="mBadge">Atkins</div>
+  </div>
+
+  <div class="diet-pills" id="dietPills">
+    <button class="diet-pill active" onclick="switchDiet(this,'atkins')">Atkins</button>
+    <button class="diet-pill" onclick="switchDiet(this,'keto')">Keto</button>
+    <button class="diet-pill" onclick="switchDiet(this,'mediterranean')">Mediterranean</button>
+    <button class="diet-pill" onclick="switchDiet(this,'diabetic')">Diabetic</button>
+  </div>
+
+  <div class="budget-section">
+    <div class="budget-header">
+      <div>
+        <div class="budget-title" id="bTitle">💰 الميزانية اليومية</div>
+        <div class="budget-sub" id="bSub">سيتم احتساب الأسعار من أرخص متجر لكل مكون</div>
+      </div>
+      <div>
+        <div class="budget-value" id="budgetDisplay">200 جنيه</div>
+        <div class="budget-sub" id="bPerDay">في اليوم</div>
+      </div>
+    </div>
+    <input type="range" min="100" max="500" value="200" step="25" id="budgetSlider" oninput="onBudgetChange(this.value)">
+    <div class="budget-markers">
+      <span>100</span><span id="bEco">اقتصادي</span><span id="bPrem">مميز</span><span>500</span>
+    </div>
+  </div>
+
+  <div class="week-nav" id="weekNav"></div>
+
+  <div class="card" id="mealsCard">
+    <div class="loading" id="mealsLoading">⏳ <span id="lLoading">جاري تحميل الخطة...</span></div>
+    <div id="mealsContent" style="display:none"></div>
+  </div>
+</div>
+
+<!-- PRICES -->
+<div class="panel" id="p-prices">
+  <div class="sec-hdr">
+    <div class="sec-title" id="pTitle">🛒 مقارنة أسعار السوق</div>
+    <div style="font-size:0.8rem;color:var(--muted)" id="pDate"></div>
+  </div>
+  <div class="card">
+    <div id="pricesContent"><div class="loading">⏳</div></div>
+  </div>
+</div>
+
+<!-- LABS -->
+<div class="panel" id="p-labs">
+  <div class="sec-hdr">
+    <div class="sec-title" id="lTitle">🔬 التحاليل الطبية المقترحة</div>
+    <div class="sec-badge" id="lBadge">أسعار 2026</div>
+  </div>
+  <div class="alert alert-warning" id="labAlert">⚠️ 3 تحاليل عاجلة يجب إجراؤها قبل بدء النظام وبعد أسبوعين</div>
+  <div id="labsList"><div class="loading">⏳</div></div>
+</div>
+
+<!-- SUPPLEMENTS -->
+<div class="panel" id="p-supps">
+  <div class="sec-hdr">
+    <div class="sec-title" id="sTitle">💊 المكملات الغذائية</div>
+    <div class="sec-badge" id="sBadge">موصى بها لـ Atkins</div>
+  </div>
+  <div class="supp-grid" id="suppGrid">
+    <div class="loading">⏳</div>
+  </div>
+</div>
+
+<!-- ACTIVITY -->
+<div class="panel" id="p-activity">
+  <div class="sec-hdr">
+    <div class="sec-title" id="aTitle">🏋️ البرنامج التدريبي اليومي</div>
+    <div class="sec-badge" id="aBadge">مخصص لـ Atkins</div>
+  </div>
+  <div class="level-btns" id="levelBtns">
+    <button class="level-btn active" onclick="setLevel(this,'beginner')" id="lBeg">مبتدئ</button>
+    <button class="level-btn" onclick="setLevel(this,'intermediate')" id="lInt">متوسط</button>
+    <button class="level-btn" onclick="setLevel(this,'advanced')" id="lAdv">متقدم</button>
+  </div>
+  <div class="week-strip" id="weekStrip">
+    <div class="day-box today"><div class="day-name" id="dSun">أحد</div><div class="day-act" id="dSunAct">مشي</div></div>
+    <div class="day-box"><div class="day-name" id="dMon">اثنين</div><div class="day-act" id="dMonAct">تمارين</div></div>
+    <div class="day-box rest"><div class="day-name" id="dTue">ثلاثاء</div><div class="day-act" id="dTueAct">راحة</div></div>
+    <div class="day-box"><div class="day-name" id="dWed">أربعاء</div><div class="day-act" id="dWedAct">مشي</div></div>
+    <div class="day-box"><div class="day-name" id="dThu">خميس</div><div class="day-act" id="dThuAct">تمارين</div></div>
+    <div class="day-box rest"><div class="day-name" id="dFri">جمعة</div><div class="day-act" id="dFriAct">راحة</div></div>
+    <div class="day-box"><div class="day-name" id="dSat">سبت</div><div class="day-act" id="dSatAct">مشي</div></div>
+  </div>
+  <div class="card" id="actList"></div>
+</div>
+
+<!-- RATING -->
+<div class="panel" id="p-rating">
+  <div class="sec-hdr">
+    <div class="sec-title" id="rTitle">⭐ قيّم الخدمة</div>
+  </div>
+  <div id="avgRatingBox" style="margin-bottom:16px"></div>
+  <div class="rating-form">
+    <div style="font-size:1rem;font-weight:700;margin-bottom:4px" id="rFormTitle">شاركنا رأيك</div>
+    <div style="font-size:0.82rem;color:var(--muted);margin-bottom:12px" id="rFormSub">تقييمك يساعدنا في تحسين الخدمة</div>
+    <div class="stars" id="stars">
+      <span class="star" onclick="setStar(1)" data-val="1">⭐</span>
+      <span class="star" onclick="setStar(2)" data-val="2">⭐</span>
+      <span class="star" onclick="setStar(3)" data-val="3">⭐</span>
+      <span class="star" onclick="setStar(4)" data-val="4">⭐</span>
+      <span class="star" onclick="setStar(5)" data-val="5">⭐</span>
+    </div>
+    <input class="rating-input" id="rName" placeholder="اسمك (اختياري)">
+    <input class="rating-input" id="rComment" placeholder="تعليقك على الخدمة...">
+    <button class="btn-rate" onclick="submitRating()" id="btnRate">إرسال التقييم ⭐</button>
+  </div>
+  <div class="existing-ratings" id="existingRatings"></div>
+</div>
+
+</div><!-- end main -->
+<div class="toast" id="toast"></div>
+
+<script>
+let currentLang = 'ar';
+let currentDiet = 'atkins';
+let currentBudget = 200;
+let currentDay = 0;
+let mealPlanData = null;
+let selectedStar = 0;
+let budgetTimer = null;
+
+const T = {
+  ar: {
+    greeting:'أهلاً وسهلاً 👋', welcome:'مرحباً', dietLabel:'النظام الغذائي', budgetLabel:'ميزانية يومية',
+    calLabel:'سعرات يومية', labsLabel:'تحاليل عاجلة', logout:'خروج ←', loading:'جاري التحميل...',
+    budgetTitle:'💰 الميزانية اليومية', budgetSub:'سيتم احتساب الأسعار من أرخص متجر لكل مكون',
+    perDay:'في اليوم', eco:'اقتصادي', prem:'مميز',
+    dailyCost:'التكلفة اليومية', withinBudget:'✓ ضمن الميزانية', overBudget:'✗ تجاوز الميزانية',
+    ingredients:'المكونات', time:'الوقت', meal:'الوجبة', macros:'القيم الغذائية', price:'السعر',
+    breakfast:'إفطار', lunch:'غداء', dinner:'عشاء', snack:'سناك',
+    trialLeft:'يوم متبقي', trialExpired:'انتهت الفترة التجريبية',
+    rateTitle:'⭐ قيّم الخدمة', rateBtn:'إرسال التقييم ⭐',
+    urgentAlert:'⚠️ 3 تحاليل عاجلة يجب إجراؤها قبل بدء النظام وبعد أسبوعين',
+    cheapest:'الأرخص', savings:'توفير',
+    beginner:'مبتدئ', intermediate:'متوسط', advanced:'متقدم',
+    days:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
+    daysShort:['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت']
+  },
+  en: {
+    greeting:'Welcome 👋', welcome:'Hello', dietLabel:'Diet Plan', budgetLabel:'Daily Budget',
+    calLabel:'Daily Calories', labsLabel:'Urgent Tests', logout:'Logout →', loading:'Loading...',
+    budgetTitle:'💰 Daily Budget', budgetSub:'Prices calculated from cheapest store per ingredient',
+    perDay:'per day', eco:'Economy', prem:'Premium',
+    dailyCost:'Daily Cost', withinBudget:'✓ Within Budget', overBudget:'✗ Over Budget',
+    ingredients:'Ingredients', time:'Time', meal:'Meal', macros:'Nutrition', price:'Price',
+    breakfast:'Breakfast', lunch:'Lunch', dinner:'Dinner', snack:'Snack',
+    trialLeft:'days left', trialExpired:'Trial Expired',
+    rateTitle:'⭐ Rate Our Service', rateBtn:'Submit Rating ⭐',
+    urgentAlert:'⚠️ 3 urgent tests required before starting your diet and after 2 weeks',
+    cheapest:'Cheapest', savings:'Save',
+    beginner:'Beginner', intermediate:'Intermediate', advanced:'Advanced',
+    days:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
+    daysShort:['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  }
+};
+
+function t(key) { return T[currentLang]?.[key] || T.ar[key] || key; }
+
+function setLang(lang) {
+  currentLang = lang;
+  document.getElementById('htmlRoot').setAttribute('lang', lang);
+  document.getElementById('htmlRoot').setAttribute('dir', lang==='ar'?'rtl':'ltr');
+  document.getElementById('btnAr').classList.toggle('active', lang==='ar');
+  document.getElementById('btnEn').classList.toggle('active', lang==='en');
+  document.getElementById('btnLogout').textContent = t('logout');
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.textContent = tab.dataset[lang] || tab.textContent;
+  });
+  document.getElementById('labAlert').textContent = t('urgentAlert');
+  document.getElementById('bTitle').textContent = t('budgetTitle');
+  document.getElementById('bSub').textContent = t('budgetSub');
+  document.getElementById('bPerDay').textContent = t('perDay');
+  document.getElementById('bEco').textContent = t('eco');
+  document.getElementById('bPrem').textContent = t('prem');
+  document.getElementById('rTitle').textContent = t('rateTitle');
+  document.getElementById('btnRate').textContent = t('rateBtn');
+  document.getElementById('lBeg').textContent = t('beginner');
+  document.getElementById('lInt').textContent = t('intermediate');
+  document.getElementById('lAdv').textContent = t('advanced');
+  if (mealPlanData) renderMeals();
+  fetch('/diet/api/profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lang}) });
+}
+
+async function init() {
+  const me = await fetch('/diet/api/me').then(r=>r.json()).catch(()=>null);
+  if (!me) return;
+  currentLang = me.lang || 'ar';
+  setLang(currentLang);
+  currentDiet = me.profile?.diet || 'atkins';
+  currentBudget = me.profile?.budget || 200;
+  document.getElementById('userInitial').textContent = me.username[0].toUpperCase();
+  document.getElementById('userName').textContent = me.username;
+  document.getElementById('hName').textContent = t('welcome') + ' ' + me.username + ' 👋';
+  document.getElementById('hDiet').textContent = currentDiet;
+  document.getElementById('hsDiet').textContent = currentDiet;
+  document.getElementById('hBudget').textContent = currentBudget + (currentLang==='ar'?' ج':' EGP');
+  document.getElementById('budgetSlider').value = currentBudget;
+  document.getElementById('budgetDisplay').textContent = currentBudget + (currentLang==='ar'?' جنيه':' EGP');
+  document.getElementById('mBadge').textContent = currentDiet;
+  document.querySelectorAll('.diet-pill').forEach(p => {
+    p.classList.toggle('active', p.textContent.toLowerCase().includes(currentDiet.toLowerCase()));
+  });
+  if (me.trial && !me.trial.expired && me.trial.daysLeft < 999) {
+    document.getElementById('trialInfo').style.display = 'block';
+    document.getElementById('trialDays').textContent = me.trial.daysLeft;
+    document.getElementById('trialLabel').textContent = t('trialLeft');
+    document.getElementById('trialBadge').style.display = 'block';
+    document.getElementById('trialBadge').textContent = me.trial.daysLeft + ' ' + t('trialLeft');
+  }
+  buildWeekNav();
+  setLevel(document.querySelector('.level-btn.active'), 'beginner');
+}
+
+function buildWeekNav() {
+  const nav = document.getElementById('weekNav');
+  const days = t('days');
+  nav.innerHTML = days.map((d,i) => `<button class="day-tab${i===0?' active':''}" onclick="selectDay(this,${i})">${d}</button>`).join('');
+}
+
+function selectDay(el, idx) {
+  document.querySelectorAll('.day-tab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  currentDay = idx;
+  if (mealPlanData) renderMeals();
+}
+
+function switchTab(el, id) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('p-'+id).classList.add('active');
+  if (id==='meals' && !mealPlanData) loadMeals();
+  if (id==='prices') loadPrices();
+  if (id==='labs') loadLabs();
+  if (id==='supps') renderSupps();
+  if (id==='rating') loadRatings();
+}
+
+function switchDiet(el, diet) {
+  document.querySelectorAll('.diet-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  currentDiet = diet;
+  document.getElementById('mBadge').textContent = diet;
+  mealPlanData = null;
+  loadMeals();
+  savePref();
+}
+
+function onBudgetChange(val) {
+  currentBudget = parseInt(val);
+  document.getElementById('budgetDisplay').textContent = val + (currentLang==='ar'?' جنيه':' EGP');
+  clearTimeout(budgetTimer);
+  budgetTimer = setTimeout(() => { loadMeals(); savePref(); }, 500);
+}
+
+async function savePref() {
+  await fetch('/diet/api/profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ diet:currentDiet, budget:currentBudget, lang:currentLang }) });
+}
+
+async function loadMeals() {
+  document.getElementById('mealsLoading').style.display = 'flex';
+  document.getElementById('mealsContent').style.display = 'none';
+  mealPlanData = await fetch(`/diet/api/meal-plan?diet=${currentDiet}&budget=${currentBudget}&lang=${currentLang}`).then(r=>r.json()).catch(()=>null);
+  document.getElementById('mealsLoading').style.display = 'none';
+  document.getElementById('mealsContent').style.display = 'block';
+  buildWeekNav();
+  renderMeals();
+}
+
+function renderMeals() {
+  if (!mealPlanData?.week) return;
+  const day = mealPlanData.week[currentDay] || mealPlanData.week[0];
+  const isAr = currentLang === 'ar';
+  const dayName = isAr ? day.day : day.dayEn;
+  const dailyCost = day.meals.reduce((s,m)=>s+m.price,0);
+  const withinBudget = dailyCost <= currentBudget;
+  let html = `
+    <div class="day-summary">
+      <div>
+        <div style="font-size:0.88rem;font-weight:700">${dayName}</div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-top:2px">${mealPlanData.dailyCalories} kcal · ${mealPlanData.dailyProtein} protein · ${mealPlanData.dailyCarbs} carbs</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="day-total-price">${dailyCost} ${isAr?'ج':'EGP'} / ${isAr?'يوم':'day'}</div>
+        <span class="day-within ${withinBudget?'within-yes':'within-no'}">${withinBudget?t('withinBudget'):t('overBudget')}</span>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+    <table class="meal-table">
+      <thead><tr>
+        <th style="min-width:80px">${isAr?'الوجبة':'Meal'}</th>
+        <th style="min-width:60px">${isAr?'الوقت':'Time'}</th>
+        <th>${isAr?'الاسم والمكونات':'Name & Ingredients'}</th>
+        <th style="min-width:120px">${isAr?'القيم الغذائية':'Nutrition'}</th>
+        <th style="min-width:80px">${isAr?'السعر':'Price'}</th>
+      </tr></thead>
+      <tbody>`;
+
+  day.meals.forEach(meal => {
+    const typeMap = { 'إفطار':'breakfast', 'Breakfast':'breakfast', 'غداء':'lunch', 'Lunch':'lunch', 'عشاء':'dinner', 'Dinner':'dinner', 'سناك':'snack', 'Snack':'snack' };
+    const typeClass = typeMap[meal.type] || typeMap[meal.typeEn] || 'snack';
+    const mealName = isAr ? meal.name : meal.nameEn;
+    const mealType = isAr ? meal.type : meal.typeEn;
+    const ingTags = meal.ingredients.map(ing => {
+      const qty = ing.qty;
+      const name = isAr ? ing.item : ing.itemEn;
+      return `<span class="ingredient-tag">${name} <span class="ingredient-qty">${qty}</span></span>`;
+    }).join('');
+    html += `<tr>
+      <td class="meal-type-cell"><span class="meal-type-badge ${typeClass}">${mealType}</span></td>
+      <td style="font-size:0.82rem;color:var(--muted);white-space:nowrap">${meal.time}</td>
+      <td>
+        <div class="meal-name-main">${mealName}</div>
+        <div class="ingredients-list">${ingTags}</div>
+        <div class="macro-row">
+          <span class="macro-tag macro-cal">${meal.cal} kcal</span>
+          <span class="macro-tag macro-p">P: ${meal.protein}</span>
+          <span class="macro-tag macro-c">C: ${meal.carbs}</span>
+          <span class="macro-tag macro-f">F: ${meal.fat}</span>
+        </div>
+      </td>
+      <td style="display:none"></td>
+      <td class="meal-price-cell">
+        <div class="meal-price ${meal.price > currentBudget/4 ? 'over-budget':''}">${meal.price} ${isAr?'ج':'EGP'}</div>
+        <div class="price-note">${isAr?'أرخص سعر':'best price'}</div>
+      </td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  document.getElementById('mealsContent').innerHTML = html;
+}
+
+async function loadPrices() {
+  const data = await fetch('/diet/api/food-prices').then(r=>r.json());
+  const isAr = currentLang === 'ar';
+  document.getElementById('pDate').textContent = (isAr?'آخر تحديث: ':'Last updated: ') + data.lastUpdated;
+  const catMap = { protein:'cat-protein', dairy:'cat-dairy', vegetables:'cat-vegetables', fats:'cat-fats' };
+  const catLabelAr = { protein:'بروتين', dairy:'ألبان', vegetables:'خضار', fats:'دهون' };
+  const catLabelEn = { protein:'Protein', dairy:'Dairy', vegetables:'Veggies', fats:'Fats' };
+  let html = `<div style="overflow-x:auto"><table class="price-table">
+    <thead><tr>
+      <th>${isAr?'المنتج':'Product'}</th>
+      <th>${isAr?'الكمية للحصة':'Serving Size'}</th>
+      <th>${isAr?'القطاع':'Category'}</th>
+      <th>${isAr?'كارفور':'Carrefour'}</th>
+      <th>${isAr?'مترو':'Metro'}</th>
+      <th>${isAr?'رويال':'Royal'}</th>
+      <th>${isAr?'تلبات':'Talabat'}</th>
+      <th>${isAr?'الأرخص':'Cheapest'}</th>
+      <th>${isAr?'توفير':'Savings'}</th>
+    </tr></thead><tbody>`;
+  (data.items||[]).forEach(item => {
+    const prices = [item.carrefour, item.metro, item.royal, item.talabat].filter(Boolean);
+    const best = Math.min(...prices);
+    const worst = Math.max(...prices);
+    const saving = worst - best;
+    const storeNames = ['carrefour','metro','royal','talabat'];
+    const storeCells = storeNames.map(s => `<td class="price-cell"${item[s]===best?` style="font-weight:700"`:''}>${item[s]||'—'}<br><span style="font-size:0.65rem;color:var(--muted)">${isAr?'ج':'EGP'}</span></td>`).join('');
+    html += `<tr>
+      <td><div class="item-name">${isAr?item.name:item.nameEn}</div><div class="item-qty" style="font-size:0.7rem;color:var(--muted)">${isAr?'الوحدة: ':'Unit: '}${item.unit}</div></td>
+      <td style="font-size:0.78rem;color:var(--muted)">${isAr?item.qtyAr:item.qty}</td>
+      <td><span class="category-tag ${catMap[item.category]||'cat-protein'}">${isAr?(catLabelAr[item.category]||item.category):(catLabelEn[item.category]||item.category)}</span></td>
+      ${storeCells}
+      <td><span class="best-price">${best} ${isAr?'ج':'EGP'}</span></td>
+      <td>${saving>0?`<span class="savings-badge">${isAr?'وفّر':'Save'} ${saving}</span>`:'-'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('pricesContent').innerHTML = html;
+}
+
+async function loadLabs() {
+  const data = await fetch('/diet/api/labs').then(r=>r.json());
+  const isAr = currentLang === 'ar';
+  let html = '';
+  (data.tests||[]).forEach(t => {
+    const prices = [t.mokhtabar, t.alpha, t.labmed].filter(Boolean);
+    const best = Math.min(...prices);
+    const name = isAr ? t.nameAr : t.name;
+    const why = isAr ? t.whyAr : t.why;
+    const freq = isAr ? t.frequencyAr : t.frequency;
+    html += `<div class="lab-card ${t.urgent?'urgent':'routine'}">
+      <div class="lab-indicator ${t.urgent?'urgent-dot':'routine-dot'}"></div>
+      <div>
+        <div class="lab-title">${t.name}</div>
+        <div class="lab-ar">${t.nameAr}</div>
+        <div class="lab-why">${why}</div>
+        <div class="lab-tags">
+          ${t.urgent?`<span class="lab-tag tag-urgent">⚠️ ${isAr?'عاجل':'Urgent'}</span>`:''}
+          <span class="lab-tag tag-freq">${freq}</span>
+        </div>
+        <div class="lab-compare">
+          <span class="lab-price-item">${isAr?'المختبر':'Mokhtabar'}: ${t.mokhtabar} ${isAr?'ج':'EGP'}</span>
+          <span class="lab-price-item">${isAr?'ألفا':'Alpha'}: ${t.alpha} ${isAr?'ج':'EGP'}</span>
+          <span class="lab-price-item">${isAr?'لاب ميد':'LabMed'}: ${t.labmed} ${isAr?'ج':'EGP'}</span>
+        </div>
+      </div>
+      <div class="lab-prices">
+        <div class="lab-best">${best} ${isAr?'ج':'EGP'}</div>
+        <div class="lab-best-label">${isAr?'أفضل سعر':'Best price'}</div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('labsList').innerHTML = html;
+}
+
+function renderSupps() {
+  const isAr = currentLang === 'ar';
+  const supps = [
+    { icon:'🐟', name:'Omega-3 Fish Oil 1000mg', nameAr:'أوميجا 3 زيت السمك', why:'Essential for Atkins — supports heart and joints', whyAr:'أساسي في Atkins — يدعم القلب والمفاصل', price:'135 EGP', priceAr:'135 جنيه', link:'https://www.amazon.eg/s?k=omega+3' },
+    { icon:'💪', name:'Whey Protein Isolate 1kg', nameAr:'واي بروتين أيزوليت 1 كجم', why:'Preserves muscle during diet — choose Isolate to avoid lactose', whyAr:'يحافظ على العضلات — اختر Isolate لتجنب اللاكتوز', price:'950 EGP', priceAr:'950 جنيه', link:'https://www.amazon.eg/s?k=whey+protein+isolate' },
+    { icon:'🧬', name:'Creatine Monohydrate 300g', nameAr:'كرياتين مونوهيدرات 300 جم', why:'Improves workout performance, safe with Atkins', whyAr:'يحسن أداء التمارين، آمن مع Atkins', price:'320 EGP', priceAr:'320 جنيه', link:'https://www.amazon.eg/s?k=creatine' },
+    { icon:'⚡', name:'Opti-Men Multivitamin 150', nameAr:'أوبتي مين مالتيفيتامين 150', why:'Replaces vitamins lost when cutting carbs', whyAr:'يعوض الفيتامينات التي تنخفض مع تقليل الكربوهيدرات', price:'580 EGP', priceAr:'580 جنيه', link:'https://www.amazon.eg/s?k=opti+men' },
+    { icon:'🌿', name:'Fenugreek / حلبة', nameAr:'حلبة', why:'Improves insulin resistance', whyAr:'تحسين مقاومة الإنسولين', price:'8-15 EGP', priceAr:'8-15 جنيه', link:'https://www.amazon.eg/s?k=fenugreek' },
+    { icon:'🟡', name:'Turmeric / كركم', nameAr:'كركم', why:'Strong anti-inflammatory, supports joints', whyAr:'مضاد التهابات قوي، يدعم المفاصل', price:'20-35 EGP', priceAr:'20-35 جنيه', link:'https://www.amazon.eg/s?k=turmeric' }
+  ];
+  document.getElementById('suppGrid').innerHTML = supps.map(s => `
+    <div class="supp-card">
+      <div class="supp-icon">${s.icon}</div>
+      <div class="supp-name">${isAr?s.nameAr:s.name}</div>
+      <div class="supp-why">${isAr?s.whyAr:s.why}</div>
+      <div class="supp-footer">
+        <div class="supp-price">${isAr?s.priceAr:s.price}</div>
+        <a href="${s.link}" target="_blank" class="supp-link">${isAr?'Amazon.eg ↗':'Amazon.eg ↗'}</a>
+      </div>
+    </div>`).join('');
+}
+
+function setLevel(el, level) {
+  document.querySelectorAll('.level-btn').forEach(b=>b.classList.remove('active'));
+  if(el) el.classList.add('active');
+  const isAr = currentLang === 'ar';
+  const plans = {
+    beginner: [
+      ['🚶', isAr?'مشي سريع':'Brisk Walk', isAr?'30 دقيقة صباحاً على الريق — يسرع حرق الدهون 20%':'30 min morning fasted walk — burns 20% more fat', '180 kcal', '30 min'],
+      ['🧘', isAr?'إطالة وتنفس':'Stretching', isAr?'15 دقيقة — مرونة وتقليل إرهاق الكيتو':'15 min — flexibility and reducing keto fatigue', '40 kcal', '15 min'],
+      ['💧', isAr?'ترطيب يومي':'Daily Hydration', isAr?'2.5 لتر ماء + ملح وليمون كإلكتروليت طبيعي':'2.5L water + salt and lemon as natural electrolyte', isAr?'ضروري':'Essential', isAr?'طوال اليوم':'All day']
+    ],
+    intermediate: [
+      ['🏋️', isAr?'تمارين مقاومة':'Resistance Training', isAr?'سكوات + ضغط + عقلة — 3 جولات × 12 تكرار':'Squats + Push-ups + Pull-ups — 3 sets × 12 reps', '320 kcal', '45 min'],
+      ['🔥', isAr?'HIIT خفيف':'Light HIIT', isAr?'20 ثانية شغل / 40 راحة × 8 دورات':'20s work / 40s rest × 8 rounds', '180 kcal', '20 min'],
+      ['🧘', isAr?'إطالة بعد التمرين':'Post-workout Stretch', isAr?'15 دقيقة للعضلات الرئيسية':'15 min main muscle groups', '30 kcal', '15 min']
+    ],
+    advanced: [
+      ['🏋️', isAr?'تمارين حديد شاملة':'Full Weight Training', isAr?'صدر + ظهر + أكتاف — 4 جولات × 10 تكرار بأوزان ثقيلة':'Chest + Back + Shoulders — 4 sets × 10 reps heavy', '450 kcal', '60 min'],
+      ['🔥', isAr?'HIIT مكثف':'Intense HIIT', isAr?'30 ثانية شغل / 15 راحة × 12 دورة':'30s work / 15s rest × 12 rounds', '280 kcal', '25 min'],
+      ['🧘', isAr?'تبريد وإطالة كاملة':'Full Cool-down', isAr?'15 دقيقة إطالة + تنفس عميق':'15 min stretching + deep breathing', '30 kcal', '15 min']
+    ]
+  };
+  const rows = (plans[level]||plans.beginner).map(r=>`
+    <div class="act-row">
+      <div class="act-icon-box">${r[0]}</div>
+      <div><div class="act-name">${r[1]}</div><div class="act-desc">${r[2]}</div></div>
+      <div class="act-meta"><div class="act-cal">${r[3]}</div><div class="act-dur">${r[4]}</div></div>
+    </div>`).join('');
+  document.getElementById('actList').innerHTML = rows;
+}
+
+async function loadRatings() {
+  const data = await fetch('/diet/api/ratings').then(r=>r.json()).catch(()=>({ratings:[],average:0,total:0}));
+  const isAr = currentLang === 'ar';
+  if (data.total > 0) {
+    document.getElementById('avgRatingBox').innerHTML = `
+      <div class="avg-rating">
+        <div class="avg-number">${data.average}</div>
+        <div>
+          <div class="avg-stars">${'⭐'.repeat(Math.round(data.average))}</div>
+          <div class="avg-label">${isAr?`${data.total} تقييم`:`${data.total} ratings`}</div>
+        </div>
+      </div>`;
+    document.getElementById('existingRatings').innerHTML = data.ratings.slice(0,5).map(r=>`
+      <div class="rating-card">
+        <div class="rating-stars">${'⭐'.repeat(r.rating)}</div>
+        <div class="rating-comment">${r.comment||''}</div>
+        <div class="rating-meta">${r.name} · ${r.date}</div>
+      </div>`).join('');
+  }
+}
+
+function setStar(val) {
+  selectedStar = val;
+  document.querySelectorAll('.star').forEach((s,i) => s.classList.toggle('active', i < val));
+}
+
+async function submitRating() {
+  if (!selectedStar) { showToast(currentLang==='ar'?'اختر عدد النجوم أولاً':'Please select a star rating'); return; }
+  const r = await fetch('/diet/api/rate', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ rating:selectedStar, name:document.getElementById('rName').value, comment:document.getElementById('rComment').value })
+  });
+  const d = await r.json();
+  if (d.ok) { showToast(currentLang==='ar'?'شكراً على تقييمك! سيتم مراجعته قريباً ✓':'Thank you! Your review will be approved soon ✓'); document.getElementById('rName').value=''; document.getElementById('rComment').value=''; setStar(0); }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 3000);
+}
+
+init();
+</script>
+</body>
+</html>
