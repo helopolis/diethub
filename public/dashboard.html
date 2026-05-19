@@ -318,6 +318,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
   <div class="tab" onclick="switchTab(this,'tracker')" data-ar="📊 متابعة التغذية" data-en="📊 Nutrition Tracker">📊 متابعة التغذية</div>
   <div class="tab" onclick="switchTab(this,'watch')" data-ar="⌚ الساعة الذكية" data-en="⌚ Smart Watch">⌚ الساعة الذكية</div>
   <div class="tab" onclick="switchTab(this,'labtrack')" data-ar="🩺 نتائج التحاليل" data-en="🩺 Lab Results">🩺 نتائج التحاليل</div>
+  <div class="tab" onclick="switchTab(this,'weather');initWeatherPanel()" data-ar="🌤️ الطقس والترطيب" data-en="🌤️ Weather & Hydration">🌤️ الطقس والترطيب</div>
 </div>
 
 <div class="main">
@@ -1902,6 +1903,245 @@ function renderWatchChart() {
 window.initWatchPanel = initWatchPanel;
 window.saveWatchData = saveWatchData;
 window.setWatchPeriod = setWatchPeriod;
+</script>
+
+<!-- ═══ WEATHER & HYDRATION PANEL ════════════════════════════════════════ -->
+<style>
+#panel-weather{padding:0}
+.wx-wrap{max-width:700px;margin:0 auto;padding:24px 16px;display:flex;flex-direction:column;gap:20px}
+.wx-card{background:#fff;border-radius:18px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #E8EDF2}
+.wx-main{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.wx-icon{font-size:4rem;line-height:1}
+.wx-temps{flex:1}
+.wx-temp{font-size:3rem;font-weight:700;color:#1A1A2E;line-height:1}
+.wx-feels{font-size:0.85rem;color:#6B7280;margin-top:4px}
+.wx-desc{font-size:0.95rem;color:#2D6A4F;font-weight:600;margin-top:6px;text-transform:capitalize}
+.wx-city{font-size:0.8rem;color:#9CA3AF;margin-top:4px}
+.wx-humidity{background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px}
+.wx-humidity-icon{font-size:2rem}
+.wx-humidity-val{font-size:1.6rem;font-weight:700;color:#1D4ED8}
+.wx-humidity-label{font-size:0.78rem;color:#3B82F6;margin-top:2px}
+.wx-alert{background:linear-gradient(135deg,#FEF3C7,#FDE68A);border-radius:12px;padding:14px 18px;border:1px solid #F59E0B;display:flex;gap:12px;align-items:flex-start}
+.wx-alert-icon{font-size:1.5rem;flex-shrink:0}
+.wx-alert-text{font-size:0.88rem;color:#92400E;font-weight:600;line-height:1.5}
+.wx-hydration{background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border-radius:14px;padding:20px}
+.wx-hydration-title{font-size:0.78rem;color:#16A34A;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.wx-hydration-amount{font-size:2.8rem;font-weight:700;color:#15803D;line-height:1}
+.wx-hydration-unit{font-size:1rem;color:#86EFAC;margin-right:4px}
+.wx-hydration-sub{font-size:0.8rem;color:#4ADE80;margin-top:6px}
+.wx-progress{height:10px;background:#BBF7D0;border-radius:10px;margin-top:14px;overflow:hidden}
+.wx-progress-bar{height:100%;background:linear-gradient(90deg,#22C55E,#16A34A);border-radius:10px;transition:width 1s ease}
+.wx-recs-title{font-size:0.85rem;font-weight:700;color:#374151;margin-bottom:10px}
+.wx-recs-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.wx-rec-group{background:#F9FAFB;border-radius:12px;padding:14px}
+.wx-rec-group-title{font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.wx-rec-item{font-size:0.82rem;color:#374151;padding:4px 0;border-bottom:1px solid #F3F4F6}
+.wx-rec-item:last-child{border-bottom:none}
+.wx-zone{background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:14px;padding:18px;border:1px solid #DDD6FE}
+.wx-zone-title{font-size:0.78rem;font-weight:700;color:#7C3AED;text-transform:uppercase;margin-bottom:10px}
+.wx-zone-active{display:flex;align-items:center;gap:10px;font-size:0.9rem;font-weight:600;color:#5B21B6}
+.wx-zone-note{font-size:0.82rem;color:#7C3AED;margin-top:8px;line-height:1.5}
+.wx-zone-none{font-size:0.85rem;color:#9CA3AF}
+.wx-add-zone{margin-top:12px}
+.wx-add-zone summary{font-size:0.82rem;color:#7C3AED;cursor:pointer;font-weight:600}
+.wx-zone-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.wx-zone-form input,.wx-zone-form select{padding:8px 10px;border:1px solid #DDD6FE;border-radius:8px;font-size:0.82rem;font-family:inherit;background:#fff}
+.wx-zone-form input:focus,.wx-zone-form select:focus{outline:none;border-color:#7C3AED}
+.wx-zone-form button{grid-column:1/-1;background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:10px;font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit}
+.wx-zone-list{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.wx-zone-row{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:8px;padding:8px 12px;font-size:0.82rem;border:1px solid #EDE9FE}
+.wx-zone-del{background:none;border:none;color:#EF4444;cursor:pointer;font-size:1rem}
+.wx-btn{background:linear-gradient(135deg,#C8F560,#A8E063);color:#1A1A2E;border:none;border-radius:12px;padding:12px 24px;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;justify-content:center;width:100%;transition:opacity 0.2s}
+.wx-btn:disabled{opacity:0.5;cursor:not-allowed}
+.wx-status{font-size:0.82rem;color:#6B7280;text-align:center}
+.wx-updated{font-size:0.72rem;color:#9CA3AF;text-align:center}
+@media(max-width:500px){.wx-recs-grid{grid-template-columns:1fr}.wx-zone-form{grid-template-columns:1fr}}
+</style>
+
+<div id="panel-weather" class="panel">
+  <div class="wx-wrap">
+    <div id="wxStatus" class="wx-status">اضغط لتشغيل خدمة الموقع · Press to enable location</div>
+    <button class="wx-btn" id="wxBtn" onclick="wxFetch()">📍 تحديد موقعي والحصول على التوصيات · Get My Location</button>
+
+    <div id="wxContent" style="display:none;flex-direction:column;gap:20px"></div>
+
+    <!-- Geofence zones -->
+    <div class="wx-zone wx-card">
+      <div class="wx-zone-title">📍 مناطقي المحفوظة · My Saved Zones</div>
+      <div id="wxZoneActive" class="wx-zone-none">لم يتم تحديد الموقع بعد · Location not detected yet</div>
+      <div id="wxZoneList" class="wx-zone-list"></div>
+      <details class="wx-add-zone">
+        <summary>+ إضافة منطقة جديدة · Add new zone</summary>
+        <div class="wx-zone-form">
+          <input id="zName" placeholder="اسم المنطقة · Zone name" />
+          <select id="zType">
+            <option value="home">🏠 المنزل · Home</option>
+            <option value="gym">🏋️ الجيم · Gym</option>
+            <option value="work">💼 العمل · Work</option>
+            <option value="outdoor">🌳 خارج · Outdoor</option>
+            <option value="other">📍 أخرى · Other</option>
+          </select>
+          <input id="zRadius" type="number" placeholder="نطاق بالمتر · Radius (m)" value="200" min="50" max="5000" />
+          <button onclick="wxUseCurrentLocation()">📌 استخدام موقعي الحالي · Use current location</button>
+          <input id="zLat" type="hidden" /><input id="zLon" type="hidden" />
+          <button onclick="wxSaveZone()">💾 حفظ المنطقة · Save Zone</button>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  let _wxLat = null, _wxLon = null;
+  const zoneIcons = { home:'🏠', gym:'🏋️', work:'💼', outdoor:'🌳', other:'📍' };
+
+  async function wxFetch() {
+    const btn = document.getElementById('wxBtn');
+    const status = document.getElementById('wxStatus');
+    btn.disabled = true;
+    status.textContent = 'جاري تحديد موقعك... · Detecting location...';
+
+    if (!navigator.geolocation)
+      return (status.textContent = 'المتصفح لا يدعم تحديد الموقع · Geolocation not supported', btn.disabled = false);
+
+    navigator.geolocation.getCurrentPosition(async pos => {
+      _wxLat = pos.coords.latitude;
+      _wxLon = pos.coords.longitude;
+      status.textContent = `موقعك: ${_wxLat.toFixed(4)}, ${_wxLon.toFixed(4)}`;
+      btn.textContent = '🔄 تحديث · Refresh';
+      btn.disabled = false;
+
+      const [wx, zoneRes] = await Promise.all([
+        fetch(`/diet/api/weather?lat=${_wxLat}&lon=${_wxLon}`).then(r=>r.json()).catch(()=>null),
+        fetch(`/diet/api/location/check`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lat:_wxLat,lon:_wxLon}) }).then(r=>r.json()).catch(()=>null)
+      ]);
+
+      if (!wx || wx.setupRequired) {
+        status.textContent = 'مفتاح API للطقس غير مُعد · Weather API key not configured';
+        btn.disabled = false; return;
+      }
+      if (wx.error) { status.textContent = 'خطأ في خدمة الطقس · Weather service error'; btn.disabled = false; return; }
+
+      renderWeather(wx, zoneRes);
+      loadZones();
+    }, err => {
+      status.textContent = 'تم رفض الإذن. يرجى السماح بتحديد الموقع · Location permission denied';
+      btn.disabled = false;
+    }, { timeout: 10000, maximumAge: 60000 });
+  }
+
+  function tempColor(t) {
+    if (t >= 40) return '#EF4444';
+    if (t >= 35) return '#F97316';
+    if (t >= 28) return '#FBBF24';
+    if (t >= 20) return '#22C55E';
+    return '#3B82F6';
+  }
+
+  function wxIconEmoji(t, humidity) {
+    if (t >= 40) return '🔥';
+    if (t >= 35) return '☀️';
+    if (t >= 25) return '⛅';
+    if (humidity > 70) return '🌧️';
+    return '🌤️';
+  }
+
+  function renderWeather(wx, zoneRes) {
+    const c = document.getElementById('wxContent');
+    const r = wx.recommendations;
+    const hydPct = Math.min((1.5 / r.hydrationL) * 100, 100); // assume 1.5L already drank
+    const tempC = Math.round(wx.temp);
+
+    c.innerHTML = `
+      ${r.alert ? `<div class="wx-alert"><div class="wx-alert-icon">⚠️</div><div class="wx-alert-text">${r.alert}</div></div>` : ''}
+      <div class="wx-card">
+        <div class="wx-main">
+          <div class="wx-icon">${wxIconEmoji(wx.temp, wx.humidity)}</div>
+          <div class="wx-temps">
+            <div class="wx-temp" style="color:${tempColor(tempC)}">${tempC}°C</div>
+            <div class="wx-feels">يبدو كـ ${Math.round(wx.feelsLike)}°C · Feels like ${Math.round(wx.feelsLike)}°C</div>
+            <div class="wx-desc">${wx.description}</div>
+            <div class="wx-city">📍 ${wx.city}</div>
+          </div>
+          <div class="wx-humidity">
+            <div class="wx-humidity-icon">💧</div>
+            <div>
+              <div class="wx-humidity-val">${wx.humidity}%</div>
+              <div class="wx-humidity-label">رطوبة · Humidity</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wx-card wx-hydration">
+        <div class="wx-hydration-title">💧 احتياجك اليومي من الماء · Daily Water Target</div>
+        <div class="wx-hydration-amount"><span class="wx-hydration-unit">~</span>${r.hydrationL} <span style="font-size:1.2rem;color:#86EFAC">لتر · L</span></div>
+        <div class="wx-hydration-sub">بناءً على درجة الحرارة والرطوبة الحالية · Based on current temp & humidity</div>
+        <div class="wx-progress"><div class="wx-progress-bar" style="width:${hydPct}%"></div></div>
+        <div style="font-size:0.75rem;color:#4ADE80;margin-top:6px">اشرب كوباً كل ${Math.round(60/(r.hydrationL*4))} دقيقة · Drink a glass every ${Math.round(60/(r.hydrationL*4))} min</div>
+      </div>
+
+      <div class="wx-card">
+        <div class="wx-recs-title">🍽️ التوصيات الغذائية حسب الطقس · Weather-Based Food Recommendations</div>
+        <div class="wx-recs-grid">
+          <div class="wx-rec-group">
+            <div class="wx-rec-group-title">🥗 أكل مناسب · Suggested Foods</div>
+            ${r.foods.map(f=>`<div class="wx-rec-item">${f}</div>`).join('')}
+          </div>
+          <div class="wx-rec-group">
+            <div class="wx-rec-group-title">🥤 مشروبات · Drinks</div>
+            ${r.drinks.map(d=>`<div class="wx-rec-item">${d}</div>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      ${zoneRes?.activityNote ? `<div class="wx-zone wx-card"><div class="wx-zone-active">🎯 ${zoneRes.activityNote}</div></div>` : ''}
+      <div class="wx-updated">آخر تحديث · Updated: ${new Date(wx.updatedAt).toLocaleTimeString()}</div>
+    `;
+    c.style.display = 'flex';
+  }
+
+  async function loadZones() {
+    const list = document.getElementById('wxZoneList');
+    const zones = await fetch('/diet/api/geofence').then(r=>r.json()).catch(()=>[]);
+    if (!zones.length) { list.innerHTML = '<div style="font-size:0.8rem;color:#9CA3AF">لا توجد مناطق محفوظة · No saved zones</div>'; return; }
+    list.innerHTML = zones.map(z=>`
+      <div class="wx-zone-row">
+        <span>${zoneIcons[z.type]||'📍'} <strong>${z.name}</strong> <span style="color:#9CA3AF;font-size:0.75rem">(${z.radius}m)</span></span>
+        <button class="wx-zone-del" onclick="wxDeleteZone('${z.id}')">✕</button>
+      </div>`).join('');
+  }
+
+  function wxUseCurrentLocation() {
+    if (_wxLat) { document.getElementById('zLat').value=_wxLat; document.getElementById('zLon').value=_wxLon; alert('تم استخدام موقعك الحالي · Current location captured'); }
+    else alert('حدد موقعك أولاً بالضغط على زر التحديد أعلاه · Detect location first');
+  }
+
+  async function wxSaveZone() {
+    const name=document.getElementById('zName').value.trim(), type=document.getElementById('zType').value,
+          lat=document.getElementById('zLat').value, lon=document.getElementById('zLon').value,
+          radius=document.getElementById('zRadius').value;
+    if (!name||!lat||!lon) return alert('أدخل الاسم وحدد الموقع أولاً · Enter name and capture location first');
+    const r = await fetch('/diet/api/geofence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,lat,lon,radius,type})}).then(r=>r.json());
+    if (r.ok) { document.getElementById('zName').value=''; loadZones(); }
+    else alert(r.error||'Error saving zone');
+  }
+
+  async function wxDeleteZone(id) {
+    if (!confirm('حذف هذه المنطقة؟ · Delete this zone?')) return;
+    await fetch(`/diet/api/geofence/${id}`,{method:'DELETE'});
+    loadZones();
+  }
+
+  function initWeatherPanel() { loadZones(); }
+
+  window.wxFetch = wxFetch;
+  window.wxSaveZone = wxSaveZone;
+  window.wxDeleteZone = wxDeleteZone;
+  window.wxUseCurrentLocation = wxUseCurrentLocation;
+  window.initWeatherPanel = initWeatherPanel;
+})();
 </script>
 
 </body>

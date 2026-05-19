@@ -868,6 +868,131 @@ app.post(`${BASE}/api/admin/impersonate/:userId`, auth, adminOnly, (req, res) =>
   res.json({ ok: true, token, username: u.username, plan: u.plan });
 });
 
+// ─── WEATHER & HYDRATION ─────────────────────────────────────────────────────
+const weatherCache = new Map();
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function buildWeatherRecs(temp, humidity) {
+  let hydrationL, alert = null, foods = [], drinks = [];
+
+  if      (temp >= 40) { hydrationL = 4.5; alert = 'خطر جفاف شديد — اشرب ماء الآن! · Severe dehydration risk — drink NOW!'; }
+  else if (temp >= 35) { hydrationL = 3.5; alert = 'طقس حار جداً — اشرب كل 20 دقيقة · Very hot — drink every 20 min'; }
+  else if (temp >= 28) hydrationL = 2.8;
+  else if (temp >= 20) hydrationL = 2.2;
+  else                 hydrationL = 1.8;
+
+  if (humidity > 80) { hydrationL += 0.5; drinks.push('مشروبات إلكتروليت · Electrolyte drinks'); }
+  if (humidity < 30) { hydrationL += 0.3; drinks.push('ماء مع ليمون · Water with lemon'); }
+
+  if (temp >= 35) {
+    foods  = ['سلطة دجاج خفيفة · Light chicken salad', 'خيار وطماطم مبردة · Cold cucumber & tomato', 'جبن قريش · Fresh cheese'];
+    drinks.push('ماء بارد · Cold water', 'عصير بطيخ · Watermelon juice');
+  } else if (temp >= 25) {
+    foods  = ['صدر فراخ مشوي · Grilled chicken', 'سمك خفيف · Light fish', 'سلطة خضروات · Vegetable salad'];
+    drinks.push('ماء · Water', 'ماء جوز هند · Coconut water');
+  } else if (temp >= 15) {
+    foods  = ['بروتين متوسط · Moderate protein', 'خضار مطبوخة · Cooked vegetables'];
+    drinks.push('ماء دافئ · Warm water', 'شاي أخضر · Green tea');
+  } else {
+    foods  = ['شوربة دجاج · Chicken soup', 'لحم دافئ · Warm beef', 'خضار مشوية · Roasted vegetables'];
+    drinks.push('شوربة · Soup', 'شاي أعشاب · Herbal tea');
+  }
+
+  return { hydrationL: parseFloat(hydrationL.toFixed(1)), alert, foods, drinks };
+}
+
+// Weather endpoint — requires OPENWEATHER_KEY in .env
+app.get(`${BASE}/api/weather`, auth, async (req, res) => {
+  const flat = parseFloat(req.query.lat), flon = parseFloat(req.query.lon);
+  if (isNaN(flat) || isNaN(flon) || flat < -90 || flat > 90 || flon < -180 || flon > 180)
+    return res.status(400).json({ error: 'Invalid coordinates' });
+
+  const KEY = process.env.OPENWEATHER_KEY || '';
+  if (!KEY) return res.status(503).json({ error: 'Weather API not configured', setupRequired: true });
+
+  const cacheKey = `${(flat*100|0)/100}_${(flon*100|0)/100}`;
+  const hit = weatherCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < 10 * 60 * 1000) return res.json(hit.data);
+
+  try {
+    const r = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${flat}&lon=${flon}&appid=${KEY}&units=metric`);
+    if (!r.ok) throw new Error('OWM ' + r.status);
+    const w = await r.json();
+    const temp = w.main.temp, humidity = w.main.humidity;
+    const data = {
+      temp, feelsLike: w.main.feels_like, humidity,
+      description: w.weather?.[0]?.description || '',
+      icon: w.weather?.[0]?.icon || '',
+      city: w.name,
+      recommendations: buildWeatherRecs(temp, humidity),
+      updatedAt: new Date().toISOString()
+    };
+    weatherCache.set(cacheKey, { data, ts: Date.now() });
+    res.json(data);
+  } catch(e) {
+    console.error('Weather error:', e.message);
+    res.status(502).json({ error: 'Weather service unavailable' });
+  }
+});
+
+// Geofence zone management
+app.get(`${BASE}/api/geofence`, auth, (req, res) => {
+  const zones = load('geofence_zones.json') || {};
+  res.json(zones[req.user.id] || []);
+});
+
+app.post(`${BASE}/api/geofence`, auth, (req, res) => {
+  const { name, lat, lon, radius, type } = req.body;
+  if (!name || lat == null || lon == null) return res.status(400).json({ error: 'name, lat, lon required' });
+  const validTypes = ['home','gym','work','outdoor','other'];
+  const zones = load('geofence_zones.json') || {};
+  if (!zones[req.user.id]) zones[req.user.id] = [];
+  if (zones[req.user.id].length >= 10) return res.status(400).json({ error: 'Max 10 zones' });
+  const sname = sanitize(String(name));
+  if (!sname) return res.status(400).json({ error: 'Invalid zone name' });
+  zones[req.user.id].push({
+    id: 'z' + Date.now() + randToken(2),
+    name: sname,
+    lat: parseFloat(lat), lon: parseFloat(lon),
+    radius: Math.min(Math.max(parseInt(radius) || 200, 50), 5000),
+    type: validTypes.includes(type) ? type : 'other',
+    createdAt: new Date().toISOString()
+  });
+  save('geofence_zones.json', zones);
+  res.json({ ok: true });
+});
+
+app.delete(`${BASE}/api/geofence/:id`, auth, (req, res) => {
+  const zones = load('geofence_zones.json') || {};
+  zones[req.user.id] = (zones[req.user.id] || []).filter(z => z.id !== req.params.id);
+  save('geofence_zones.json', zones);
+  res.json({ ok: true });
+});
+
+// Location check — returns active geofence zone + zone-based activity note
+app.post(`${BASE}/api/location/check`, auth, (req, res) => {
+  const flat = parseFloat(req.body.lat), flon = parseFloat(req.body.lon);
+  if (isNaN(flat) || isNaN(flon)) return res.status(400).json({ error: 'Invalid coordinates' });
+  const zones = load('geofence_zones.json') || {};
+  const userZones = zones[req.user.id] || [];
+  const activeZone = userZones.find(z => haversineMeters(flat, flon, z.lat, z.lon) <= z.radius) || null;
+  const notes = {
+    gym:     'أنت في الجيم — زد البروتين بعد التمرين · Gym detected — boost post-workout protein',
+    outdoor: 'أنت في الهواء الطلق — اشرب ماءً أكثر · Outdoors — increase water intake',
+    work:    'وقت العمل — تجنب السناك العشوائي · Work mode — avoid unplanned snacking',
+    home:    'في المنزل — وقت مثالي لتحضير وجبتك · Home — great time to prep your meal',
+    other:   null
+  };
+  res.json({ activeZone, activityNote: activeZone ? (notes[activeZone.type] || null) : null });
+});
+
 app.use(`${BASE}/*path`,(req,res)=>res.status(404).json({error:'Not found'}));
 
 initData();
