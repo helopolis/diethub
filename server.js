@@ -683,10 +683,12 @@ app.post(`${BASE}/api/payment/initiate`,optionalAuth,(req,res)=>{
 
   const hash = kashierHash(orderId, amount, 'EGP');
   const redirect = `${KASHIER.baseUrl}${BASE}/payment?order=${orderId}`;
+  const webhook = `${KASHIER.baseUrl}${BASE}/api/payment/webhook`;
   const url = `https://checkout.kashier.io/?merchantId=${encodeURIComponent(KASHIER.mid)}`
     + `&orderId=${encodeURIComponent(orderId)}&amount=${amount}&currency=EGP`
     + `&hash=${hash}&mode=${KASHIER.mode}`
     + `&merchantRedirect=${encodeURIComponent(redirect)}`
+    + `&serverWebhook=${encodeURIComponent(webhook)}`
     + `&allowedMethods=card,wallet&display=ar&brandColor=%232D6A4F`;
   res.json({ ok:true, kashierUrl:url, orderId, amount, plan });
 });
