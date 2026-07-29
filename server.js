@@ -26,6 +26,35 @@ const GMAIL_PASS = process.env.GMAIL_APP_PASS || '';
 const GMAIL_AUTH = process.env.GMAIL_AUTH || GMAIL_USER;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 
+// ─── PLANS & KASHIER ──────────────────────────────────────────────────────────
+const PLAN_PRICES = { basic:99, standard:179, premium:249, vip:349, elite:449 };
+// The Payment API Key (a.k.a. iframe key) signs the HPP hash and the webhook —
+// it is SECRET and lives only here on the server, never in the browser.
+const KASHIER = {
+  mid:     process.env.KASHIER_MERCHANT_ID || '',
+  payKey:  process.env.KASHIER_PAYMENT_API_KEY || process.env.KASHIER_SECRET_KEY || '',
+  mode:    process.env.KASHIER_MODE === 'live' ? 'live' : 'test',
+  baseUrl: process.env.PUBLIC_BASE_URL || 'https://diet.talabatito.com',
+};
+function kashierConfigured() { return !!(KASHIER.mid && KASHIER.payKey && !/YOUR_|XX-XXXX/.test(KASHIER.mid)); }
+// HPP order hash — HMAC-SHA256 of "/?payment=MID.ORDER.AMOUNT.CURRENCY" with the
+// Payment API Key. Verified byte-for-byte against Kashier's published test vector.
+function kashierHash(orderId, amount, currency='EGP') {
+  return crypto.createHmac('sha256', KASHIER.payKey)
+    .update(`/?payment=${KASHIER.mid}.${orderId}.${amount}.${currency}`).digest('hex');
+}
+// Kashier names the fields it signed in `signatureKeys`; we rebuild key=value&…
+// in that order and HMAC-SHA256 with the Payment API Key, then timing-safe compare.
+const KASHIER_SIG_KEYS = ['amount','channel','currency','kashierOrderId','merchantOrderId','method','orderReference','status','transactionId','transactionResponseCode'];
+function kashierVerify(data, signatureKeys, signature) {
+  if (!signature || !KASHIER.payKey) return false;
+  const keys = (Array.isArray(signatureKeys) && signatureKeys.length) ? signatureKeys : KASHIER_SIG_KEYS;
+  const qs = keys.filter(k => data[k] !== undefined).map(k => `${k}=${data[k]}`).join('&');
+  const expected = crypto.createHmac('sha256', KASHIER.payKey).update(qs).digest('hex');
+  try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(signature))); }
+  catch { return false; }
+}
+
 // ─── SECURITY CONFIG ──────────────────────────────────────────────────────────
 const SEC = {
   PWD_MIN: 8, PWD_MAX: 128,
@@ -189,7 +218,11 @@ function auth(req, res, next) {
       : res.redirect(`${BASE}/verify-pending`);
   }
   const tr = trial(u);
-  if (tr.expired && !req.path.startsWith('/payment') && !req.path.startsWith('/api/payment')) {
+  // req.path includes the BASE prefix (e.g. /diet/api/payment/...), so match on
+  // the full prefix — the old bare '/payment' check never matched and locked
+  // expired users out of the very page where they pay.
+  const onPaymentRoute = req.path.startsWith(`${BASE}/payment`) || req.path.startsWith(`${BASE}/api/payment`);
+  if (tr.expired && !onPaymentRoute) {
     track('paywall_hit', { userId: u.id, props: { path: req.path } });
     return req.headers.accept?.includes('json') ? res.status(402).json({expired:true}) : res.redirect(`${BASE}/payment`);
   }
@@ -625,37 +658,88 @@ app.get(`${BASE}/api/ratings`,(req,res)=>{
   res.json({ratings:approved.slice(0,10),average:approved.length?parseFloat((approved.reduce((s,r)=>s+r.rating,0)/approved.length).toFixed(1)):0,total:approved.length});
 });
 
-// PAYMENT (Kashier)
+// PAYMENT (Kashier) ─────────────────────────────────────────────────────────
+// Flow: initiate (server signs the order) → user pays on Kashier's hosted page →
+// Kashier calls our webhook server-to-server (signed) → webhook is the ONLY thing
+// that grants paid access. The browser never decides who becomes paid, and the
+// API key never leaves the server.
 app.post(`${BASE}/api/payment/initiate`,optionalAuth,(req,res)=>{
   const ip=getIP(req);
   const r=rateLimit(ip,'pay',10,3600000);
   if(!r.ok)return res.status(429).json({error:'Too many payment requests'});
-  const {plan,email,phone}=req.body;
-  const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
-  if(!pp[plan])return res.status(400).json({error:'Invalid plan'});
-  const amount=pp[plan];
-  track('checkout_started', { req, props: { plan, amount } });
-  const mid=process.env.KASHIER_MERCHANT_ID, sk=process.env.KASHIER_SECRET_KEY;
-  if(!mid||!sk||mid==='YOUR_KASHIER_MERCHANT_ID')return res.json({ok:false,setupRequired:true,amount,plan});
-  const orderId='DH-'+Date.now();
-  const hash=crypto.createHash('sha256').update(`${mid}.${orderId}.${amount}.EGP.${sk}`).digest('hex');
-  res.json({ok:true,kashierUrl:`https://checkout.kashier.io/?merchantId=${mid}&orderId=${orderId}&amount=${amount}&currency=EGP&hash=${hash}&mode=live`,orderId,amount,plan});
+  const { plan } = req.body;
+  if(!PLAN_PRICES[plan])return res.status(400).json({error:'Invalid plan'});
+  const amount=PLAN_PRICES[plan];
+  const email = sanitize(req.body.email||'')||'';
+  track('checkout_started', { req, props:{ plan, amount } });
+  if(!kashierConfigured())return res.json({ok:false,setupRequired:true,amount,plan});
+
+  const orderId='DH-'+Date.now()+'-'+randToken(3);
+  // Persist the order so the webhook can resolve who paid. Server-side only.
+  update('payment_orders.json', o=>{
+    o[orderId] = { orderId, userId:req.user?.id||null, email, plan, amount, currency:'EGP', status:'pending', createdAt:new Date().toISOString() };
+    return o;
+  }, {});
+
+  const hash = kashierHash(orderId, amount, 'EGP');
+  const redirect = `${KASHIER.baseUrl}${BASE}/payment?order=${orderId}`;
+  const url = `https://checkout.kashier.io/?merchantId=${encodeURIComponent(KASHIER.mid)}`
+    + `&orderId=${encodeURIComponent(orderId)}&amount=${amount}&currency=EGP`
+    + `&hash=${hash}&mode=${KASHIER.mode}`
+    + `&merchantRedirect=${encodeURIComponent(redirect)}`
+    + `&allowedMethods=card,wallet&display=ar&brandColor=%232D6A4F`;
+  res.json({ ok:true, kashierUrl:url, orderId, amount, plan });
 });
+
+// Server-to-server webhook — the authoritative source of truth for payment.
+app.post(`${BASE}/api/payment/webhook`,(req,res)=>{
+  if(!kashierConfigured())return res.status(503).json({error:'Payments not configured'});
+  const data = req.body?.data || req.body || {};
+  const signature = data.signature || req.body?.signature;
+  if(!kashierVerify(data, data.signatureKeys || req.body?.signatureKeys, signature)){
+    secLog('PAYMENT_WEBHOOK_BADSIG', getIP(req), { orderId:data.merchantOrderId });
+    return res.status(400).json({error:'invalid signature'});
+  }
+  const orderId = data.merchantOrderId;
+  const success = String(data.status||'').toUpperCase()==='SUCCESS';
+  const orders = load('payment_orders.json') || {};
+  const order = orders[orderId];
+  if(!order){ secLog('PAYMENT_WEBHOOK_NOORDER', getIP(req), { orderId }); return res.json({ok:true}); }
+  if(order.status==='paid') return res.json({ok:true}); // idempotent — already granted
+  if(Number(data.amount)!==Number(order.amount)){
+    secLog('PAYMENT_WEBHOOK_AMOUNT', getIP(req), { orderId, got:data.amount, expected:order.amount });
+    return res.status(400).json({error:'amount mismatch'});
+  }
+  if(!success){
+    update('payment_orders.json', o=>{ if(o[orderId]) o[orderId].status='failed'; return o; }, {});
+    return res.json({ok:true});
+  }
+  // Grant access — the single authoritative path.
+  update('payment_orders.json', o=>{ if(o[orderId]){ o[orderId].status='paid'; o[orderId].transactionId=data.transactionId; o[orderId].paidAt=new Date().toISOString(); } return o; }, {});
+  // Resolve the user by stored id, or fall back to the email on the order.
+  let uid = order.userId;
+  update('users.json', users=>{
+    let u = uid ? users.find(x=>x.id===uid) : null;
+    if(!u && order.email) u = users.find(x=>x.email===order.email);
+    if(u){ u.paid=true; u.plan=order.plan; uid=u.id; }
+    return users;
+  }, []);
+  update('subscriptions.json', subs=>{
+    subs.push({ userId:uid, plan:order.plan, startDate:new Date().toISOString().split('T')[0], endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0], amount:order.amount, status:'active', paymentRef:data.transactionId||('KASHIER_'+orderId) });
+    return subs;
+  }, []);
+  if(uid) track('subscription_paid', { userId:uid, props:{ plan:order.plan, amount:order.amount } });
+  secLog('PAYMENT_CONFIRMED', getIP(req), { orderId, userId:uid, plan:order.plan, transactionId:data.transactionId });
+  res.json({ ok:true });
+});
+
+// Status poll — used by the return page after redirect. Reports the
+// webhook-confirmed state; it does NOT grant access itself.
 app.post(`${BASE}/api/payment/confirm`,auth,(req,res)=>{
-  const {paymentRef,plan}=req.body;
-  const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
-  if(!pp[plan])return res.status(400).json({error:'Invalid plan'});
-  const users=load('users.json')||[];
-  const idx=users.findIndex(u=>u.id===req.user.id);
-  if(idx<0)return res.status(404).json({});
-  users[idx].paid=true;users[idx].plan=plan;
-  save('users.json',users);
-  const subs=load('subscriptions.json')||[];
-  subs.push({userId:req.user.id,plan,startDate:new Date().toISOString().split('T')[0],endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0],amount:pp[plan],status:'active',paymentRef:paymentRef||'MANUAL_'+Date.now()});
-  save('subscriptions.json',subs);
-  secLog('PAYMENT_CONFIRMED',getIP(req),{userId:req.user.id,plan});
-  track('subscription_paid', { userId:req.user.id, req, props:{ plan, amount:pp[plan] } });
-  res.json({ok:true});
+  const orderId = req.body.order;
+  let orderStatus = null;
+  if(orderId){ const o=(load('payment_orders.json')||{})[orderId]; if(o && (o.userId===req.user.id || o.email===req.userObj.email)) orderStatus=o.status; }
+  res.json({ ok:true, paid: !!req.userObj.paid, plan: req.userObj.plan, orderStatus });
 });
 
 // ADMIN
