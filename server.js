@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const store = require('./db');
-const { buildHealthProfile } = require('./health');
+const { buildHealthProfile, coachSummary } = require('./health');
 const app = express();
 
 // X-Forwarded-For is only honored when the connection comes from a trusted
@@ -892,21 +892,23 @@ app.post(`${BASE}/api/chatbot`, auth, async (req, res) => {
     return res.status(403).json({ error: 'هذه الميزة متاحة لأعضاء VIP و Elite فقط' });
   }
   const { messages, generateQuestions } = req.body;
-  const profile = u.profile || {};
-  const dietMap = { atkins:'أتكينز', mediterranean:'متوسطي', keto:'كيتو', lowcarb:'قليل الكربوهيدرات', highprotein:'عالي البروتين', balanced:'متوازن' };
-  const dietName = dietMap[profile.diet] || profile.diet || 'متوازن';
+  // Coach now reads the full unified health profile (labs + wearables + targets
+  // + risk flags), not just the thin demographic fields — this is what turns it
+  // from a generic chatbot into a coach that knows the user's actual state.
+  const hp = buildHealthProfile(store, u.id);
+  const summary = coachSummary(hp);
 
-  const systemPrompt = `أنت مساعد متابعة غذائي ذكي داخل تطبيق DietHub. اسمك "دايت بوت".
-تتحدث بالعربية دائماً بأسلوب ودود ومشجع وموجز.
-معلومات المستخدم:
-- الاسم: ${u.username}
-- نظام غذائي: ${dietName}
-- الميزانية اليومية: ${profile.budget || 200} جنيه
-- الوزن: ${profile.weight || 'غير محدد'} كجم
-- الطول: ${profile.height || 'غير محدد'} سم
-- العمر: ${profile.age || 'غير محدد'}
-- الجنس: ${profile.gender === 'female' ? 'أنثى' : 'ذكر'}
-${generateQuestions ? `مهمتك: اطرح 3 أسئلة متابعة ذكية ومخصصة لهذا المستخدم بناءً على نظامه الغذائي ${dietName} ووقت اليوم الحالي. اجعل الأسئلة عملية وتتعلق بالتزامه بالنظام الغذائي وصحته. أرسل الأسئلة فقط كقائمة مرقمة بدون مقدمة.` : `أجب على رسائل المستخدم بإيجاز ودعمه في رحلته الغذائية. إذا سألك عن شيء خارج نطاق الغذاء والصحة، أعده بلطف لموضوع نظامه الغذائي.`}`;
+  const systemPrompt = `أنت "دايت بوت"، مساعد متابعة صحي وغذائي ذكي داخل تطبيق DietHub. تتحدث بالعربية دائماً بأسلوب ودود ومشجع وموجز.
+
+الملف الصحي الكامل للمستخدم (استخدمه لتخصيص كل رد):
+${summary}
+
+إرشادات مهمة:
+- استخدم أرقام المستخدم الحقيقية (السعرات، البروتين، الماء، الوزن، بيانات الساعة) في نصائحك بدلاً من النصائح العامة.
+- إن وُجدت "تنبيهات مهمة" فعالِجها أولاً بلطف ودون تخويف.
+- أنت لست بديلاً عن الطبيب. إذا ظهرت مؤشرات خطيرة (تحاليل حرجة مثلاً) انصح المستخدم بمراجعة طبيبه.
+- ابقَ ضمن نطاق الغذاء والصحة واللياقة، وأعد المستخدم بلطف للموضوع إن خرج عنه.
+${generateQuestions ? 'مهمتك الآن: اطرح 3 أسئلة متابعة قصيرة ومخصصة بناءً على ملفه الصحي وتنبيهاته الحالية ووقت اليوم. أرسل الأسئلة فقط كقائمة مرقمة بدون مقدمة.' : 'أجب على رسالة المستخدم بإيجاز وادعمه في رحلته الصحية.'}`;
 
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {

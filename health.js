@@ -121,4 +121,27 @@ function buildHealthProfile(store, userId) {
 
 function flag(type, severity, ar, en) { return { type, severity, ar, en }; }
 
-module.exports = { buildHealthProfile, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META };
+// Render the unified profile as an Arabic briefing for the AI coach, so it can
+// reference the user's real numbers and flags instead of giving generic advice.
+const DIET_AR = { atkins:'أتكينز', keto:'كيتو', lowcarb:'قليل الكربوهيدرات', highprotein:'عالي البروتين', mediterranean:'متوسطي', balanced:'متوازن' };
+const GOAL_AR = { lose:'إنقاص الوزن', maintain:'الحفاظ على الوزن', gain:'زيادة الوزن' };
+const ACTIVITY_AR = { sedentary:'قليل الحركة', light:'نشاط خفيف', moderate:'نشاط متوسط', active:'نشيط', very_active:'نشيط جداً' };
+
+function coachSummary(hp) {
+  if (!hp) return '';
+  const d = hp.demographics, g = hp.goals, t = hp.targets, w = hp.wearable, L = hp.labs;
+  const lines = [];
+  lines.push(`الاسم: ${hp.username}`);
+  lines.push(`العمر: ${d.age ?? 'غير محدد'} · الجنس: ${d.gender === 'female' ? 'أنثى' : 'ذكر'} · الطول: ${d.height ?? '؟'} سم · الوزن: ${d.weight ?? '؟'} كجم`);
+  if (d.bmi != null) lines.push(`مؤشر كتلة الجسم: ${d.bmi}${d.bmiCategory ? ' (' + d.bmiCategory.ar + ')' : ''}`);
+  lines.push(`النظام: ${DIET_AR[g.diet] || g.diet} · الهدف: ${GOAL_AR[g.goalType] || g.goalType} · النشاط: ${ACTIVITY_AR[g.activityLevel] || g.activityLevel} · الميزانية: ${g.budget} جنيه/يوم`);
+  if (t.calorieTarget) lines.push(`الاحتياج التقديري: ${t.tdee} سعرة · الهدف اليومي: ${t.calorieTarget} سعرة`);
+  if (t.proteinTargetG) lines.push(`هدف البروتين: ${t.proteinTargetG} جم/يوم · هدف الماء: ${t.hydrationTargetL} لتر`);
+  if (w) lines.push(`بيانات الساعة (متوسط 7 أيام): خطوات ${w.avgSteps ?? '؟'} · نوم ${w.avgSleepH ?? '؟'} ساعة · نبض ${w.latestHeartRate ?? '؟'}`);
+  if (L) lines.push(`آخر تحاليل (${L.date}): الحالة ${L.status || 'غير محللة'}${L.analysis?.analysis_ar ? ' — ' + L.analysis.analysis_ar : ''}`);
+  lines.push(`الالتزام بالتسجيل: ${hp.nutrition.loggedDaysLast7} أيام من آخر 7`);
+  if (hp.riskFlags.length) lines.push(`تنبيهات مهمة: ${hp.riskFlags.map(f => f.ar).join(' · ')}`);
+  return lines.join('\n');
+}
+
+module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META };
