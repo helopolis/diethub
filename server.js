@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const store = require('./db');
+const { buildHealthProfile } = require('./health');
 const app = express();
 
 // X-Forwarded-For is only honored when the connection comes from a trusted
@@ -571,6 +572,41 @@ app.post(`${BASE}/api/profile`, auth, (req,res) => {
   if (req.body.lang && ['ar','en'].includes(req.body.lang)) users[idx].lang=req.body.lang;
   save('users.json', users);
   res.json({ok:true});
+});
+
+// ─── UNIFIED HEALTH PROFILE (the hub) ─────────────────────────────────────────
+// One consolidated view of the user's health: demographics, goals, derived
+// energy/protein/hydration targets, latest wearable + lab signals, and risk
+// flags. Read by the dashboard and (next) the AI coach.
+app.get(`${BASE}/api/health-profile`, auth, (req,res) => {
+  const profile = buildHealthProfile(store, req.user.id);
+  if (!profile) return res.status(404).json({ error: 'Profile not found' });
+  track('health_profile_viewed', { userId: req.user.id });
+  res.json(profile);
+});
+// Update the durable goal inputs that drive the targets above.
+app.post(`${BASE}/api/health-profile/goals`, auth, (req,res) => {
+  const { goalType, targetWeight, activityLevel } = req.body;
+  const patch = {};
+  if (goalType !== undefined) {
+    if (!['lose','maintain','gain'].includes(goalType)) return res.status(400).json({ error: 'Invalid goalType' });
+    patch.goalType = goalType;
+  }
+  if (activityLevel !== undefined) {
+    if (!['sedentary','light','moderate','active','very_active'].includes(activityLevel)) return res.status(400).json({ error: 'Invalid activityLevel' });
+    patch.activityLevel = activityLevel;
+  }
+  if (targetWeight !== undefined) {
+    const tw = parseFloat(targetWeight);
+    if (!Number.isFinite(tw) || tw < 30 || tw > 400) return res.status(400).json({ error: 'Invalid targetWeight' });
+    patch.targetWeight = tw;
+  }
+  update('users.json', users => {
+    const u = users.find(x => x.id === req.user.id);
+    if (u) u.profile = { ...u.profile, ...patch };
+    return users;
+  }, []);
+  res.json({ ok: true, profile: buildHealthProfile(store, req.user.id) });
 });
 
 // MEAL PLAN API
