@@ -134,6 +134,34 @@ function secLog(event, ip, extra={}) {
   save('security_log.json', logs.slice(0, 500));
 }
 
+// ─── ANALYTICS / EVENT TRACKING ───────────────────────────────────────────────
+// One place records every lifecycle event. It powers the admin funnel/CAC
+// dashboard AND, if N8N_WEBHOOK_URL is set, forwards each event to n8n so
+// automations (welcome emails, abandoned-checkout, retention, Slack/WhatsApp
+// alerts) can fire on it. Analytics must never break a request, so it's all
+// wrapped and fire-and-forget.
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || '';
+function utmFrom(req) {
+  const b = req?.body || {}, q = req?.query || {};
+  return {
+    utmSource:   b.utm_source   || q.utm_source   || null,
+    utmMedium:   b.utm_medium   || q.utm_medium   || null,
+    utmCampaign: b.utm_campaign || q.utm_campaign || null,
+  };
+}
+function track(name, { req, userId, anonId, props } = {}) {
+  try {
+    const uid = userId || req?.user?.id || null;
+    store.logEvent({ name, userId: uid, anonId: anonId || req?.body?.anonId || null,
+      props: props || {}, ip: req ? getIP(req) : null, ...utmFrom(req) });
+    if (N8N_WEBHOOK_URL) {
+      fetch(N8N_WEBHOOK_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ event:name, userId:uid, ts:new Date().toISOString(), props:props||{} }) })
+        .catch(()=>{});
+    }
+  } catch(e) { /* analytics is best-effort — never surface to the caller */ }
+}
+
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -162,6 +190,7 @@ function auth(req, res, next) {
   }
   const tr = trial(u);
   if (tr.expired && !req.path.startsWith('/payment') && !req.path.startsWith('/api/payment')) {
+    track('paywall_hit', { userId: u.id, props: { path: req.path } });
     return req.headers.accept?.includes('json') ? res.status(402).json({expired:true}) : res.redirect(`${BASE}/payment`);
   }
   req.user = d; req.userObj = u; req.trial = tr;
@@ -169,6 +198,14 @@ function auth(req, res, next) {
 }
 function adminOnly(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({error:'Forbidden'});
+  next();
+}
+// Decodes the session token if present but never blocks — lets public routes
+// attribute events/actions to a user when one is logged in.
+function optionalAuth(req, res, next) {
+  const t = getCookie(req) || (req.headers.authorization||'').replace('Bearer ','');
+  const d = t ? checkToken(t) : null;
+  if (d) req.user = d;
   next();
 }
 
@@ -360,6 +397,7 @@ app.get(`${BASE}/verify-email`, (req,res) => {
   save('users.json', users);
   save('pending_verifications.json', pending.filter(p => p.token !== token));
   secLog('EMAIL_VERIFIED', 'system', { userId: rec.userId });
+  track('email_verified', { userId: rec.userId });
   const t = mkToken(users[idx]);
   res.setHeader('Set-Cookie', `dh_token=${t};path=/;max-age=28800;HttpOnly;SameSite=Strict`);
   res.redirect(`${BASE}/dashboard?verified=1`);
@@ -415,6 +453,7 @@ app.post(`${BASE}/auth`, (req,res) => {
   save('users.json', users);
   rlReset(ip, 'login');
   secLog('LOGIN_OK', ip, {username});
+  track('login', { userId: u.id, req });
   const tr = trial(u);
   res.json({token:mkToken(u), role:u.role, plan:u.plan, username:u.username, trial:tr, lang:u.lang||'ar', emailVerified:u.emailVerified});
 });
@@ -461,6 +500,10 @@ app.post(`${BASE}/register`, async (req,res) => {
   users.push(newUser);
   save('users.json', users);
   secLog('REGISTERED', ip, {username, email:cleanEmail});
+  // Captures utm_* from the register body so every signup is attributed to a
+  // channel — the raw material for per-channel CAC.
+  track('user_registered', { userId: newUser.id, req, props: { diet: newUser.profile.diet } });
+  track('trial_started', { userId: newUser.id, req });
 
   // Email verification
   let emailSent = false;
@@ -501,6 +544,8 @@ app.post(`${BASE}/api/profile`, auth, (req,res) => {
 app.get(`${BASE}/api/meal-plan`, auth, (req,res) => {
   const diet = sanitize(req.query.diet)||req.userObj?.profile?.diet||'atkins';
   const budget = Math.min(Math.max(parseInt(req.query.budget||req.userObj?.profile?.budget||200),50),1000);
+  track('meal_plan_viewed', { userId: req.user.id, props: { diet } }); // activation signal
+
   const plans = load('meal_plans.json');
   const plan = plans?.[diet]||plans?.atkins;
   if (!plan) return res.json({error:'Plan not found'});
@@ -539,6 +584,18 @@ app.get(`${BASE}/api/meal-plan`, auth, (req,res) => {
 app.get(`${BASE}/api/food-prices`, auth, (req,res)=>res.json(load('food_prices.json')));
 app.get(`${BASE}/api/labs`, auth, (req,res)=>res.json(load('labs.json')));
 
+// Public event ingest — for landing pages, the PWA, demo, and marketing pixels
+// to record top-of-funnel events (page_view, demo_viewed, cta_click, …) with an
+// anonymous id and UTM tags, before a user account exists. Rate limited.
+app.post(`${BASE}/api/track`, (req,res)=>{
+  const r = rateLimit(getIP(req),'track',120,60000);
+  if(!r.ok) return res.status(429).json({error:'Too many events'});
+  const name = sanitize(req.body.name);
+  if(!name) return res.status(400).json({error:'name required'});
+  track(name, { req, anonId: req.body.anonId, props: (req.body.props && typeof req.body.props==='object') ? req.body.props : {} });
+  res.json({ok:true});
+});
+
 // DEMO (public, rate limited)
 app.get(`${BASE}/api/demo/meal-plan`, (req,res)=>{
   const r=rateLimit(getIP(req),'demo',20,60000);
@@ -569,7 +626,7 @@ app.get(`${BASE}/api/ratings`,(req,res)=>{
 });
 
 // PAYMENT (Kashier)
-app.post(`${BASE}/api/payment/initiate`,(req,res)=>{
+app.post(`${BASE}/api/payment/initiate`,optionalAuth,(req,res)=>{
   const ip=getIP(req);
   const r=rateLimit(ip,'pay',10,3600000);
   if(!r.ok)return res.status(429).json({error:'Too many payment requests'});
@@ -577,6 +634,7 @@ app.post(`${BASE}/api/payment/initiate`,(req,res)=>{
   const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
   if(!pp[plan])return res.status(400).json({error:'Invalid plan'});
   const amount=pp[plan];
+  track('checkout_started', { req, props: { plan, amount } });
   const mid=process.env.KASHIER_MERCHANT_ID, sk=process.env.KASHIER_SECRET_KEY;
   if(!mid||!sk||mid==='YOUR_KASHIER_MERCHANT_ID')return res.json({ok:false,setupRequired:true,amount,plan});
   const orderId='DH-'+Date.now();
@@ -596,6 +654,7 @@ app.post(`${BASE}/api/payment/confirm`,auth,(req,res)=>{
   subs.push({userId:req.user.id,plan,startDate:new Date().toISOString().split('T')[0],endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0],amount:pp[plan],status:'active',paymentRef:paymentRef||'MANUAL_'+Date.now()});
   save('subscriptions.json',subs);
   secLog('PAYMENT_CONFIRMED',getIP(req),{userId:req.user.id,plan});
+  track('subscription_paid', { userId:req.user.id, req, props:{ plan, amount:pp[plan] } });
   res.json({ok:true});
 });
 
@@ -633,6 +692,14 @@ app.get(`${BASE}/api/admin/ratings`,auth,adminOnly,(req,res)=>res.json(load('rat
 app.post(`${BASE}/api/admin/ratings/:id/approve`,auth,adminOnly,(req,res)=>{const ratings=load('ratings.json')||[];const r=ratings.find(r=>r.id===req.params.id);if(!r)return res.json({ok:false});r.approved=true;save('ratings.json',ratings);res.json({ok:true});});
 app.post(`${BASE}/api/admin/food-prices`,auth,adminOnly,(req,res)=>{const p=load('food_prices.json');p.items=req.body.items;p.lastUpdated=new Date().toISOString().split('T')[0];save('food_prices.json',p);res.json({ok:true,lastUpdated:p.lastUpdated});});
 app.get(`${BASE}/api/admin/subscriptions`,auth,adminOnly,(req,res)=>res.json(load('subscriptions.json')||[]));
+// Acquisition funnel, conversion, CAC-by-source inputs and daily series.
+app.get(`${BASE}/api/admin/analytics`,auth,adminOnly,(req,res)=>{
+  res.json(store.analytics(Math.min(Math.max(parseInt(req.query.days)||30,1),365)));
+});
+// Raw recent event feed.
+app.get(`${BASE}/api/admin/events`,auth,adminOnly,(req,res)=>{
+  res.json(store.recentEvents(Math.min(Math.max(parseInt(req.query.limit)||100,1),1000)));
+});
 // Download a full, consistent snapshot of the database (safe to take live).
 app.get(`${BASE}/api/admin/backup`,auth,adminOnly,(req,res)=>{
   const tmp = path.join(os.tmpdir(), `diethub_backup_${Date.now()}.db`);

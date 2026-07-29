@@ -32,6 +32,99 @@ const upsertStmt = db.prepare(`INSERT INTO documents (key, value, updated_at)
   VALUES (@key, @value, @updated_at)
   ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`);
 
+// ─── EVENTS ─────────────────────────────────────────────────────────────────
+// Append-only analytics log. This is a real table, not a JSON document, because
+// events are high-volume and append-heavy — exactly the access pattern the
+// document store is wrong for. Feeds the funnel/CAC/retention metrics and the
+// n8n automation triggers.
+db.exec(`CREATE TABLE IF NOT EXISTS events (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts           TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  user_id      TEXT,
+  anon_id      TEXT,
+  props        TEXT,
+  ip           TEXT,
+  utm_source   TEXT,
+  utm_medium   TEXT,
+  utm_campaign TEXT
+)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_events_name_ts ON events(name, ts)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_events_user   ON events(user_id)`);
+
+const insEvent = db.prepare(`INSERT INTO events
+  (ts,name,user_id,anon_id,props,ip,utm_source,utm_medium,utm_campaign)
+  VALUES (@ts,@name,@user_id,@anon_id,@props,@ip,@utm_source,@utm_medium,@utm_campaign)`);
+
+function logEvent(e) {
+  insEvent.run({
+    ts: new Date().toISOString(),
+    name: String(e.name).slice(0, 64),
+    user_id: e.userId || null,
+    anon_id: e.anonId || null,
+    props: JSON.stringify(e.props || {}),
+    ip: e.ip || null,
+    utm_source: e.utmSource || null,
+    utm_medium: e.utmMedium || null,
+    utm_campaign: e.utmCampaign || null,
+  });
+}
+
+function safeParse(s) { try { return JSON.parse(s); } catch { return {}; } }
+
+// Recent raw events, newest first — for the admin activity feed / debugging.
+function recentEvents(limit = 100) {
+  return db.prepare(`SELECT id,ts,name,user_id,anon_id,props,ip,utm_source
+    FROM events ORDER BY id DESC LIMIT ?`).all(limit).map(r => ({ ...r, props: safeParse(r.props) }));
+}
+
+// The numbers investors ask for: acquisition funnel, conversion, CAC-by-source
+// inputs, and a daily time series — all over the last `days` window.
+function analytics(days = 30) {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const distinct = (name) => db.prepare(
+    `SELECT COUNT(DISTINCT user_id) n FROM events WHERE name=? AND ts>=? AND user_id IS NOT NULL`
+  ).get(name, since).n;
+
+  const registered = distinct('user_registered');
+  const verified   = distinct('email_verified');
+  const activated  = distinct('meal_plan_viewed');
+  const checkout   = distinct('checkout_started');
+  const paid        = distinct('subscription_paid');
+  const pct = (a, b) => (b ? +((a / b) * 100).toFixed(1) : 0);
+
+  const byEvent = db.prepare(
+    `SELECT name, COUNT(*) count, COUNT(DISTINCT user_id) users
+     FROM events WHERE ts>=? GROUP BY name ORDER BY count DESC`).all(since);
+
+  // Registrations grouped by acquisition source — the denominator for CAC once
+  // you divide each channel's spend by the users it brought in.
+  const bySource = db.prepare(
+    `SELECT COALESCE(utm_source,'direct') source,
+            COUNT(DISTINCT COALESCE(user_id,anon_id)) registrations
+     FROM events WHERE name='user_registered' AND ts>=?
+     GROUP BY source ORDER BY registrations DESC`).all(since);
+
+  const daily = db.prepare(
+    `SELECT substr(ts,1,10) day,
+            SUM(CASE WHEN name='user_registered'  THEN 1 ELSE 0 END) registered,
+            SUM(CASE WHEN name='subscription_paid' THEN 1 ELSE 0 END) paid
+     FROM events WHERE ts>=? GROUP BY day ORDER BY day`).all(since);
+
+  return {
+    days,
+    funnel: [
+      { step: 'Registered',              users: registered, pct: 100 },
+      { step: 'Email verified',          users: verified,   pct: pct(verified, registered) },
+      { step: 'Activated (viewed plan)', users: activated,  pct: pct(activated, registered) },
+      { step: 'Checkout started',        users: checkout,   pct: pct(checkout, registered) },
+      { step: 'Paid',                    users: paid,       pct: pct(paid, registered) },
+    ],
+    trialToPaidPct: pct(paid, registered),
+    byEvent, bySource, daily,
+  };
+}
+
 // Read a document. Returns the parsed JSON, or null if the key doesn't exist
 // (matching the old load() contract so callers' `|| []` / `|| {}` still work).
 function load(key) {
@@ -86,4 +179,5 @@ function backup(dest) {
   return dest;
 }
 
-module.exports = { db, load, save, update, migrateFromJson, backup, DB_PATH, DATA_DIR };
+module.exports = { db, load, save, update, migrateFromJson, backup,
+  logEvent, recentEvents, analytics, DB_PATH, DATA_DIR };
