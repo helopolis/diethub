@@ -4,6 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
+// X-Forwarded-For is only honored when the connection comes from a trusted
+// proxy — by default the local reverse proxy (nginx on the same host).
+// Override with TRUST_PROXY: "false" if the app is exposed directly,
+// a hop count like "1", or an address list like "loopback, 10.0.0.0/8".
+const TP = process.env.TRUST_PROXY ?? 'loopback';
+app.set('trust proxy', TP === 'true' ? true : TP === 'false' ? false : /^\d+$/.test(TP) ? parseInt(TP) : TP);
+
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -55,7 +62,10 @@ setInterval(() => { const now = Date.now(); for (const [k, v] of rl) if (now - v
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function getIP(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  // req.ip respects the 'trust proxy' setting: X-Forwarded-For is only used
+  // when the request actually came through a trusted proxy, so clients can't
+  // spoof their way past the rate limiter by sending fake headers.
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 function sanitize(s) {
   if (typeof s !== 'string') return s;
