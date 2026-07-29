@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>DietHub — اشترك الآن</title>
@@ -23,7 +26,7 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--dark);min-h
 .plan-card{background:#fff;border-radius:20px;padding:24px;border:2px solid var(--border);text-align:center;cursor:pointer;transition:all 0.2s;position:relative}
 .plan-card:hover{border-color:var(--green);transform:translateY(-3px);box-shadow:0 10px 32px rgba(0,0,0,0.1)}
 .plan-card.selected{border-color:var(--green);background:linear-gradient(135deg,#F0FFF4,#E8F5E9)}
-.plan-card.popular::before{content:'الأكثر طلباً';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;font-size:0.7rem;font-weight:700;padding:3px 12px;border-radius:20px;white-space:nowrap}
+.popular-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;font-size:0.7rem;font-weight:700;padding:3px 12px;border-radius:20px;white-space:nowrap}
 .plan-name{font-size:1rem;font-weight:700;margin-bottom:4px}
 .plan-price{font-size:2rem;font-weight:700;color:var(--green);margin:8px 0 4px}
 .plan-per{font-size:0.78rem;color:var(--muted);margin-bottom:12px}
@@ -53,14 +56,18 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--dark);min-h
 .loading-overlay p{color:#fff;font-weight:700;font-size:1.05rem}
 @media(max-width:600px){.main{padding:16px 12px}.checkout-box{padding:20px 16px;border-radius:14px}}
 @media(max-width:380px){.checkout-box{padding:16px 12px}}
+.lang-toggle{position:fixed;top:16px;left:16px;z-index:999;display:flex;gap:4px;background:rgba(255,255,255,0.12);border-radius:20px;padding:3px;backdrop-filter:blur(10px)}
+.lang-btn{padding:5px 14px;border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer;background:none;color:rgba(255,255,255,0.7);transition:all 0.2s}
+.lang-btn.active{background:#C8F560;color:#1A1A2E}
 </style>
+<script defer src="https://analytics.talabatito.com/script.js" data-website-id="4ed211ee-9096-49e6-a619-0bbca563db5b"></script>
 </head>
 <body>
 
 <!-- LOADING OVERLAY -->
 <div class="loading-overlay" id="loadingOverlay">
   <div class="spinner"></div>
-  <p>جاري تحويلك لصفحة الدفع الآمن...</p>
+  <p id="loadingText">جاري تحويلك لصفحة الدفع الآمن...</p>
 </div>
 
 <!-- HEADER -->
@@ -69,60 +76,67 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--dark);min-h
     <div class="logo-dot">🥗</div>
     <span class="logo-text">DietHub</span>
   </div>
-  <a href="/diet/logout" style="color:rgba(255,255,255,0.6);font-size:0.85rem;text-decoration:none">خروج</a>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="lang-toggle">
+      <button class="lang-btn active" id="lBtnAr" onclick="setPageLang('ar')">عربي</button>
+      <button class="lang-btn" id="lBtnEn" onclick="setPageLang('en')">EN</button>
+    </div>
+    <a href="/diet/logout" id="logoutLink" style="color:rgba(255,255,255,0.6);font-size:0.85rem;text-decoration:none">خروج</a>
+  </div>
 </div>
 
 <!-- EXPIRED BANNER -->
 <div class="expired-banner">
-  <div class="expired-title">⏰ انتهت فترة التجربة المجانية</div>
-  <div class="expired-sub">استمر في رحلتك الصحية — اشترك الآن للوصول الكامل</div>
+  <div class="expired-title" id="expiredTitle">⏰ انتهت فترة التجربة المجانية</div>
+  <div class="expired-sub" id="expiredSub">استمر في رحلتك الصحية — اشترك الآن للوصول الكامل</div>
 </div>
 
 <!-- MAIN -->
 <div class="main">
-  <div class="plans-title">اختر باقتك</div>
-  <div class="plans-sub">جميع الباقات تشمل خطط الوجبات المخصصة، مقارنة الأسعار، والتحاليل المقترحة</div>
+  <div class="plans-title" id="plansTitle">اختر باقتك</div>
+  <div class="plans-sub" id="plansSub">جميع الباقات تشمل خطط الوجبات المخصصة، مقارنة الأسعار، والتحاليل المقترحة</div>
 
   <div class="plans-grid">
     <div class="plan-card" onclick="selectPlan(this,'basic',99)">
       <div class="plan-name">Basic</div>
       <div class="plan-price">99</div>
-      <div class="plan-per">جنيه / شهر</div>
-      <div class="plan-feature">خطة وجبات أسبوعية</div>
-      <div class="plan-feature">4 أنظمة غذائية</div>
-      <div class="plan-feature">مطبخ مصري أصيل</div>
+      <div class="plan-per plan-per-label">جنيه / شهر</div>
+      <div class="plan-feature" data-feat="0-0">خطة وجبات أسبوعية</div>
+      <div class="plan-feature" data-feat="0-1">4 أنظمة غذائية</div>
+      <div class="plan-feature" data-feat="0-2">مطبخ مصري أصيل</div>
     </div>
     <div class="plan-card" onclick="selectPlan(this,'standard',179)">
       <div class="plan-name">Standard</div>
       <div class="plan-price">179</div>
-      <div class="plan-per">جنيه / شهر</div>
-      <div class="plan-feature">كل Basic +</div>
-      <div class="plan-feature">قائمة تسوق تفصيلية</div>
-      <div class="plan-feature">مقارنة أسعار السوق</div>
+      <div class="plan-per plan-per-label">جنيه / شهر</div>
+      <div class="plan-feature" data-feat="1-0">كل Basic +</div>
+      <div class="plan-feature" data-feat="1-1">قائمة تسوق تفصيلية</div>
+      <div class="plan-feature" data-feat="1-2">مقارنة أسعار السوق</div>
     </div>
-    <div class="plan-card popular" onclick="selectPlan(this,'premium',249)">
+    <div class="plan-card popular" onclick="selectPlan(this,'premium',249)" style="position:relative">
+      <div class="popular-badge" id="popularBadge">الأكثر طلباً</div>
       <div class="plan-name">Premium</div>
       <div class="plan-price">249</div>
-      <div class="plan-per">جنيه / شهر</div>
-      <div class="plan-feature">كل Standard +</div>
-      <div class="plan-feature">دليل التحاليل الطبية</div>
-      <div class="plan-feature">توصيات مكملات</div>
+      <div class="plan-per plan-per-label">جنيه / شهر</div>
+      <div class="plan-feature" data-feat="2-0">كل Standard +</div>
+      <div class="plan-feature" data-feat="2-1">دليل التحاليل الطبية</div>
+      <div class="plan-feature" data-feat="2-2">توصيات مكملات</div>
     </div>
     <div class="plan-card" onclick="selectPlan(this,'vip',349)">
       <div class="plan-name">VIP</div>
       <div class="plan-price">349</div>
-      <div class="plan-per">جنيه / شهر</div>
-      <div class="plan-feature">كل Premium +</div>
-      <div class="plan-feature">ميزانية يومية مخصصة</div>
-      <div class="plan-feature">تنبيهات تليجرام</div>
+      <div class="plan-per plan-per-label">جنيه / شهر</div>
+      <div class="plan-feature" data-feat="3-0">كل Premium +</div>
+      <div class="plan-feature" data-feat="3-1">ميزانية يومية مخصصة</div>
+      <div class="plan-feature" data-feat="3-2">تنبيهات تليجرام</div>
     </div>
     <div class="plan-card" onclick="selectPlan(this,'elite',449)">
       <div class="plan-name">Elite</div>
       <div class="plan-price">449</div>
-      <div class="plan-per">جنيه / شهر</div>
-      <div class="plan-feature">كل VIP +</div>
-      <div class="plan-feature">برنامج نشاط يومي</div>
-      <div class="plan-feature">توصيات خليجية</div>
+      <div class="plan-per plan-per-label">جنيه / شهر</div>
+      <div class="plan-feature" data-feat="4-0">كل VIP +</div>
+      <div class="plan-feature" data-feat="4-1">برنامج نشاط يومي</div>
+      <div class="plan-feature" data-feat="4-2">توصيات خليجية</div>
     </div>
   </div>
 
@@ -130,24 +144,24 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--dark);min-h
   <div class="checkout-box" id="checkoutBox" style="display:none">
     <div class="selected-plan-summary">
       <div class="selected-plan-name" id="selectedPlanName">Premium</div>
-      <div class="selected-plan-price"><span id="selectedPlanPrice">249</span> جنيه / شهر</div>
+      <div class="selected-plan-price"><span id="selectedPlanPrice">249</span> <span class="plan-per-label">جنيه / شهر</span></div>
     </div>
-    <div class="checkout-title">معلومات الدفع</div>
+    <div class="checkout-title" id="checkoutTitle">معلومات الدفع</div>
     <div class="form-field">
-      <label>البريد الإلكتروني</label>
+      <label id="emailLabel">البريد الإلكتروني</label>
       <input type="email" id="payEmail" placeholder="email@example.com" dir="ltr">
     </div>
     <div class="form-field">
-      <label>رقم الهاتف</label>
+      <label id="phoneLabel">رقم الهاتف</label>
       <input type="tel" id="payPhone" placeholder="01XXXXXXXXX" dir="ltr">
     </div>
     <div class="order-summary">
-      <div class="order-row"><span>الباقة المختارة</span><span id="osPlan">—</span></div>
-      <div class="order-row"><span>مدة الاشتراك</span><span>30 يوم</span></div>
-      <div class="order-row order-total"><span>الإجمالي</span><span id="osTotal">— جنيه</span></div>
+      <div class="order-row"><span id="osPlanLabel">الباقة المختارة</span><span id="osPlan">—</span></div>
+      <div class="order-row"><span id="osDurationLabel">مدة الاشتراك</span><span id="osDuration">30 يوم</span></div>
+      <div class="order-row order-total"><span id="osTotalLabel">الإجمالي</span><span id="osTotal">— جنيه</span></div>
     </div>
     <button class="btn-pay" id="payBtn" onclick="initiatePayment()">ادفع الآن عبر Kashier 🔒</button>
-    <div class="kashier-note">🔒 الدفع آمن عبر Kashier · فيزا · ماستركارد · محافظ إلكترونية · ميزة</div>
+    <div class="kashier-note" id="kashierNote">🔒 الدفع آمن عبر Kashier · فيزا · ماستركارد · محافظ إلكترونية · ميزة</div>
   </div>
 </div>
 
@@ -202,12 +216,13 @@ function selectPlan(el, plan, amount) {
   el.classList.add('selected');
   selectedPlan   = plan;
   selectedAmount = amount;
+  const isAr = _pageLang !== 'en';
 
   const name = plan.charAt(0).toUpperCase() + plan.slice(1);
   document.getElementById('selectedPlanName').textContent  = name;
   document.getElementById('selectedPlanPrice').textContent = amount;
   document.getElementById('osPlan').textContent            = name;
-  document.getElementById('osTotal').textContent           = amount + ' جنيه';
+  document.getElementById('osTotal').textContent           = amount + (isAr ? ' جنيه' : ' EGP');
 
   const box = document.getElementById('checkoutBox');
   box.style.display = 'block';
@@ -229,10 +244,11 @@ async function hmacSHA256(key, message) {
 async function initiatePayment() {
   const email = document.getElementById('payEmail').value.trim();
   const phone = document.getElementById('payPhone').value.trim();
+  const isAr = _pageLang !== 'en';
 
-  if (!selectedPlan)                  { alert('يرجى اختيار باقة أولاً'); return; }
-  if (!email || !email.includes('@')) { alert('يرجى إدخال بريد إلكتروني صحيح'); return; }
-  if (!phone)                         { alert('يرجى إدخال رقم الهاتف'); return; }
+  if (!selectedPlan)                  { alert(isAr?'يرجى اختيار باقة أولاً':'Please select a plan first'); return; }
+  if (!email || !email.includes('@')) { alert(isAr?'يرجى إدخال بريد إلكتروني صحيح':'Please enter a valid email address'); return; }
+  if (!phone)                         { alert(isAr?'يرجى إدخال رقم الهاتف':'Please enter your phone number'); return; }
 
   const btn = document.getElementById('payBtn');
   btn.disabled = true;
@@ -270,11 +286,89 @@ async function initiatePayment() {
 
   } catch (err) {
     console.error('Kashier error:', err);
-    alert('حدث خطأ أثناء الاتصال، يرجى المحاولة مرة أخرى');
+    alert(isAr?'حدث خطأ أثناء الاتصال، يرجى المحاولة مرة أخرى':'A connection error occurred, please try again');
     btn.disabled = false;
     document.getElementById('loadingOverlay').classList.remove('active');
   }
 }
+
+const PAY_STRINGS = {
+  ar: {
+    loading:'جاري تحويلك لصفحة الدفع الآمن...', logout:'خروج',
+    expiredTitle:'⏰ انتهت فترة التجربة المجانية', expiredSub:'استمر في رحلتك الصحية — اشترك الآن للوصول الكامل',
+    plansTitle:'اختر باقتك', plansSub:'جميع الباقات تشمل خطط الوجبات المخصصة، مقارنة الأسعار، والتحاليل المقترحة',
+    perMonth:'جنيه / شهر', popularBadge:'الأكثر طلباً',
+    checkoutTitle:'معلومات الدفع', emailLabel:'البريد الإلكتروني', phoneLabel:'رقم الهاتف',
+    osPlanLabel:'الباقة المختارة', osDurationLabel:'مدة الاشتراك', osDuration:'30 يوم', osTotalLabel:'الإجمالي',
+    payBtn:'ادفع الآن عبر Kashier 🔒', kashierNote:'🔒 الدفع آمن عبر Kashier · فيزا · ماستركارد · محافظ إلكترونية · ميزة',
+    feats: [
+      ['خطة وجبات أسبوعية','9 أنظمة غذائية','مطبخ مصري أصيل'],
+      ['كل Basic +','قائمة تسوق تفصيلية','مقارنة أسعار السوق'],
+      ['كل Standard +','دليل التحاليل الطبية','توصيات مكملات'],
+      ['كل Premium +','ميزانية يومية مخصصة','تنبيهات تليجرام'],
+      ['كل VIP +','برنامج نشاط يومي','توصيات خليجية'],
+    ],
+  },
+  en: {
+    loading:'Redirecting you to secure checkout...', logout:'Log out',
+    expiredTitle:'⏰ Your Free Trial Has Ended', expiredSub:'Continue your health journey — subscribe now for full access',
+    plansTitle:'Choose Your Plan', plansSub:'All plans include custom meal plans, price comparison, and recommended lab tests',
+    perMonth:'EGP / month', popularBadge:'Most Popular',
+    checkoutTitle:'Payment Information', emailLabel:'Email Address', phoneLabel:'Phone Number',
+    osPlanLabel:'Selected Plan', osDurationLabel:'Subscription Length', osDuration:'30 days', osTotalLabel:'Total',
+    payBtn:'Pay Now via Kashier 🔒', kashierNote:'🔒 Secure payment via Kashier · Visa · Mastercard · E-wallets · Meeza',
+    feats: [
+      ['Weekly meal plan','9 diet plans','Authentic Egyptian cuisine'],
+      ['Everything in Basic +','Detailed shopping list','Market price comparison'],
+      ['Everything in Standard +','Lab test guide','Supplement recommendations'],
+      ['Everything in Premium +','Custom daily budget','Telegram alerts'],
+      ['Everything in VIP +','Daily activity program','Gulf-specific recommendations'],
+    ],
+  }
+};
+
+let _pageLang = 'ar';
+function setPageLang(lang) {
+  const s = PAY_STRINGS[lang];
+  const isAr = lang === 'ar';
+  _pageLang = lang;
+  document.querySelector('html').setAttribute('lang', lang);
+  document.querySelector('html').setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  document.getElementById('lBtnAr').classList.toggle('active', isAr);
+  document.getElementById('lBtnEn').classList.toggle('active', !isAr);
+
+  document.getElementById('loadingText').textContent = s.loading;
+  document.getElementById('logoutLink').textContent = s.logout;
+  document.getElementById('expiredTitle').textContent = s.expiredTitle;
+  document.getElementById('expiredSub').textContent = s.expiredSub;
+  document.getElementById('plansTitle').textContent = s.plansTitle;
+  document.getElementById('plansSub').textContent = s.plansSub;
+  document.querySelectorAll('.plan-per-label').forEach(el => el.textContent = s.perMonth);
+  document.getElementById('popularBadge').textContent = s.popularBadge;
+  document.querySelectorAll('[data-feat]').forEach(el => {
+    const [row, col] = el.dataset.feat.split('-').map(Number);
+    el.textContent = s.feats[row][col];
+  });
+  document.getElementById('checkoutTitle').textContent = s.checkoutTitle;
+  document.getElementById('emailLabel').textContent = s.emailLabel;
+  document.getElementById('phoneLabel').textContent = s.phoneLabel;
+  document.getElementById('osPlanLabel').textContent = s.osPlanLabel;
+  document.getElementById('osDurationLabel').textContent = s.osDurationLabel;
+  document.getElementById('osDuration').textContent = s.osDuration;
+  document.getElementById('osTotalLabel').textContent = s.osTotalLabel;
+  document.getElementById('payBtn').textContent = s.payBtn;
+  document.getElementById('kashierNote').textContent = s.kashierNote;
+  const kashierDisplay = document.querySelector('#kashierForm input[name="display"]');
+  if (kashierDisplay) kashierDisplay.value = lang;
+  if (selectedPlan) {
+    document.getElementById('osTotal').textContent = selectedAmount + (isAr ? ' جنيه' : ' EGP');
+  }
+}
+window.setPageLang = setPageLang;
+(function(){
+  const urlLang = new URLSearchParams(window.location.search).get('lang');
+  setPageLang(urlLang === 'en' ? 'en' : 'ar');
+})();
 </script>
 
 <!-- Universal Back Button -->

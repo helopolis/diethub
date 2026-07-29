@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>DietHub — تجربة مجانية</title>
@@ -41,15 +44,15 @@ body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height
 .day-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
 .day-name-demo{font-size:1.1rem;font-weight:700}
 .day-cost{background:rgba(200,245,96,0.15);color:var(--lime);font-size:0.88rem;font-weight:700;padding:4px 14px;border-radius:20px}
-.meal-row-demo{display:grid;grid-template-columns:80px 1fr auto;gap:14px;align-items:start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)}
+.meal-row-demo{display:grid;grid-template-columns:minmax(56px,auto) 1fr auto;gap:14px;align-items:start;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.08)}
 .meal-row-demo:last-child{border-bottom:none}
 .meal-type-d{font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:10px;background:rgba(255,255,255,0.08);text-align:center}
 .meal-title-d{font-size:0.9rem;font-weight:700;margin-bottom:4px}
 .meal-ing-d{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.ing-tag-d{background:rgba(255,255,255,0.08);border-radius:6px;padding:2px 8px;font-size:0.7rem;color:rgba(255,255,255,0.7)}
+.ing-tag-d{background:rgba(255,255,255,0.08);border-radius:6px;padding:2px 8px;font-size:0.75rem;color:rgba(255,255,255,0.7)}
 .ing-qty-d{color:var(--lime);font-weight:700}
 .macros-d{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
-.macro-d{font-size:0.7rem;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.06)}
+.macro-d{font-size:0.75rem;padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.06)}
 .meal-price-d{font-size:1rem;font-weight:700;color:var(--lime);text-align:center}
 
 /* LOCKED */
@@ -76,8 +79,8 @@ body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height
 .plan-d.popular-d{border-color:var(--lime);background:rgba(200,245,96,0.1)}
 .plan-name-d{font-size:0.9rem;font-weight:700;margin-bottom:6px}
 .plan-price-d{font-size:1.8rem;font-weight:700;color:var(--lime)}
-.plan-per-d{font-size:0.72rem;opacity:0.6;margin-bottom:10px}
-.plan-feat-d{font-size:0.72rem;opacity:0.7;margin:3px 0}
+.plan-per-d{font-size:0.75rem;opacity:0.6;margin-bottom:10px}
+.plan-feat-d{font-size:0.75rem;opacity:0.7;margin:3px 0}
 
 /* REGISTER FORM */
 .register-section{background:rgba(200,245,96,0.08);border-radius:24px;padding:40px 32px;text-align:center;border:1px solid rgba(200,245,96,0.2)}
@@ -92,17 +95,18 @@ body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height
 .trial-note span{color:var(--lime)}
 .rating-preview{display:flex;align-items:center;gap:12px;justify-content:center;margin:20px 0;opacity:0.8}
 .rating-stars-p{font-size:1.2rem}
-@media(max-width:768px){.hero-section{padding:36px 16px 48px}.demo-section{padding:24px 16px}.locked-overlay{padding:24px 16px}.reg-form{max-width:100%}}
-@media(max-width:480px){.hero-section{padding:24px 12px 36px}}
+@media(max-width:768px){.hero-section{padding:36px 16px 48px}.demo-section{padding:24px 16px}.locked-overlay{padding:24px 16px}.reg-form{max-width:100%}.stats-row{gap:20px;padding:20px 16px}.pricing-section{padding:28px 20px}.register-section{padding:28px 20px}}
+@media(max-width:480px){.hero-section{padding:24px 12px 36px}.hero-title{font-size:2rem}.stats-row{gap:14px;padding:16px 12px}.pricing-section{padding:20px 14px}.register-section{padding:20px 14px}}
 
 /* LANG TOGGLE */
 .demo-nav{position:fixed;top:0;left:0;right:0;z-index:999;display:flex;justify-content:space-between;align-items:center;padding:12px 24px;background:rgba(26,26,46,0.95);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,0.08)}
 .nav-logo-d{font-weight:700;font-size:1.1rem;color:#C8F560}
 .lang-toggle-d{display:flex;gap:4px;background:rgba(255,255,255,0.08);border-radius:20px;padding:3px}
-.lang-btn-d{padding:5px 14px;border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer;background:none;color:rgba(255,255,255,0.6);transition:all 0.2s}
+.lang-btn-d{padding:9px 16px;border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer;background:none;color:rgba(255,255,255,0.6);transition:all 0.2s}
 .lang-btn-d.active{background:#C8F560;color:#1A1A2E}
 .hero-section{padding-top:100px!important}
 </style>
+<script defer src="https://analytics.talabatito.com/script.js" data-website-id="4ed211ee-9096-49e6-a619-0bbca563db5b"></script>
 </head>
 <body>
 
@@ -137,11 +141,53 @@ body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height
   <div class="stat"><div class="stat-num">14</div><div class="stat-label">يوم تجربة مجانية</div></div>
 </div>
 
+<!-- REGISTER CTA -->
+<div class="demo-section">
+  <div class="register-section">
+    <h2 class="reg-title" id="regTitle">ابدأ <span>مجاناً</span> اليوم</h2>
+    <p class="reg-sub" id="regSub">أنشئ حسابك في دقيقة — 14 يوم تجربة مجانية كاملة</p>
+    <div class="reg-form">
+      <div id="demoGoogleBox" style="display:none;margin-bottom:10px">
+        <div id="demoGoogleBtn" style="display:flex;justify-content:center"></div>
+      </div>
+      <div id="demoFacebookBox" style="display:none;margin-bottom:14px">
+        <button type="button" onclick="demoFbLogin()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:11px;background:#1877F2;border:none;border-radius:11px;color:#fff;font-family:'Cairo',sans-serif;font-size:0.9rem;font-weight:700;cursor:pointer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M22.675 0h-21.35c-.732 0-1.325.593-1.325 1.325v21.351c0 .731.593 1.324 1.325 1.324h11.495v-9.294h-3.128v-3.622h3.128v-2.671c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12v9.293h6.116c.73 0 1.323-.593 1.323-1.325v-21.35c0-.732-.593-1.325-1.325-1.325z"/></svg>
+          <span id="demoFbBtnText">المتابعة باستخدام فيسبوك</span>
+        </button>
+      </div>
+      <div id="demoSocialDivider" style="display:none;text-align:center;color:rgba(255,255,255,0.4);font-size:0.8rem;margin-bottom:14px;align-items:center;gap:10px">
+        <span style="flex:1;height:1px;background:rgba(255,255,255,0.15)"></span>
+        <span id="demoOrDivider">أو</span> <span style="flex:1;height:1px;background:rgba(255,255,255,0.15)"></span>
+      </div>
+      <input class="reg-input" type="text" id="demoUsr" placeholder="اسم المستخدم *">
+      <input class="reg-input" type="password" id="demoPwd" placeholder="كلمة المرور * (6+ أحرف)">
+      <input class="reg-input" type="email" id="demoEmail" placeholder="البريد الإلكتروني (اختياري)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <input class="reg-input" style="margin-bottom:0" type="number" id="demoWeight" placeholder="الوزن كجم" min="30" max="250">
+        <input class="reg-input" style="margin-bottom:0" type="number" id="demoHeight" placeholder="الطول سم" min="100" max="230">
+      </div>
+      <select class="reg-input" id="demoDiet" style="background:rgba(255,255,255,0.08);color:#fff;margin-bottom:12px"></select>
+      <div id="demoRegErr" style="color:#ff8a8a;font-size:0.82rem;margin-bottom:8px;display:none;text-align:right"></div>
+      <button class="btn-primary" onclick="demoRegister()" id="regSubmitBtn" style="width:100%;font-size:1rem;padding:14px 20px">ابدأ تجربتك المجانية مجاناً ←</button>
+    </div>
+    <p class="trial-note" id="trialNote" style="margin-top:14px">✓ تجربة مجانية <span>14 يوم</span> · ✓ إلغاء في أي وقت · ✓ بدون بطاقة</p>
+    <p style="margin-top:10px;font-size:0.78rem;opacity:0.5" id="haveAccountLine">لديك حساب؟ <a href="/diet/login" style="color:var(--lime)">سجل دخول</a></p>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<div class="demo-section">
+  <div class="section-label" id="featLabel">المميزات</div>
+  <div class="section-title" id="featTitle">كل ما تحتاجه في مكان واحد</div>
+  <div class="features-grid" id="featuresGrid"></div>
+</div>
+
 <!-- DEMO PREVIEW -->
 <div class="demo-section" id="demo-preview">
-  <div class="section-label">معاينة مجانية</div>
-  <div class="section-title">خطة يوم كاملة — نظام Atkins</div>
-  <div class="section-sub">هذا مثال حقيقي من الخطة — سجل للحصول على 7 أيام كاملة مع ميزانيتك المخصصة</div>
+  <div class="section-label" id="demoPreviewLabel">معاينة مجانية</div>
+  <div class="section-title" id="demoPreviewTitle">خطة يوم كاملة — نظام Atkins</div>
+  <div class="section-sub" id="demoPreviewSub">هذا مثال حقيقي من الخطة — سجل للحصول على 7 أيام كاملة مع ميزانيتك المخصصة</div>
 
   <div class="day-preview" id="demoDay">
     <div class="day-header">
@@ -156,7 +202,7 @@ body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height
     <div class="lock-icon">🔒</div>
     <div class="lock-title">6 أيام إضافية مخفية</div>
     <div class="lock-sub">سجل مجاناً للحصول على خطة 7 أيام كاملة مع المكونات والكميات والأسعار</div>
-    <div class="locked-days">
+    <div class="locked-days" id="lockedDays">
       <div class="locked-day">الاثنين 🔒</div>
       <div class="locked-day">الثلاثاء 🔒</div>
       <div class="locked-day">الأربعاء 🔒</div>
@@ -164,112 +210,46 @@ body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height
       <div class="locked-day">الجمعة 🔒</div>
       <div class="locked-day">السبت 🔒</div>
     </div>
-    <a href="/diet/login" class="btn-primary">سجل مجاناً وافتح الخطة الكاملة ←</a>
-  </div>
-</div>
-
-<!-- FEATURES -->
-<div class="demo-section">
-  <div class="section-label">المميزات</div>
-  <div class="section-title">كل ما تحتاجه في مكان واحد</div>
-  <div class="features-grid">
-    <div class="feature-card"><div class="feature-icon">🥗</div><div class="feature-title">خطة وجبات يومية كاملة</div><div class="feature-desc">إفطار وغداء وعشاء وسناك مع الكميات بالجرام لكل مكون</div></div>
-    <div class="feature-card"><div class="feature-icon">💰</div><div class="feature-title">ميزانية يومية مخصصة</div><div class="feature-desc">حدد ميزانيتك من 100 إلى 500 جنيه وتتكيف الخطة معها تلقائياً</div></div>
-    <div class="feature-card"><div class="feature-icon">🛒</div><div class="feature-title">مقارنة أسعار السوق</div><div class="feature-desc">كارفور vs مترو vs رويال هاوس vs تلبات — اشتري من الأرخص دائماً</div></div>
-    <div class="feature-card"><div class="feature-icon">🔬</div><div class="feature-title">دليل التحاليل الطبية</div><div class="feature-desc">8 تحاليل مقترحة مع أسعار من 3 معامل وجدول المتابعة</div></div>
-    <div class="feature-card"><div class="feature-icon">💊</div><div class="feature-title">توصيات المكملات</div><div class="feature-desc">أوميجا 3، واي بروتين، كرياتين — بروابط أمازون مصر مباشرة</div></div>
-    <div class="feature-card"><div class="feature-icon">🏋️</div><div class="feature-title">برنامج نشاط يومي</div><div class="feature-desc">مبتدئ أو متوسط أو متقدم — تمارين مناسبة لنظامك الغذائي</div></div>
-    <div class="feature-card"><div class="feature-icon">🌍</div><div class="feature-title">ثنائي اللغة</div><div class="feature-desc">عربي وإنجليزي — مناسب لمصر والخليج والمغتربين</div></div>
-    <div class="feature-card"><div class="feature-icon">📊</div><div class="feature-title">4 أنظمة غذائية</div><div class="feature-desc">Atkins · Keto · Mediterranean · Diabetic — اختر الأنسب لك</div></div>
+    <a href="/diet/login" class="btn-primary" id="lockedCta">سجل مجاناً وافتح الخطة الكاملة ←</a>
   </div>
 </div>
 
 <!-- PRICING -->
 <div class="demo-section">
   <div class="pricing-section">
-    <div class="section-label">الأسعار</div>
-    <div class="section-title">باقات لكل ميزانية</div>
-    <div class="plans-row">
-      <a href="/diet/login" class="plan-d">
-        <div class="plan-name-d">Basic</div>
-        <div class="plan-price-d">99</div>
-        <div class="plan-per-d">جنيه / شهر</div>
-        <div class="plan-feat-d">✓ خطة وجبات</div>
-        <div class="plan-feat-d">✓ 4 أنظمة</div>
-      </a>
-      <a href="/diet/login" class="plan-d">
-        <div class="plan-name-d">Standard</div>
-        <div class="plan-price-d">179</div>
-        <div class="plan-per-d">جنيه / شهر</div>
-        <div class="plan-feat-d">✓ + قائمة تسوق</div>
-        <div class="plan-feat-d">✓ مقارنة أسعار</div>
-      </a>
-      <a href="/diet/login" class="plan-d popular-d">
-        <div class="plan-name-d">Premium ⭐</div>
-        <div class="plan-price-d">249</div>
-        <div class="plan-per-d">جنيه / شهر</div>
-        <div class="plan-feat-d">✓ + التحاليل</div>
-        <div class="plan-feat-d">✓ المكملات</div>
-      </a>
-      <a href="/diet/login" class="plan-d">
-        <div class="plan-name-d">VIP</div>
-        <div class="plan-price-d">349</div>
-        <div class="plan-per-d">جنيه / شهر</div>
-        <div class="plan-feat-d">✓ + ميزانية</div>
-        <div class="plan-feat-d">✓ تليجرام</div>
-      </a>
-      <a href="/diet/login" class="plan-d">
-        <div class="plan-name-d">Elite</div>
-        <div class="plan-price-d">449</div>
-        <div class="plan-per-d">جنيه / شهر</div>
-        <div class="plan-feat-d">✓ + نشاط يومي</div>
-        <div class="plan-feat-d">✓ دعم خليجي</div>
-      </a>
-    </div>
-  </div>
-</div>
-
-<!-- REGISTER CTA -->
-<div class="demo-section">
-  <div class="register-section">
-    <h2 class="reg-title">ابدأ <span>مجاناً</span> اليوم</h2>
-    <p class="reg-sub">أنشئ حسابك في دقيقة — 14 يوم تجربة مجانية كاملة</p>
-    <div class="reg-form">
-      <input class="reg-input" type="text" id="demoUsr" placeholder="اسم المستخدم *">
-      <input class="reg-input" type="password" id="demoPwd" placeholder="كلمة المرور * (6+ أحرف)">
-      <input class="reg-input" type="email" id="demoEmail" placeholder="البريد الإلكتروني (اختياري)">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-        <input class="reg-input" style="margin-bottom:0" type="number" id="demoWeight" placeholder="الوزن كجم" min="30" max="250">
-        <input class="reg-input" style="margin-bottom:0" type="number" id="demoHeight" placeholder="الطول سم" min="100" max="230">
-      </div>
-      <select class="reg-input" id="demoDiet" style="background:rgba(255,255,255,0.08);color:#fff;margin-bottom:12px">
-        <option value="atkins" style="background:#1a1a2e">Atkins آتكينز</option>
-        <option value="keto" style="background:#1a1a2e">Keto كيتو</option>
-        <option value="mediterranean" style="background:#1a1a2e">Mediterranean متوسطي</option>
-        <option value="diabetic" style="background:#1a1a2e">Diabetic سكري</option>
-      </select>
-      <div id="demoRegErr" style="color:#ff8a8a;font-size:0.82rem;margin-bottom:8px;display:none;text-align:right"></div>
-      <button class="btn-primary" onclick="demoRegister()" style="width:100%;font-size:1rem;padding:14px 20px">ابدأ تجربتك المجانية مجاناً ←</button>
-    </div>
-    <p class="trial-note" style="margin-top:14px">✓ تجربة مجانية <span>14 يوم</span> · ✓ إلغاء في أي وقت · ✓ بدون بطاقة</p>
-    <p style="margin-top:10px;font-size:0.78rem;opacity:0.5">لديك حساب؟ <a href="/diet/login" style="color:var(--lime)">سجل دخول</a></p>
+    <div class="section-label" id="priceLabel">الأسعار</div>
+    <div class="section-title" id="priceTitle">باقات لكل ميزانية</div>
+    <div class="plans-row" id="plansRow"></div>
   </div>
 </div>
 
 <script>
+let _demoMealDay = null;
+
 async function loadDemo() {
   const data = await fetch('/diet/api/demo/meal-plan').then(r=>r.json()).catch(()=>null);
   if (!data?.week?.[0]) return;
-  const day = data.week[0];
+  _demoMealDay = data.week[0];
+  renderDemoDay();
+}
+
+function renderDemoDay() {
+  if (!_demoMealDay) return;
+  const isAr = window._demoLang !== 'en';
+  const s = DEMO_STRINGS[isAr ? 'ar' : 'en'];
   let cost = 0;
   let html = '';
-  day.meals.forEach(meal => {
+  _demoMealDay.meals.forEach(meal => {
     cost += meal.price || 0;
-    const ingTags = meal.ingredients.map(i => `<span class="ing-tag-d">${i.item} <span class="ing-qty-d">${i.qty.split('/')[0].trim()}</span></span>`).join('');
+    const ingTags = meal.ingredients.map(i => {
+      const parts = i.qty.split('/');
+      const qty = (isAr ? parts[0] : (parts[1]||parts[0])).trim();
+      return `<span class="ing-tag-d">${isAr?i.item:(i.itemEn||i.item)} <span class="ing-qty-d">${qty}</span></span>`;
+    }).join('');
     html += `<div class="meal-row-demo">
-      <div class="meal-type-d">${meal.type}</div>
+      <div class="meal-type-d">${isAr?meal.type:(meal.typeEn||meal.type)}</div>
       <div>
-        <div class="meal-title-d">${meal.name}</div>
+        <div class="meal-title-d">${isAr?meal.name:(meal.nameEn||meal.name)}</div>
         <div class="meal-ing-d">${ingTags}</div>
         <div class="macros-d">
           <span class="macro-d">${meal.cal} kcal</span>
@@ -277,18 +257,27 @@ async function loadDemo() {
           <span class="macro-d">C: ${meal.carbs}</span>
         </div>
       </div>
-      <div class="meal-price-d">${meal.price} ج</div>
+      <div class="meal-price-d">${meal.price} ${s.currency}</div>
     </div>`;
   });
   document.getElementById('demoDayContent').innerHTML = html;
-  document.getElementById('demoCost').textContent = `التكلفة: ${cost} جنيه`;
+  document.getElementById('demoCost').textContent = `${s.costLabel}: ${cost} ${s.currency}`;
 }
 
 async function loadRatings() {
   const data = await fetch('/diet/api/ratings').then(r=>r.json()).catch(()=>null);
   if (data?.total > 0) {
-    document.getElementById('heroRating').textContent = `${data.average} من 5 · ${data.total} تقييم`;
+    window._ratingData = data;
+    renderRating();
   }
+}
+function renderRating() {
+  const d = window._ratingData;
+  if (!d) return;
+  const isAr = window._demoLang !== 'en';
+  document.getElementById('heroRating').textContent = isAr
+    ? `${d.average} من 5 · ${d.total} تقييم`
+    : `${d.average} of 5 · ${d.total} ratings`;
 }
 
 loadDemo();
@@ -298,8 +287,9 @@ async function demoRegister(){
   const usr=document.getElementById('demoUsr').value.trim();
   const pwd=document.getElementById('demoPwd').value;
   const errEl=document.getElementById('demoRegErr');
-  if(!usr||!pwd){errEl.textContent='اسم المستخدم وكلمة المرور مطلوبان';errEl.style.display='block';return;}
-  if(pwd.length<6){errEl.textContent='كلمة المرور 6 أحرف على الأقل';errEl.style.display='block';return;}
+  const isAr = window._demoLang !== 'en';
+  if(!usr||!pwd){errEl.textContent=isAr?'اسم المستخدم وكلمة المرور مطلوبان':'Username and password are required';errEl.style.display='block';return;}
+  if(pwd.length<6){errEl.textContent=isAr?'كلمة المرور 6 أحرف على الأقل':'Password must be at least 6 characters';errEl.style.display='block';return;}
   const body={
     username:usr,password:pwd,
     email:document.getElementById('demoEmail').value.trim(),
@@ -313,8 +303,86 @@ async function demoRegister(){
     if(d.ok&&d.token){
       document.cookie=`dh_token=${d.token};path=/;max-age=28800`;
       window.location.href='/diet/dashboard';
-    }else{errEl.textContent=d.error||'حدث خطأ';errEl.style.display='block';}
-  }catch{errEl.textContent='حدث خطأ، حاول مرة أخرى';errEl.style.display='block';}
+    }else{errEl.textContent=d.error||(isAr?'حدث خطأ':'An error occurred');errEl.style.display='block';}
+  }catch{errEl.textContent=isAr?'حدث خطأ، حاول مرة أخرى':'An error occurred, please try again';errEl.style.display='block';}
+}
+
+// ── Social sign-up (Google + Facebook) — buttons only appear once the server
+// confirms it actually has credentials configured for that provider.
+let _demoGoogleLoaded = false;
+function renderDemoGoogleButton() {
+  if (!_demoGoogleLoaded) return;
+  document.getElementById('demoGoogleBtn').innerHTML = '';
+  google.accounts.id.renderButton(document.getElementById('demoGoogleBtn'), {
+    theme: 'outline', size: 'large', width: 320, text: 'continue_with', locale: window._demoLang || 'ar'
+  });
+}
+function showDemoSocialDividerIfNeeded() {
+  const anySocial = document.getElementById('demoGoogleBox').style.display !== 'none'
+    || document.getElementById('demoFacebookBox').style.display !== 'none';
+  document.getElementById('demoSocialDivider').style.display = anySocial ? 'flex' : 'none';
+}
+(function() {
+  fetch('/diet/api/config').then(r=>r.json()).then(cfg => {
+    if (cfg.googleClientId) {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.onload = () => {
+        google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: handleDemoGoogleCredential });
+        document.getElementById('demoGoogleBox').style.display = 'block';
+        _demoGoogleLoaded = true;
+        renderDemoGoogleButton();
+        showDemoSocialDividerIfNeeded();
+      };
+      document.head.appendChild(script);
+    }
+    if (cfg.facebookAppId) {
+      window.fbAsyncInit = function() {
+        FB.init({ appId: cfg.facebookAppId, cookie: false, xfbml: false, version: 'v19.0' });
+        document.getElementById('demoFacebookBox').style.display = 'block';
+        showDemoSocialDividerIfNeeded();
+      };
+      const script = document.createElement('script');
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }).catch(()=>{});
+})();
+
+async function handleDemoGoogleCredential(response) {
+  const isAr = window._demoLang !== 'en';
+  const errEl = document.getElementById('demoRegErr');
+  try {
+    const r = await fetch('/diet/api/auth/google', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ credential: response.credential }) });
+    const d = await r.json();
+    if (d.token) { document.cookie = `dh_token=${d.token};path=/;max-age=28800`; window.location.href = '/diet/dashboard'; }
+    else { errEl.textContent = d.error || (isAr?'حدث خطأ أثناء تسجيل الدخول بجوجل':'An error occurred signing in with Google'); errEl.style.display='block'; }
+  } catch { errEl.textContent = isAr?'حدث خطأ، حاول مرة أخرى':'An error occurred, please try again'; errEl.style.display='block'; }
+}
+
+function demoFbLogin() {
+  if (typeof FB === 'undefined') return;
+  FB.login(function(response) {
+    if (response.authResponse) handleDemoFacebookToken(response.authResponse.accessToken);
+    else {
+      const isAr = window._demoLang !== 'en';
+      const errEl = document.getElementById('demoRegErr');
+      errEl.textContent = isAr?'تم إلغاء تسجيل الدخول بفيسبوك':'Facebook sign-in was cancelled';
+      errEl.style.display='block';
+    }
+  }, { scope: 'email' });
+}
+async function handleDemoFacebookToken(accessToken) {
+  const isAr = window._demoLang !== 'en';
+  const errEl = document.getElementById('demoRegErr');
+  try {
+    const r = await fetch('/diet/api/auth/facebook', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ accessToken }) });
+    const d = await r.json();
+    if (d.token) { document.cookie = `dh_token=${d.token};path=/;max-age=28800`; window.location.href = '/diet/dashboard'; }
+    else { errEl.textContent = d.error || (isAr?'حدث خطأ أثناء تسجيل الدخول بفيسبوك':'An error occurred signing in with Facebook'); errEl.style.display='block'; }
+  } catch { errEl.textContent = isAr?'حدث خطأ، حاول مرة أخرى':'An error occurred, please try again'; errEl.style.display='block'; }
 }
 </script>
 
@@ -336,6 +404,36 @@ const DEMO_STRINGS = {
     currency: 'جنيه',
     lockedTitle: '6 أيام إضافية مخفية',
     lockedSub: 'سجل مجاناً للحصول على خطة 7 أيام كاملة مع المكونات والكميات والأسعار',
+    lockedDayNames: ['الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
+    lockedCta: 'سجل مجاناً وافتح الخطة الكاملة ←',
+    featLabel: 'المميزات', featTitle: 'كل ما تحتاجه في مكان واحد',
+    features: [
+      {icon:'🥗',title:'خطة وجبات يومية كاملة',desc:'إفطار وغداء وعشاء وسناك مع الكميات بالجرام لكل مكون'},
+      {icon:'💰',title:'ميزانية يومية مخصصة',desc:'حدد ميزانيتك من 100 إلى 500 جنيه وتتكيف الخطة معها تلقائياً'},
+      {icon:'🛒',title:'مقارنة أسعار السوق',desc:'كارفور vs مترو vs رويال هاوس vs تلبات — اشتري من الأرخص دائماً'},
+      {icon:'🔬',title:'دليل التحاليل الطبية',desc:'8 تحاليل مقترحة مع أسعار من 3 معامل وجدول المتابعة'},
+      {icon:'💊',title:'توصيات المكملات',desc:'أوميجا 3، واي بروتين، كرياتين — بروابط أمازون مصر مباشرة'},
+      {icon:'🏋️',title:'برنامج نشاط يومي',desc:'مبتدئ أو متوسط أو متقدم — تمارين مناسبة لنظامك الغذائي'},
+      {icon:'🌍',title:'ثنائي اللغة',desc:'عربي وإنجليزي — مناسب لمصر والخليج والمغتربين'},
+      {icon:'📊',title:'9 أنظمة غذائية',desc:'Atkins · Keto · Mediterranean · Diabetic · المرأة · الرجل · الأطفال — اختر الأنسب لك'},
+    ],
+    priceLabel: 'الأسعار', priceTitle: 'باقات لكل ميزانية', perMonth: 'جنيه / شهر',
+    plans: [
+      {name:'Basic',price:99,feats:['✓ خطة وجبات','✓ 9 أنظمة']},
+      {name:'Standard',price:179,feats:['✓ + قائمة تسوق','✓ مقارنة أسعار']},
+      {name:'Premium ⭐',price:249,feats:['✓ + التحاليل','✓ المكملات']},
+      {name:'VIP',price:349,feats:['✓ + ميزانية','✓ تليجرام']},
+      {name:'Elite',price:449,feats:['✓ + نشاط يومي','✓ دعم خليجي']},
+    ],
+    regTitle: 'ابدأ <span>مجاناً</span> اليوم',
+    regSub: 'أنشئ حسابك في دقيقة — 14 يوم تجربة مجانية كاملة',
+    usrPlaceholder: 'اسم المستخدم *', pwdPlaceholder: 'كلمة المرور * (6+ أحرف)', emailPlaceholder: 'البريد الإلكتروني (اختياري)',
+    weightPlaceholder: 'الوزن كجم', heightPlaceholder: 'الطول سم',
+    regSubmitBtn: 'ابدأ تجربتك المجانية مجاناً ←',
+    fbBtn: 'المتابعة باستخدام فيسبوك', orDivider: 'أو',
+    trialNote: '✓ تجربة مجانية <span>14 يوم</span> · ✓ إلغاء في أي وقت · ✓ بدون بطاقة',
+    haveAccount: 'لديك حساب؟ ', loginLink: 'سجل دخول',
+    loading: '⏳ جاري التحميل...',
   },
   en: {
     badge: '🆓 14-Day Free Trial',
@@ -352,14 +450,51 @@ const DEMO_STRINGS = {
     currency: 'EGP',
     lockedTitle: '6 More Days Locked',
     lockedSub: 'Sign up free to unlock the full 7-day plan with ingredients, quantities and prices',
+    lockedDayNames: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
+    lockedCta: 'Sign up free and unlock the full plan →',
+    featLabel: 'Features', featTitle: 'Everything you need in one place',
+    features: [
+      {icon:'🥗',title:'Full Daily Meal Plan',desc:'Breakfast, lunch, dinner and snack with gram quantities for every ingredient'},
+      {icon:'💰',title:'Custom Daily Budget',desc:'Set your budget from 100 to 500 EGP and the plan adapts automatically'},
+      {icon:'🛒',title:'Market Price Comparison',desc:'Carrefour vs Metro vs Royal House vs Talabat — always buy at the cheapest'},
+      {icon:'🔬',title:'Lab Test Guide',desc:'8 recommended tests with prices from 3 labs and a follow-up schedule'},
+      {icon:'💊',title:'Supplement Recommendations',desc:'Omega-3, whey protein, creatine — with direct Amazon Egypt links'},
+      {icon:'🏋️',title:'Daily Activity Program',desc:'Beginner, intermediate or advanced — exercises matched to your diet'},
+      {icon:'🌍',title:'Bilingual',desc:'Arabic and English — suited for Egypt, the Gulf, and expats'},
+      {icon:'📊',title:'9 Diet Plans',desc:'Atkins · Keto · Mediterranean · Diabetic · Women · Men · Kids — pick what fits you'},
+    ],
+    priceLabel: 'Pricing', priceTitle: 'Plans for every budget', perMonth: 'EGP / month',
+    plans: [
+      {name:'Basic',price:99,feats:['✓ Meal plan','✓ 9 diet plans']},
+      {name:'Standard',price:179,feats:['✓ + Shopping list','✓ Price comparison']},
+      {name:'Premium ⭐',price:249,feats:['✓ + Lab tests','✓ Supplements']},
+      {name:'VIP',price:349,feats:['✓ + Budget tools','✓ Telegram']},
+      {name:'Elite',price:449,feats:['✓ + Daily activity','✓ Gulf support']},
+    ],
+    regTitle: 'Start <span>Free</span> Today',
+    regSub: 'Create your account in a minute — 14 days full free trial',
+    usrPlaceholder: 'Username *', pwdPlaceholder: 'Password * (6+ characters)', emailPlaceholder: 'Email (optional)',
+    weightPlaceholder: 'Weight (kg)', heightPlaceholder: 'Height (cm)',
+    regSubmitBtn: 'Start Your Free Trial Free →',
+    fbBtn: 'Continue with Facebook', orDivider: 'or',
+    trialNote: '✓ Free trial <span>14 days</span> · ✓ Cancel anytime · ✓ No card needed',
+    haveAccount: 'Have an account? ', loginLink: 'Log in',
+    loading: '⏳ Loading...',
   }
 };
+
+const DIET_OPTIONS_DEMO=[
+  {value:'atkins',ar:'أتكينز',en:'Atkins'},{value:'keto',ar:'كيتو',en:'Keto'},
+  {value:'mediterranean',ar:'متوسطي',en:'Mediterranean'},{value:'diabetic',ar:'مرضى السكري',en:'Diabetic'},
+  {value:'women',ar:'المرأة',en:'Women'},{value:'women_40',ar:'المرأة فوق الأربعين',en:'Women Over 40'},
+  {value:'men',ar:'الرجل',en:'Men'},{value:'men_40',ar:'الرجل فوق الأربعين',en:'Men Over 40'},
+  {value:'kids',ar:'الأطفال',en:'Kids'},
+];
 
 function setDemoLang(lang) {
   const s = DEMO_STRINGS[lang];
   const isAr = lang === 'ar';
-  document.getElementById('htmlRoot')?.setAttribute('lang', lang);
-  document.getElementById('htmlRoot')?.setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  window._demoLang = lang;
   document.querySelector('html').setAttribute('lang', lang);
   document.querySelector('html').setAttribute('dir', isAr ? 'rtl' : 'ltr');
   document.getElementById('dBtnAr').classList.toggle('active', isAr);
@@ -371,7 +506,7 @@ function setDemoLang(lang) {
   if (title) title.innerHTML = s.title;
   const sub = document.querySelector('.hero-sub');
   if (sub) sub.textContent = s.sub;
-  const cta1 = document.querySelector('.btn-primary');
+  const cta1 = document.querySelector('.hero-section .btn-primary');
   if (cta1) cta1.textContent = s.cta1;
   const cta2 = document.querySelector('.btn-secondary');
   if (cta2) cta2.textContent = s.cta2;
@@ -380,12 +515,10 @@ function setDemoLang(lang) {
   const statKeys = ['stat1','stat2','stat3','stat4','stat5'];
   statLabels.forEach((el,i) => { if(statKeys[i]) el.textContent = s[statKeys[i]]; });
 
-  const sectionLabel = document.querySelector('.section-label');
-  if (sectionLabel) sectionLabel.textContent = s.demoLabel;
-  const sectionTitle = document.querySelector('.section-title');
-  if (sectionTitle) sectionTitle.textContent = s.demoTitle;
-  const sectionSub = document.querySelector('.section-sub');
-  if (sectionSub) sectionSub.textContent = s.demoSub;
+  // Demo Preview section
+  document.getElementById('demoPreviewLabel').textContent = s.demoLabel;
+  document.getElementById('demoPreviewTitle').textContent = s.demoTitle;
+  document.getElementById('demoPreviewSub').textContent = s.demoSub;
   const dayName = document.querySelector('.day-name-demo');
   if (dayName) dayName.textContent = s.dayName;
 
@@ -393,25 +526,52 @@ function setDemoLang(lang) {
   if (lockTitle) lockTitle.textContent = s.lockedTitle;
   const lockSub = document.querySelector('.lock-sub');
   if (lockSub) lockSub.textContent = s.lockedSub;
+  document.getElementById('lockedDays').innerHTML = s.lockedDayNames.map(d=>`<div class="locked-day">${d} 🔒</div>`).join('');
+  document.getElementById('lockedCta').textContent = s.lockedCta;
 
-  window._demoLang = lang;
-  window._demoCurrency = s.currency;
-  window._demoCostLabel = s.costLabel;
+  // Features section
+  document.getElementById('featLabel').textContent = s.featLabel;
+  document.getElementById('featTitle').textContent = s.featTitle;
+  document.getElementById('featuresGrid').innerHTML = s.features.map(f=>`<div class="feature-card"><div class="feature-icon">${f.icon}</div><div class="feature-title">${f.title}</div><div class="feature-desc">${f.desc}</div></div>`).join('');
+
+  // Pricing section
+  document.getElementById('priceLabel').textContent = s.priceLabel;
+  document.getElementById('priceTitle').textContent = s.priceTitle;
+  document.getElementById('plansRow').innerHTML = s.plans.map((p,i)=>`<a href="/diet/login" class="plan-d${i===2?' popular-d':''}"><div class="plan-name-d">${p.name}</div><div class="plan-price-d">${p.price}</div><div class="plan-per-d">${s.perMonth}</div><div class="plan-feat-d">${p.feats[0]}</div><div class="plan-feat-d">${p.feats[1]}</div></a>`).join('');
+
+  // Register CTA section
+  document.getElementById('regTitle').innerHTML = s.regTitle;
+  document.getElementById('regSub').textContent = s.regSub;
+  document.getElementById('demoUsr').placeholder = s.usrPlaceholder;
+  document.getElementById('demoPwd').placeholder = s.pwdPlaceholder;
+  document.getElementById('demoEmail').placeholder = s.emailPlaceholder;
+  document.getElementById('demoWeight').placeholder = s.weightPlaceholder;
+  document.getElementById('demoHeight').placeholder = s.heightPlaceholder;
+  const prevDiet = document.getElementById('demoDiet').value;
+  document.getElementById('demoDiet').innerHTML = DIET_OPTIONS_DEMO.map(o=>`<option value="${o.value}" style="background:#1a1a2e">${isAr?o.ar:o.en}</option>`).join('');
+  if (prevDiet) document.getElementById('demoDiet').value = prevDiet;
+  document.getElementById('regSubmitBtn').textContent = s.regSubmitBtn;
+  document.getElementById('demoFbBtnText').textContent = s.fbBtn;
+  document.getElementById('demoOrDivider').textContent = s.orDivider;
+  renderDemoGoogleButton();
+  document.getElementById('trialNote').innerHTML = s.trialNote;
+  document.getElementById('haveAccountLine').innerHTML = `${s.haveAccount}<a href="/diet/login?lang=${lang}" style="color:var(--lime)">${s.loginLink}</a>`;
+
+  const loadingEl = document.querySelector('#demoDayContent > div');
+  if (loadingEl && !_demoMealDay) loadingEl.textContent = s.loading;
+
+  renderDemoDay();
+  renderRating();
 }
 
-// ── LIVE PRICES from food_prices.json ────────────────────────────────────────
+// ── LIVE PRICES from food_prices.json (kept for freshness after initial load) ─
 async function loadLivePrices() {
   try {
     const r = await fetch('/diet/api/demo/meal-plan');
     const data = await r.json();
-    if (!data || !data.meals) return;
-    // Re-render cost with live prices
-    let cost = 0;
-    data.meals.forEach(m => { cost += m.price || 0; });
-    const currency = window._demoCurrency || 'جنيه';
-    const costLabel = window._demoCostLabel || 'التكلفة';
-    const costEl = document.getElementById('demoCost');
-    if (costEl) costEl.textContent = `${costLabel}: ${cost} ${currency}`;
+    if (!data?.week?.[0]) return;
+    _demoMealDay = data.week[0];
+    renderDemoDay();
   } catch(e) {}
 }
 
@@ -419,6 +579,10 @@ window.setDemoLang = setDemoLang;
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(loadLivePrices, 1500);
 });
+(function(){
+  const urlLang = new URLSearchParams(window.location.search).get('lang');
+  setDemoLang(urlLang === 'en' ? 'en' : 'ar');
+})();
 </script>
 
 </body>

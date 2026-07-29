@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>DietHub — تفعيل البريد الإلكتروني</title>
@@ -30,39 +33,70 @@ p{color:rgba(255,255,255,0.7);line-height:1.6;font-size:0.9rem;margin-bottom:20p
 .msg-ok{background:rgba(200,245,96,0.15);border:1px solid rgba(200,245,96,0.3);color:var(--lime)}
 .msg-err{background:rgba(255,87,87,0.15);border:1px solid rgba(255,87,87,0.3);color:#ff8a8a}
 .divider{color:rgba(255,255,255,0.3);font-size:0.78rem;margin:12px 0}
+@media(max-width:360px){.card{padding:28px 20px}}
+.lang-toggle{position:fixed;top:16px;left:16px;z-index:999;display:flex;gap:4px;background:rgba(255,255,255,0.08);border-radius:20px;padding:3px;backdrop-filter:blur(10px)}
+.lang-btn{padding:5px 14px;border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer;background:none;color:rgba(255,255,255,0.6);transition:all 0.2s}
+.lang-btn.active{background:#C8F560;color:#1A1A2E}
 </style>
+<script defer src="https://analytics.talabatito.com/script.js" data-website-id="4ed211ee-9096-49e6-a619-0bbca563db5b"></script>
 </head>
 <body>
+<div class="lang-toggle">
+  <button class="lang-btn active" id="lBtnAr" onclick="setPageLang('ar')">عربي</button>
+  <button class="lang-btn" id="lBtnEn" onclick="setPageLang('en')">EN</button>
+</div>
 <div class="blob blob-1"></div>
 <div class="blob blob-2"></div>
 <div class="card">
   <div class="icon">📧</div>
-  <h1>تحقق من بريدك الإلكتروني</h1>
-  <p>أرسلنا لك رابط تفعيل. يرجى فتح بريدك الإلكتروني والضغط على الرابط لتفعيل حسابك.</p>
-  <p style="font-size:0.82rem;color:rgba(255,255,255,0.4)">We sent you a verification link. Check your email and click it to activate your account.</p>
+  <h1 id="pgTitle">تحقق من بريدك الإلكتروني</h1>
+  <p id="pgDesc">أرسلنا لك رابط تفعيل. يرجى فتح بريدك الإلكتروني والضغط على الرابط لتفعيل حسابك.</p>
 
   <div class="steps">
-    <div class="step"><div class="step-num">1</div><span>افتح بريدك الإلكتروني / Open your email</span></div>
-    <div class="step"><div class="step-num">2</div><span>ابحث عن رسالة من DietHub</span></div>
-    <div class="step"><div class="step-num">3</div><span>اضغط على "تفعيل الحساب" / Click "Verify Account"</span></div>
-    <div class="step"><div class="step-num">4</div><span>ستعود تلقائياً للوحة التحكم</span></div>
+    <div class="step"><div class="step-num">1</div><span id="step1">افتح بريدك الإلكتروني</span></div>
+    <div class="step"><div class="step-num">2</div><span id="step2">ابحث عن رسالة من DietHub</span></div>
+    <div class="step"><div class="step-num">3</div><span id="step3">اضغط على "تفعيل الحساب"</span></div>
+    <div class="step"><div class="step-num">4</div><span id="step4">ستعود تلقائياً للوحة التحكم</span></div>
   </div>
 
-  <div class="divider">لم تصلك الرسالة؟ / Didn't receive it?</div>
-  <div class="msg msg-ok" id="resendOk">✅ تم إرسال رسالة تفعيل جديدة / New verification email sent!</div>
+  <div class="divider" id="resendDivider">لم تصلك الرسالة؟</div>
+  <div class="msg msg-ok" id="resendOk">✅ تم إرسال رسالة تفعيل جديدة!</div>
   <div class="msg msg-err" id="resendErr"></div>
-  <input class="input-email" type="email" id="resendEmail" placeholder="أدخل بريدك الإلكتروني / Enter your email">
-  <button class="btn btn-primary" onclick="resend()">إعادة إرسال رابط التفعيل 📧</button>
-  <button class="btn btn-secondary" onclick="location.href='/diet/logout'">تسجيل خروج وتسجيل حساب جديد</button>
+  <input class="input-email" type="email" id="resendEmail" placeholder="أدخل بريدك الإلكتروني">
+  <button class="btn btn-primary" id="resendBtn" onclick="resend()">إعادة إرسال رابط التفعيل 📧</button>
+  <button class="btn btn-secondary" id="logoutBtn" onclick="location.href='/diet/logout'">تسجيل خروج وتسجيل حساب جديد</button>
 </div>
 <script>
+const STRINGS={
+  ar:{title:'تحقق من بريدك الإلكتروني',desc:'أرسلنا لك رابط تفعيل. يرجى فتح بريدك الإلكتروني والضغط على الرابط لتفعيل حسابك.',step1:'افتح بريدك الإلكتروني',step2:'ابحث عن رسالة من DietHub',step3:'اضغط على "تفعيل الحساب"',step4:'ستعود تلقائياً للوحة التحكم',resendDivider:'لم تصلك الرسالة؟',resendOk:'✅ تم إرسال رسالة تفعيل جديدة!',emailPlaceholder:'أدخل بريدك الإلكتروني',resendBtn:'إعادة إرسال رابط التفعيل 📧',logoutBtn:'تسجيل خروج وتسجيل حساب جديد',emptyEmail:'يرجى إدخال البريد الإلكتروني',genericErr:'حدث خطأ'},
+  en:{title:'Check Your Email',desc:'We sent you a verification link. Check your email and click the link to activate your account.',step1:'Open your email',step2:'Look for a message from DietHub',step3:'Click "Verify Account"',step4:'You\'ll return to the dashboard automatically',resendDivider:'Didn\'t receive it?',resendOk:'✅ New verification email sent!',emailPlaceholder:'Enter your email',resendBtn:'Resend Verification Link 📧',logoutBtn:'Log Out and Register a New Account',emptyEmail:'Please enter your email address',genericErr:'An error occurred'}
+};
+let _pageLang='ar';
+function setPageLang(lang){
+  const s=STRINGS[lang];const isAr=lang==='ar';_pageLang=lang;
+  document.querySelector('html').setAttribute('lang',lang);document.querySelector('html').setAttribute('dir',isAr?'rtl':'ltr');
+  document.getElementById('lBtnAr').classList.toggle('active',isAr);document.getElementById('lBtnEn').classList.toggle('active',!isAr);
+  document.getElementById('pgTitle').textContent=s.title;
+  document.getElementById('pgDesc').textContent=s.desc;
+  document.getElementById('step1').textContent=s.step1;
+  document.getElementById('step2').textContent=s.step2;
+  document.getElementById('step3').textContent=s.step3;
+  document.getElementById('step4').textContent=s.step4;
+  document.getElementById('resendDivider').textContent=s.resendDivider;
+  document.getElementById('resendOk').textContent=s.resendOk;
+  document.getElementById('resendEmail').placeholder=s.emailPlaceholder;
+  document.getElementById('resendBtn').textContent=s.resendBtn;
+  document.getElementById('logoutBtn').textContent=s.logoutBtn;
+}
+window.setPageLang=setPageLang;
 async function resend() {
   const email = document.getElementById('resendEmail').value.trim();
-  if (!email) { show('resendErr','يرجى إدخال البريد الإلكتروني'); return; }
+  const s = STRINGS[_pageLang];
+  if (!email) { show('resendErr', s.emptyEmail); return; }
   const r = await fetch('/diet/resend-verification', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email}) });
   const d = await r.json();
   if (d.ok) show('resendOk');
-  else show('resendErr', d.error || 'حدث خطأ');
+  else show('resendErr', d.error || s.genericErr);
 }
 function show(id, msg) {
   document.getElementById('resendOk').style.display = 'none';
@@ -72,6 +106,10 @@ function show(id, msg) {
   el.style.display = 'block';
   setTimeout(() => el.style.display='none', 5000);
 }
+(function(){
+  const urlLang = new URLSearchParams(window.location.search).get('lang');
+  setPageLang(urlLang === 'en' ? 'en' : 'ar');
+})();
 </script>
 
 <!-- Universal Back Button -->

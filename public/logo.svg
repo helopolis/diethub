@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 130" width="620" height="130">
+  <rect width="620" height="130" rx="16" fill="#F0FAF4" stroke="#1A4731" stroke-width="2"/>
+  <line x1="30" y1="25" x2="30" y2="105" stroke="#1A4731" stroke-width="9" stroke-linecap="round"/>
+  <path d="M30 25 Q80 25 80 65 Q80 105 30 105" fill="none" stroke="#1A4731" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="96" y1="25" x2="96" y2="105" stroke="#1A4731" stroke-width="9" stroke-linecap="round"/>
+  <line x1="136" y1="25" x2="136" y2="105" stroke="#1A4731" stroke-width="9" stroke-linecap="round"/>
+  <line x1="96" y1="65" x2="136" y2="65" stroke="#1A4731" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="140" cy="25" r="9" fill="#40916C"/>
+  <line x1="168" y1="20" x2="168" y2="110" stroke="#1A4731" stroke-width="1" opacity="0.2"/>
+  <text x="190" y="70" font-family="Courier New, monospace" font-size="34" font-weight="700">
+    <tspan fill="#40916C">diet.</tspan><tspan fill="#1A4731">talabatito</tspan><tspan fill="#40916C">.com</tspan>
+  </text>
+  <text x="190" y="98" font-family="Arial, sans-serif" font-size="12" fill="#40916C" letter-spacing="3" font-weight="500">HEALTH · NUTRITION · WELLNESS</text>
+</svg>

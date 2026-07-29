@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html id="htmlRoot" lang="ar" dir="rtl">
 <head>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>DietHub — لوحة التحكم</title>
@@ -30,6 +33,8 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-h
 .user-pill{background:var(--bg);border:1px solid var(--border);border-radius:24px;padding:5px 14px 5px 6px;display:flex;align-items:center;gap:8px;font-size:0.82rem;font-weight:600}
 .avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--mint),var(--green));display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:700}
 .logout-btn{background:none;border:1px solid rgba(255,87,87,0.3);color:var(--coral);cursor:pointer;font-size:0.8rem;font-family:'Cairo',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s}
+.invite-btn{background:none;border:1px solid rgba(45,106,79,0.35);color:var(--green);cursor:pointer;font-size:0.8rem;font-family:'Cairo',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s;white-space:nowrap}
+.invite-btn:hover{background:var(--green);color:#fff}
 .back-admin-btn{background:rgba(200,245,96,0.15);border:1px solid rgba(200,245,96,0.4);color:#C8F560;cursor:pointer;font-size:0.8rem;font-family:'Cairo',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s;text-decoration:none;display:none}
 .logout-btn:hover{background:var(--coral);color:#fff}
 
@@ -62,8 +67,8 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-h
 /* GRID */
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
-@media(max-width:768px){.grid-3,.grid-2{grid-template-columns:1fr}.nav{padding:0 12px;height:56px}.nav-right{gap:6px}.logo-text{font-size:1.1rem}.trial-badge{display:none}.main{padding:12px}.hero{padding:18px 16px;border-radius:14px}.hero-name{font-size:1.4rem}.hero-stats{gap:8px}.hstat{padding:8px 12px}.tabs{padding:0 8px}.tab{padding:10px 10px;font-size:0.78rem}.week-strip{grid-template-columns:repeat(7,1fr);gap:3px}.day-box{padding:6px 2px}.supp-grid{grid-template-columns:1fr 1fr}.lab-card{grid-template-columns:auto 1fr;gap:8px}.level-btns{flex-wrap:wrap}.budget-section{padding:14px}.meal-table{font-size:0.8rem}}
-@media(max-width:480px){.nav-right .user-pill span:not(.avatar){display:none}.hero-top{flex-direction:column}.trial-info{width:100%;min-width:unset}.hero-stats{gap:6px}.hstat{flex:1;min-width:80px}.tab{padding:8px 6px;font-size:0.72rem}.supp-grid{grid-template-columns:1fr}.lab-card{grid-template-columns:1fr}.week-strip{gap:2px}.day-name{font-size:0.6rem}.day-act{font-size:0.65rem}.act-row{grid-template-columns:36px 1fr auto}.act-icon-box{width:36px;height:36px;font-size:1rem}.main{padding:8px}}
+@media(max-width:768px){.grid-3,.grid-2{grid-template-columns:1fr}.nav{padding:0 12px;height:56px}.nav-right{gap:6px}.logo-text{font-size:1.1rem}.trial-badge{display:none}.main{padding:12px}.hero{padding:18px 16px;border-radius:14px}.hero-name{font-size:1.4rem}.hero-stats{gap:8px}.hstat{padding:8px 12px}.tabs{padding:0 8px}.tab{padding:11px 10px;font-size:0.78rem}.week-strip{grid-template-columns:repeat(7,1fr);gap:3px}.day-box{padding:6px 2px}.supp-grid{grid-template-columns:1fr 1fr}.lab-card{grid-template-columns:auto 1fr;gap:8px}.level-btns{flex-wrap:wrap}.budget-section{padding:14px}.meal-table{font-size:0.8rem}#macroSummary,#watchVitals1,#watchManualRow1{grid-template-columns:repeat(2,1fr)}#watchVitals2,#watchManualRow2{grid-template-columns:repeat(2,1fr)}.period-btn{padding:10px 16px}.lang-btn{padding:9px 14px}.logout-btn{padding:9px 14px}.invite-btn{padding:9px 10px;font-size:0.72rem}}
+@media(max-width:480px){.nav-right .user-pill span:not(.avatar){display:none}.hero-top{flex-direction:column}.trial-info{width:100%;min-width:unset}.hero-stats{gap:6px}.hstat{flex:1;min-width:80px}.tab{padding:10px 8px;font-size:0.75rem}.supp-grid{grid-template-columns:1fr}.lab-card{grid-template-columns:1fr}.week-strip{gap:2px}.day-name{font-size:0.6rem}.day-act{font-size:0.65rem}.act-row{grid-template-columns:36px 1fr auto}.act-icon-box{width:36px;height:36px;font-size:1rem}.main{padding:8px}#macroSummary,#watchManualRow1{grid-template-columns:1fr 1fr}.meal-type-cell{min-width:56px}.meal-table th:nth-child(1),.meal-table td:nth-child(1){min-width:56px!important}.meal-table th:nth-child(2),.meal-table td:nth-child(2){min-width:44px!important}.meal-table td{padding:10px 8px}.swap-btn{padding:10px 14px!important;font-size:0.8rem!important}.swap-chip{padding:9px 14px!important;font-size:0.78rem!important}}
 .card{background:#fff;border-radius:16px;padding:20px;border:1px solid var(--border);box-shadow:var(--shadow)}
 .card-title{font-size:0.82rem;font-weight:700;color:var(--muted);margin-bottom:14px;text-transform:uppercase;letter-spacing:0.5px}
 .stat-val{font-size:1.8rem;font-weight:700;margin-bottom:4px}
@@ -264,7 +269,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 #chatbot-fab-btn{width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#C8F560,#A8E063);border:none;cursor:pointer;box-shadow:0 4px 20px rgba(200,245,96,0.5);display:flex;align-items:center;justify-content:center;transition:transform 0.2s}
 #chatbot-fab-btn:hover{transform:scale(1.1)}
 #chatbot-badge{position:absolute;top:-4px;right:-4px;background:#ff4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:0.7rem;display:none;align-items:center;justify-content:center;font-weight:700}
-#chatbot-window{position:fixed;bottom:96px;left:24px;width:340px;max-height:520px;background:#1a1a2e;border:1px solid rgba(200,245,96,0.3);border-radius:20px;z-index:9999;display:none;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);overflow:hidden}
+#chatbot-window{position:fixed;bottom:96px;left:24px;width:min(340px,calc(100vw - 48px));max-height:520px;background:#1a1a2e;border:1px solid rgba(200,245,96,0.3);border-radius:20px;z-index:9999;display:none;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);overflow:hidden}
 #chatbot-header{background:linear-gradient(135deg,#C8F560,#A8E063);padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
 #chatbot-header-title{font-weight:700;color:#1a1a2e;font-size:0.95rem;font-family:"Cairo",sans-serif}
 #chatbot-close{background:none;border:none;cursor:pointer;color:#1a1a2e;font-size:1.2rem;padding:0;line-height:1}
@@ -284,6 +289,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 #chatbot-popup-dismiss{background:none;border:none;color:#666;font-size:0.8rem;cursor:pointer;margin-right:10px;font-family:"Cairo",sans-serif}
 </style>
   <script async src="https://umami.talabatito.com/script.js" data-website-id="diethub-dashboard"></script>
+<script defer src="https://analytics.talabatito.com/script.js" data-website-id="4ed211ee-9096-49e6-a619-0bbca563db5b"></script>
 </head>
 <body>
 
@@ -302,6 +308,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
       <div class="avatar" id="userInitial">M</div>
       <span id="userName">...</span>
     </div>
+    <button class="invite-btn" onclick="inviteFriend()" id="btnInvite">📤 ادعُ صديق</button>
     <button class="logout-btn" onclick="location.href='/diet/logout'" id="btnLogout">خروج ←</button>
     <a class="back-admin-btn" id="backAdminBtn" href="/diet/dashboard">← لوحة الإدارة</a>
   </div>
@@ -342,6 +349,8 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
       <div class="hstat"><div class="hstat-val" id="hBudget">—</div><div class="hstat-label" id="lBudget">ميزانية يومية</div></div>
       <div class="hstat"><div class="hstat-val">1,650</div><div class="hstat-label" id="lCal">سعرات يومية</div></div>
       <div class="hstat"><div class="hstat-val" style="color:var(--coral)">3</div><div class="hstat-label" id="lLabs">تحاليل عاجلة</div></div>
+      <div class="hstat"><div class="hstat-val" id="hBmi">—</div><div class="hstat-label" id="lBmi">مؤشر كتلة الجسم · BMI</div></div>
+      <div class="hstat"><div class="hstat-val" id="hBmr">—</div><div class="hstat-label" id="lBmr">الأيض الأساسي · BMR</div></div>
     </div>
   </div>
 
@@ -393,10 +402,15 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
   </div>
 
   <div class="diet-pills" id="dietPills">
-    <button class="diet-pill active" onclick="switchDiet(this,'atkins')">Atkins</button>
-    <button class="diet-pill" onclick="switchDiet(this,'keto')">Keto</button>
-    <button class="diet-pill" onclick="switchDiet(this,'mediterranean')">Mediterranean</button>
-    <button class="diet-pill" onclick="switchDiet(this,'diabetic')">Diabetic</button>
+    <button class="diet-pill active" onclick="switchDiet(this,'atkins')" data-ar="أتكينز" data-en="Atkins">Atkins</button>
+    <button class="diet-pill" onclick="switchDiet(this,'keto')" data-ar="كيتو" data-en="Keto">Keto</button>
+    <button class="diet-pill" onclick="switchDiet(this,'mediterranean')" data-ar="متوسطي" data-en="Mediterranean">Mediterranean</button>
+    <button class="diet-pill" onclick="switchDiet(this,'diabetic')" data-ar="مرضى السكري" data-en="Diabetic">Diabetic</button>
+    <button class="diet-pill" onclick="switchDiet(this,'women')" data-ar="المرأة" data-en="Women">Women</button>
+    <button class="diet-pill" onclick="switchDiet(this,'women_40')" data-ar="المرأة فوق الأربعين" data-en="Women 40+">Women 40+</button>
+    <button class="diet-pill" onclick="switchDiet(this,'men')" data-ar="الرجل" data-en="Men">Men</button>
+    <button class="diet-pill" onclick="switchDiet(this,'men_40')" data-ar="الرجل فوق الأربعين" data-en="Men 40+">Men 40+</button>
+    <button class="diet-pill" onclick="switchDiet(this,'kids')" data-ar="الأطفال" data-en="Kids">Kids</button>
   </div>
 
   <div class="budget-section">
@@ -468,14 +482,9 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
     <button class="level-btn" onclick="setLevel(this,'advanced')" id="lAdv">متقدم</button>
   </div>
   <div class="week-strip" id="weekStrip">
-    <div class="day-box today"><div class="day-name" id="dSun">أحد</div><div class="day-act" id="dSunAct">مشي</div></div>
-    <div class="day-box"><div class="day-name" id="dMon">اثنين</div><div class="day-act" id="dMonAct">تمارين</div></div>
-    <div class="day-box rest"><div class="day-name" id="dTue">ثلاثاء</div><div class="day-act" id="dTueAct">راحة</div></div>
-    <div class="day-box"><div class="day-name" id="dWed">أربعاء</div><div class="day-act" id="dWedAct">مشي</div></div>
-    <div class="day-box"><div class="day-name" id="dThu">خميس</div><div class="day-act" id="dThuAct">تمارين</div></div>
-    <div class="day-box rest"><div class="day-name" id="dFri">جمعة</div><div class="day-act" id="dFriAct">راحة</div></div>
-    <div class="day-box"><div class="day-name" id="dSat">سبت</div><div class="day-act" id="dSatAct">مشي</div></div>
+    <div class="loading">⏳</div>
   </div>
+  <div id="dayDetail" style="display:none;background:var(--bg);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:0.85rem"></div>
   <div class="card" id="actList"></div>
 </div>
 
@@ -527,6 +536,9 @@ const T = {
     rateTitle:'⭐ قيّم الخدمة', rateBtn:'إرسال التقييم ⭐',
     urgentAlert:'⚠️ 3 تحاليل عاجلة يجب إجراؤها قبل بدء النظام وبعد أسبوعين',
     cheapest:'الأرخص', savings:'توفير',
+    inviteBtn:'📤 ادعُ صديق', inviteShareTitle:'DietHub - نظامك الغذائي المخصص',
+    inviteShareText:'جربت DietHub وحبيته! سجل مجاناً واحصل على خطتك الغذائية المخصصة:',
+    inviteCopied:'✓ تم نسخ الرابط! شاركه مع أصدقائك',
     beginner:'مبتدئ', intermediate:'متوسط', advanced:'متقدم',
     days:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
     daysShort:['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت']
@@ -543,6 +555,9 @@ const T = {
     rateTitle:'⭐ Rate Our Service', rateBtn:'Submit Rating ⭐',
     urgentAlert:'⚠️ 3 urgent tests required before starting your diet and after 2 weeks',
     cheapest:'Cheapest', savings:'Save',
+    inviteBtn:'📤 Invite a Friend', inviteShareTitle:'DietHub - Your Personalized Diet Plan',
+    inviteShareText:'I tried DietHub and loved it! Sign up free and get your own personalized diet plan:',
+    inviteCopied:'✓ Link copied! Share it with your friends',
     beginner:'Beginner', intermediate:'Intermediate', advanced:'Advanced',
     days:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
     daysShort:['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -551,6 +566,23 @@ const T = {
 
 function t(key) { return T[currentLang]?.[key] || T.ar[key] || key; }
 
+async function inviteFriend() {
+  const signupUrl = 'https://diet.talabatito.com/diet/demo';
+  const shareData = { title: t('inviteShareTitle'), text: t('inviteShareText'), url: signupUrl };
+  if (navigator.share) {
+    try { await navigator.share(shareData); return; } catch (e) { /* user cancelled or share failed - fall through to clipboard */ }
+  }
+  try {
+    await navigator.clipboard.writeText(`${t('inviteShareText')} ${signupUrl}`);
+    const btn = document.getElementById('btnInvite');
+    const original = btn.textContent;
+    btn.textContent = t('inviteCopied');
+    setTimeout(() => { btn.textContent = original; }, 2500);
+  } catch (e) {
+    prompt(t('inviteShareText'), signupUrl);
+  }
+}
+
 function setLang(lang) {
   currentLang = lang;
   document.getElementById('htmlRoot').setAttribute('lang', lang);
@@ -558,8 +590,12 @@ function setLang(lang) {
   document.getElementById('btnAr').classList.toggle('active', lang==='ar');
   document.getElementById('btnEn').classList.toggle('active', lang==='en');
   document.getElementById('btnLogout').textContent = t('logout');
+  document.getElementById('btnInvite').textContent = t('inviteBtn');
   document.querySelectorAll('.tab').forEach(tab => {
     tab.textContent = tab.dataset[lang] || tab.textContent;
+  });
+  document.querySelectorAll('.diet-pill').forEach(pill => {
+    pill.textContent = pill.dataset[lang] || pill.textContent;
   });
   document.getElementById('labAlert').textContent = t('urgentAlert');
   // Stat labels
@@ -581,23 +617,21 @@ function setLang(lang) {
   const aLipid = document.getElementById('aLipid'); if(aLipid) aLipid.textContent = lang==='ar'?'موعد تحليل دهون الدم الشهري اقترب':'Monthly lipid test is due soon';
   const aMeal = document.getElementById('aMeal'); if(aMeal) aMeal.textContent = lang==='ar'?'خطة الوجبات محدثة بأحدث أسعار السوق':'Meal plan updated with latest market prices';
   const aTip = document.getElementById('aTip'); if(aTip) aTip.textContent = lang==='ar'?'اشرب 2.5 لتر ماء يومياً مع نظام Atkins':'Drink 2.5L of water daily on Atkins diet';
+  const cpTitle = document.getElementById('chatbot-popup-title'); if(cpTitle) cpTitle.textContent = lang==='ar'?'وقت المتابعة الغذائية 🥗':'Nutrition Check-in 🥗';
+  const cpText = document.getElementById('chatbot-popup-text'); if(cpText) cpText.textContent = lang==='ar'?'لديك أسئلة متابعة جديدة من مساعدك الغذائي الذكي':'You have new follow-up questions from your AI nutrition assistant';
+  const cpBtn = document.getElementById('chatbot-popup-btn'); if(cpBtn) cpBtn.textContent = lang==='ar'?'فتح المساعد ←':'Open Assistant →';
+  const cpDismiss = document.getElementById('chatbot-popup-dismiss'); if(cpDismiss) cpDismiss.textContent = lang==='ar'?'لاحقاً':'Later';
+  const ctText = document.getElementById('chatbot-title-text'); if(ctText) ctText.textContent = lang==='ar'?'مساعدك الغذائي الذكي':'Your AI Nutrition Assistant';
+  const cinput = document.getElementById('chatbot-input'); if(cinput) cinput.placeholder = lang==='ar'?'اكتب ردك هنا...':'Type your reply here...';
   const mTitle = document.getElementById('mTitle'); if(mTitle) mTitle.textContent = lang==='ar'?'🥗 خطة الوجبات الأسبوعية':'🥗 Weekly Meal Plan';
   // Activity section
   const aTitle = document.getElementById('aTitle'); if(aTitle) aTitle.textContent = lang==='ar'?'🏋️ البرنامج التدريبي اليومي':'🏋️ Daily Training Program';
-  const aBadge = document.getElementById('aBadge'); if(aBadge) aBadge.textContent = lang==='ar'?`مخصص لـ ${window._currentDiet||''}`:`For ${window._currentDiet||''}`;
+  updateDietBadges();
   // Rating form
   const rFormTitle = document.getElementById('rFormTitle'); if(rFormTitle) rFormTitle.textContent = lang==='ar'?'شاركنا رأيك':'Share Your Feedback';
   const rFormSub = document.getElementById('rFormSub'); if(rFormSub) rFormSub.textContent = lang==='ar'?'تقييمك يساعدنا في تحسين الخدمة':'Your rating helps us improve the service';
   const rName = document.getElementById('rName'); if(rName) rName.placeholder = lang==='ar'?'اسمك (اختياري)':'Your name (optional)';
   const rComment = document.getElementById('rComment'); if(rComment) rComment.placeholder = lang==='ar'?'تعليقك على الخدمة...':'Your comment about the service...';
-  // Day names
-  const days = lang==='ar'?['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت']:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const acts = lang==='ar'?['مشي','تمارين','راحة','مشي','تمارين','راحة','مشي']:['Walk','Train','Rest','Walk','Train','Rest','Walk'];
-  const dayIds = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  dayIds.forEach((d,i) => {
-    const dn = document.getElementById('d'+d); if(dn) dn.textContent = days[i];
-    const da = document.getElementById('d'+d+'Act'); if(da) da.textContent = acts[i];
-  });
   const hSub = document.getElementById('hSub'); if(hSub) hSub.textContent = lang==='ar'?'اشتراكك نشط · رحلتك نحو صحة أفضل تبدأ اليوم':'Your subscription is active · Your journey to better health starts today';
   const hName = document.getElementById('hName'); if(hName) hName.textContent = t('welcome') + ' ' + (window._currentUsername||'') + ' 👋';
   document.getElementById('bTitle').textContent = t('budgetTitle');
@@ -611,6 +645,7 @@ function setLang(lang) {
   document.getElementById('lInt').textContent = t('intermediate');
   document.getElementById('lAdv').textContent = t('advanced');
   if (mealPlanData) renderMeals();
+  if (activityPlan) { renderWeekStrip(); setLevel(document.querySelector('.level-btn.active'), currentActivityLevel); }
   fetch('/diet/api/profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lang}) });
 }
 
@@ -622,6 +657,7 @@ async function init() {
   }
   const me = await fetch('/diet/api/me').then(r=>r.json()).catch(()=>null);
   window._userPlan = me?.plan || '';
+  window._betaMode = !!me?.betaMode;
   if (!me) return;
   currentLang = me.lang || 'ar';
   setLang(currentLang);
@@ -632,15 +668,17 @@ async function init() {
   window._currentUsername = me.username;
   window._currentDiet = currentDiet;
   document.getElementById('hName').textContent = t('welcome') + ' ' + me.username + ' 👋';
-  document.getElementById('hDiet').textContent = currentDiet;
-  document.getElementById('hsDiet').textContent = currentDiet;
   document.getElementById('hBudget').textContent = currentBudget + (currentLang==='ar'?' ج':' EGP');
+  document.getElementById('hBmi').textContent = me.profile?.bmi ?? '—';
+  document.getElementById('hBmr').textContent = me.profile?.bmr ? me.profile.bmr + (currentLang==='ar'?' سعرة':' kcal') : '—';
   document.getElementById('budgetSlider').value = currentBudget;
   document.getElementById('budgetDisplay').textContent = currentBudget + (currentLang==='ar'?' جنيه':' EGP');
-  document.getElementById('mBadge').textContent = currentDiet;
   document.querySelectorAll('.diet-pill').forEach(p => {
-    p.classList.toggle('active', p.textContent.toLowerCase().includes(currentDiet.toLowerCase()));
+    const onclickAttr = p.getAttribute('onclick') || '';
+    const match = onclickAttr.match(/switchDiet\(this,'([a-z_0-9]+)'\)/);
+    p.classList.toggle('active', match && match[1] === currentDiet);
   });
+  updateDietBadges();
   if (me.trial && !me.trial.expired && me.trial.daysLeft < 999) {
     document.getElementById('trialInfo').style.display = 'block';
     document.getElementById('trialDays').textContent = me.trial.daysLeft;
@@ -649,7 +687,7 @@ async function init() {
     document.getElementById('trialBadge').textContent = me.trial.daysLeft + ' ' + t('trialLeft');
   }
   buildWeekNav();
-  setLevel(document.querySelector('.level-btn.active'), 'beginner');
+  loadActivityPlan();
 }
 
 function buildWeekNav() {
@@ -678,15 +716,35 @@ function switchTab(el, id) {
   if (id==='tracker') initNutritionTracker();
   if (id==='watch') initWatchPanel();
   if (id==='labtrack') initLabTracker();
+  if (id==='activity') loadActivityPlan();
+}
+
+const DIET_LABELS = {
+  atkins:{ar:'أتكينز',en:'Atkins'}, keto:{ar:'كيتو',en:'Keto'}, mediterranean:{ar:'متوسطي',en:'Mediterranean'},
+  diabetic:{ar:'مرضى السكري',en:'Diabetic'}, women:{ar:'المرأة',en:'Women'}, women_40:{ar:'المرأة فوق الأربعين',en:'Women 40+'},
+  men:{ar:'الرجل',en:'Men'}, men_40:{ar:'الرجل فوق الأربعين',en:'Men 40+'}, kids:{ar:'الأطفال',en:'Kids'},
+};
+function dietLabel(diet){ const isAr = currentLang === 'ar'; return DIET_LABELS[diet]?.[isAr?'ar':'en'] || diet; }
+
+function updateDietBadges() {
+  const isAr = currentLang === 'ar';
+  window._currentDiet = currentDiet;
+  const label = dietLabel(currentDiet);
+  const mBadge = document.getElementById('mBadge'); if (mBadge) mBadge.textContent = label;
+  const sBadge = document.getElementById('sBadge'); if (sBadge) sBadge.textContent = isAr?`موصى بها لـ ${label}`:`Recommended for ${label}`;
+  const aBadge = document.getElementById('aBadge'); if (aBadge) aBadge.textContent = isAr?`مخصص لـ ${label}`:`For ${label}`;
+  const hDiet = document.getElementById('hDiet'); if (hDiet) hDiet.textContent = label;
+  const hsDiet = document.getElementById('hsDiet'); if (hsDiet) hsDiet.textContent = label;
 }
 
 function switchDiet(el, diet) {
   document.querySelectorAll('.diet-pill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   currentDiet = diet;
-  document.getElementById('mBadge').textContent = diet;
+  updateDietBadges();
   mealPlanData = null;
   loadMeals();
+  loadActivityPlan();
   savePref();
 }
 
@@ -729,6 +787,7 @@ function renderMeals() {
         <span class="day-within ${withinBudget?'within-yes':'within-no'}">${withinBudget?t('withinBudget'):t('overBudget')}</span>
       </div>
     </div>
+    ${(mealPlanData.labAdvisory||[]).map(a=>`<div class="wx-alert" style="margin-top:12px"><div class="wx-alert-icon">🩺</div><div class="wx-alert-text">${a}</div></div>`).join('')}
     <div style="overflow-x:auto">
     <table class="meal-table">
       <thead><tr>
@@ -740,9 +799,9 @@ function renderMeals() {
       </tr></thead>
       <tbody>`;
 
-  day.meals.forEach(meal => {
+  day.meals.forEach((meal, idx) => {
     const typeMap = { 'إفطار':'breakfast', 'Breakfast':'breakfast', 'غداء':'lunch', 'Lunch':'lunch', 'عشاء':'dinner', 'Dinner':'dinner', 'سناك':'snack', 'Snack':'snack' };
-    const typeClass = typeMap[meal.type] || typeMap[meal.typeEn] || 'snack';
+    const typeClass = meal.mealTypeKey || typeMap[meal.type] || typeMap[meal.typeEn] || 'snack';
     const mealName = isAr ? meal.name : meal.nameEn;
     const mealType = isAr ? meal.type : meal.typeEn;
     const ingTags = meal.ingredients.map(ing => {
@@ -750,6 +809,8 @@ function renderMeals() {
       const name = isAr ? ing.item : ing.itemEn;
       return `<span class="ingredient-tag">${name} <span class="ingredient-qty">${qty}</span></span>`;
     }).join('');
+    const swapsRemaining = meal.swapsRemaining ?? 3;
+    const canSwap = swapsRemaining > 0 && currentDay === 0;
     html += `<tr>
       <td class="meal-type-cell"><span class="meal-type-badge ${typeClass}">${mealType}</span></td>
       <td style="font-size:0.82rem;color:var(--muted);white-space:nowrap">${meal.time}</td>
@@ -762,6 +823,16 @@ function renderMeals() {
           <span class="macro-tag macro-c">C: ${meal.carbs}</span>
           <span class="macro-tag macro-f">F: ${meal.fat}</span>
         </div>
+        ${currentDay === 0 ? `
+        <div style="margin-top:8px">
+          <button class="swap-btn" onclick="toggleSwapChips(${idx})" ${swapsRemaining<=0?'disabled':''} style="font-size:0.75rem;padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:${swapsRemaining>0?'#fff':'#f1f1f1'};color:${swapsRemaining>0?'var(--dark)':'var(--muted)'};cursor:${swapsRemaining>0?'pointer':'not-allowed'}">
+            🔄 ${isAr?'غيّر الوجبة':'Change meal'} ${swapsRemaining>0?`(${isAr?'متبقي '+swapsRemaining:swapsRemaining+' left'})`:`(${isAr?'انتهت المحاولات':'no swaps left'})`}
+          </button>
+          <div id="swapChips_${idx}" style="display:none;margin-top:6px;flex-wrap:wrap;gap:6px" class="swap-chips-row">
+            ${Object.entries({tastier:isAr?'ألذ 😋':'Tastier 😋',spicy:isAr?'حار 🌶️':'Spicy 🌶️',faster:isAr?'أسرع تحضير ⏱️':'Faster ⏱️',cheaper:isAr?'أرخص 💰':'Cheaper 💰'}).map(([key,label])=>`
+            <button class="swap-chip" onclick="swapMeal('${meal.mealTypeKey||typeClass}','${key}',${idx})" style="font-size:0.72rem;padding:4px 10px;border-radius:12px;border:1px solid var(--lime);background:rgba(200,245,96,0.15);cursor:pointer">${label}</button>`).join('')}
+          </div>
+        </div>` : ''}
       </td>
       <td class="meal-price-cell">
         <div class="meal-price ${meal.price > currentBudget/4 ? 'over-budget':''}">${meal.price} ${isAr?'ج':'EGP'}</div>
@@ -772,6 +843,31 @@ function renderMeals() {
 
   html += `</tbody></table></div>`;
   document.getElementById('mealsContent').innerHTML = html;
+}
+
+function toggleSwapChips(idx) {
+  const el = document.getElementById('swapChips_'+idx);
+  if (el) el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function swapMeal(mealType, preference, idx) {
+  const isAr = currentLang === 'ar';
+  const chipsEl = document.getElementById('swapChips_'+idx);
+  if (chipsEl) chipsEl.innerHTML = `<span style="font-size:0.78rem;color:var(--muted)">⏳ ${isAr?'جاري التوليد...':'Generating...'}</span>`;
+  try {
+    const date = new Date().toISOString().split('T')[0];
+    const r = await fetch('/diet/api/meal-plan/swap', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date, mealType, preference }),
+    });
+    const d = await r.json();
+    if (!r.ok) { showToast(d.error || (isAr?'حصل خطأ':'Something went wrong')); await loadMeals(); return; }
+    showToast(isAr?'تم تغيير الوجبة ✓':'Meal changed ✓');
+    await loadMeals();
+  } catch (e) {
+    showToast(isAr?'حصل خطأ':'Something went wrong');
+    await loadMeals();
+  }
 }
 
 async function loadPrices() {
@@ -814,7 +910,7 @@ async function loadPrices() {
 }
 
 async function loadLabs() {
-  const data = await fetch('/diet/api/labs').then(r=>r.json());
+  const data = await fetch(`/diet/api/labs?diet=${currentDiet||'atkins'}`).then(r=>r.json());
   const isAr = currentLang === 'ar';
   let html = '';
   (data.tests||[]).forEach(t => {
@@ -848,54 +944,94 @@ async function loadLabs() {
   document.getElementById('labsList').innerHTML = html;
 }
 
-function renderSupps() {
+async function renderSupps() {
   const isAr = currentLang === 'ar';
-  const supps = [
-    { icon:'🐟', name:'Omega-3 Fish Oil 1000mg', nameAr:'أوميجا 3 زيت السمك', why:'Essential for Atkins — supports heart and joints', whyAr:'أساسي في Atkins — يدعم القلب والمفاصل', price:'135 EGP', priceAr:'135 جنيه', link:'https://www.amazon.eg/s?k=omega+3' },
-    { icon:'💪', name:'Whey Protein Isolate 1kg', nameAr:'واي بروتين أيزوليت 1 كجم', why:'Preserves muscle during diet — choose Isolate to avoid lactose', whyAr:'يحافظ على العضلات — اختر Isolate لتجنب اللاكتوز', price:'950 EGP', priceAr:'950 جنيه', link:'https://www.amazon.eg/s?k=whey+protein+isolate' },
-    { icon:'🧬', name:'Creatine Monohydrate 300g', nameAr:'كرياتين مونوهيدرات 300 جم', why:'Improves workout performance, safe with Atkins', whyAr:'يحسن أداء التمارين، آمن مع Atkins', price:'320 EGP', priceAr:'320 جنيه', link:'https://www.amazon.eg/s?k=creatine' },
-    { icon:'⚡', name:'Opti-Men Multivitamin 150', nameAr:'أوبتي مين مالتيفيتامين 150', why:'Replaces vitamins lost when cutting carbs', whyAr:'يعوض الفيتامينات التي تنخفض مع تقليل الكربوهيدرات', price:'580 EGP', priceAr:'580 جنيه', link:'https://www.amazon.eg/s?k=opti+men' },
-    { icon:'🌿', name:'Fenugreek / حلبة', nameAr:'حلبة', why:'Improves insulin resistance', whyAr:'تحسين مقاومة الإنسولين', price:'8-15 EGP', priceAr:'8-15 جنيه', link:'https://www.amazon.eg/s?k=fenugreek' },
-    { icon:'🟡', name:'Turmeric / كركم', nameAr:'كركم', why:'Strong anti-inflammatory, supports joints', whyAr:'مضاد التهابات قوي، يدعم المفاصل', price:'20-35 EGP', priceAr:'20-35 جنيه', link:'https://www.amazon.eg/s?k=turmeric' }
-  ];
-  document.getElementById('suppGrid').innerHTML = supps.map(s => `
+  const diet = currentDiet || 'atkins';
+  updateDietBadges();
+
+  let labSection = '';
+  let supps = [];
+  try {
+    const labRec = await fetch(`/diet/api/lab-results/recommendations?diet=${diet}`).then(r=>r.json());
+    supps = labRec?.dietSupplements || [];
+    if (labRec?.supplements?.length) {
+      labSection = `
+      <div class="sec-hdr" style="margin-top:0">
+        <div class="sec-title" style="font-size:1rem">🩺 ${isAr?'بناءً على آخر تحاليلك':'Based on your latest labs'}</div>
+      </div>
+      <div class="supp-grid" style="margin-bottom:24px">
+        ${labRec.supplements.map(s => `
+        <div class="supp-card">
+          <div class="supp-icon">${s.icon}</div>
+          <div class="supp-name">${isAr?s.nameAr:s.name}</div>
+          <div class="supp-why">${s.whyAr}</div>
+          <div class="supp-footer">
+            <a href="${s.link}" target="_blank" class="supp-link">Amazon.eg ↗</a>
+          </div>
+        </div>`).join('')}
+      </div>`;
+    }
+  } catch(e) { /* no lab data yet - diet-based list below still renders normally */ }
+
+  document.getElementById('suppGrid').outerHTML = `<div id="suppGrid">${labSection}<div class="supp-grid">${supps.map(s => `
     <div class="supp-card">
       <div class="supp-icon">${s.icon}</div>
       <div class="supp-name">${isAr?s.nameAr:s.name}</div>
       <div class="supp-why">${isAr?s.whyAr:s.why}</div>
       <div class="supp-footer">
         <div class="supp-price">${isAr?s.priceAr:s.price}</div>
-        <a href="${s.link}" target="_blank" class="supp-link">${isAr?'Amazon.eg ↗':'Amazon.eg ↗'}</a>
+        ${s.link && s.link !== '#' ? `<a href="${s.link}" target="_blank" class="supp-link">Amazon.eg ↗</a>` : ''}
       </div>
+    </div>`).join('')}</div></div>`;
+}
+
+let activityPlan = null;
+let currentActivityLevel = 'beginner';
+
+async function loadActivityPlan() {
+  try {
+    activityPlan = await fetch(`/diet/api/activity-plan?diet=${currentDiet||'atkins'}`).then(r=>r.json());
+  } catch(e) { activityPlan = null; }
+  renderWeekStrip();
+  setLevel(document.querySelector('.level-btn.active'), currentActivityLevel);
+}
+
+function renderWeekStrip() {
+  const strip = document.getElementById('weekStrip');
+  if (!strip) return;
+  const isAr = currentLang === 'ar';
+  const dayNames = t('days');
+  const todayIdx = new Date().getDay(); // 0=Sunday, matches week[] order
+  const week = activityPlan?.week || [];
+  strip.innerHTML = week.map((d,i) => `
+    <div class="day-box${d.isRest?' rest':''}${i===todayIdx?' today':''}" onclick="showDayDetail(${i})" style="cursor:pointer">
+      <div class="day-name">${dayNames[i]}</div>
+      <div class="day-act">${isAr?d.activity:d.activityEn}</div>
     </div>`).join('');
+}
+
+function showDayDetail(idx) {
+  const d = activityPlan?.week?.[idx];
+  const box = document.getElementById('dayDetail');
+  if (!d || !box) return;
+  const isAr = currentLang === 'ar';
+  const dayNames = t('days');
+  box.style.display = 'block';
+  box.innerHTML = d.isRest
+    ? `<b>${dayNames[idx]}:</b> ${d.icon} ${isAr?'يوم راحة — خد بالك من نفسك':'Rest day — take it easy'}`
+    : `<b>${dayNames[idx]}:</b> ${d.icon} ${isAr?d.activity:d.activityEn} — ${d.cal} kcal · ${d.duration}`;
 }
 
 function setLevel(el, level) {
   document.querySelectorAll('.level-btn').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
+  currentActivityLevel = level;
   const isAr = currentLang === 'ar';
-  const plans = {
-    beginner: [
-      ['🚶', isAr?'مشي سريع':'Brisk Walk', isAr?'30 دقيقة صباحاً على الريق — يسرع حرق الدهون 20%':'30 min morning fasted walk — burns 20% more fat', '180 kcal', '30 min'],
-      ['🧘', isAr?'إطالة وتنفس':'Stretching', isAr?'15 دقيقة — مرونة وتقليل إرهاق الكيتو':'15 min — flexibility and reducing keto fatigue', '40 kcal', '15 min'],
-      ['💧', isAr?'ترطيب يومي':'Daily Hydration', isAr?'2.5 لتر ماء + ملح وليمون كإلكتروليت طبيعي':'2.5L water + salt and lemon as natural electrolyte', isAr?'ضروري':'Essential', isAr?'طوال اليوم':'All day']
-    ],
-    intermediate: [
-      ['🏋️', isAr?'تمارين مقاومة':'Resistance Training', isAr?'سكوات + ضغط + عقلة — 3 جولات × 12 تكرار':'Squats + Push-ups + Pull-ups — 3 sets × 12 reps', '320 kcal', '45 min'],
-      ['🔥', isAr?'HIIT خفيف':'Light HIIT', isAr?'20 ثانية شغل / 40 راحة × 8 دورات':'20s work / 40s rest × 8 rounds', '180 kcal', '20 min'],
-      ['🧘', isAr?'إطالة بعد التمرين':'Post-workout Stretch', isAr?'15 دقيقة للعضلات الرئيسية':'15 min main muscle groups', '30 kcal', '15 min']
-    ],
-    advanced: [
-      ['🏋️', isAr?'تمارين حديد شاملة':'Full Weight Training', isAr?'صدر + ظهر + أكتاف — 4 جولات × 10 تكرار بأوزان ثقيلة':'Chest + Back + Shoulders — 4 sets × 10 reps heavy', '450 kcal', '60 min'],
-      ['🔥', isAr?'HIIT مكثف':'Intense HIIT', isAr?'30 ثانية شغل / 15 راحة × 12 دورة':'30s work / 15s rest × 12 rounds', '280 kcal', '25 min'],
-      ['🧘', isAr?'تبريد وإطالة كاملة':'Full Cool-down', isAr?'15 دقيقة إطالة + تنفس عميق':'15 min stretching + deep breathing', '30 kcal', '15 min']
-    ]
-  };
-  const rows = (plans[level]||plans.beginner).map(r=>`
+  const rows = (activityPlan?.levels?.[level] || []).map(r=>`
     <div class="act-row">
       <div class="act-icon-box">${r[0]}</div>
-      <div><div class="act-name">${r[1]}</div><div class="act-desc">${r[2]}</div></div>
-      <div class="act-meta"><div class="act-cal">${r[3]}</div><div class="act-dur">${r[4]}</div></div>
+      <div><div class="act-name">${isAr?r[2]:r[1]}</div><div class="act-desc">${isAr?r[4]:r[3]}</div></div>
+      <div class="act-meta"><div class="act-cal">${r[5]}</div><div class="act-dur">${r[6]}</div></div>
     </div>`).join('');
   document.getElementById('actList').innerHTML = rows;
 }
@@ -955,17 +1091,17 @@ init();
 </div>
 
 <div id="chatbot-popup">
-  <div id="chatbot-popup-title">وقت المتابعة الغذائية 🥗</div>
-  <div id="chatbot-popup-text">لديك أسئلة متابعة جديدة من مساعدك الغذائي الذكي!</div>
+  <div id="chatbot-popup-title"></div>
+  <div id="chatbot-popup-text"></div>
   <div>
     <button id="chatbot-popup-dismiss" onclick="dismissPopup()">لاحقاً</button>
-    <button id="chatbot-popup-btn" onclick="openChatbotFromPopup()">فتح المساعد ←</button>
+    <button id="chatbot-popup-btn" onclick="openChatbotFromPopup()"></button>
   </div>
 </div>
 
 <div id="chatbot-window">
   <div id="chatbot-header">
-    <div id="chatbot-header-title">🥗 مساعدك الغذائي الذكي</div>
+    <div id="chatbot-header-title">🥗 <span id="chatbot-title-text">مساعدك الغذائي الذكي</span></div>
     <button id="chatbot-close" onclick="toggleChatbot()">✕</button>
   </div>
   <div id="chatbot-messages"></div>
@@ -986,7 +1122,7 @@ init();
   let questionsLoaded = false;
 
   function isChatbotPlan(plan) {
-    return ['vip','elite'].includes(plan);
+    return window._betaMode || ['vip','elite'].includes(plan);
   }
 
   function initChatbot(plan) {
@@ -1044,7 +1180,7 @@ init();
 
   async function loadQuestions() {
     questionsLoaded = true;
-    addBotMessage('أهلاً! أنا مساعدك الغذائي الذكي 🥗 دعني أطرح عليك بعض أسئلة المتابعة...');
+    addBotMessage(currentLang==='ar'?'أهلاً! أنا مساعدك الغذائي الذكي 🥗 دعني أطرح عليك بعض أسئلة المتابعة...':'Hello! I am your AI nutrition assistant 🥗 Let me ask you some follow-up questions...');
     addBotMessage('...', true);
     try {
       const r = await fetch('/diet/api/chatbot', {
@@ -1188,7 +1324,7 @@ async function initNutritionTracker() {
 
   el.innerHTML = `
   <div class="tracker-card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:gap">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap">
       <div class="tracker-title">${isAr?'📊 متابعة التغذية اليومية':'📊 Daily Nutrition Tracker'}</div>
       <div style="display:flex;gap:6px">
         <button class="period-btn ${nutritionPeriod===7?'active':''}" onclick="setNutritionPeriod(7)">7 ${isAr?'أيام':'days'}</button>
@@ -1223,7 +1359,7 @@ async function initNutritionTracker() {
 
     <!-- Today's meals checklist -->
     <div style="margin-bottom:20px">
-      <div style="font-size:0.85rem;font-weight:700;color:var(--dark);margin-bottom:10px">${isAr?'✅ وجبات اليوم — ضع علامة على ما تناولته':'✅ Today's Meals — Check what you ate'}</div>
+      <div style="font-size:0.85rem;font-weight:700;color:var(--dark);margin-bottom:10px">${isAr?'✅ وجبات اليوم — ضع علامة على ما تناولته':"✅ Today's Meals — Check what you ate"}</div>
       <div id="mealChecklist">
         ${meals.map((m,i) => `
           <div class="meal-check">
@@ -1238,23 +1374,36 @@ async function initNutritionTracker() {
 
     <!-- Custom food input -->
     <div style="margin-bottom:20px">
-      <div style="font-size:0.85rem;font-weight:700;color:var(--dark);margin-bottom:10px">${isAr?'➕ أضف طعاماً إضافياً':'➕ Add Custom Food'}</div>
-      <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:end">
-        <input type="text" id="customFood" placeholder="${isAr?'اسم الطعام':'Food name'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:Cairo,sans-serif;font-size:0.85rem;outline:none">
-        <input type="number" id="customCal" placeholder="${isAr?'سعرات':'Cal'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;width:70px;outline:none">
-        <input type="number" id="customProtein" placeholder="${isAr?'بروتين':'Prot'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;width:70px;outline:none">
-        <button onclick="addCustomFood()" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-weight:700">${isAr?'إضافة':'Add'}</button>
+      <div style="font-size:0.85rem;font-weight:700;color:var(--dark);margin-bottom:4px">${isAr?'🧠 أضف طعاماً تلقائياً':'🧠 Add Custom Food'}</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:10px">${isAr?'اكتب اسم الطعام والوزن، وهنحسب لك السعرات والبروتين والكربوهيدرات والدهون تلقائياً':"Type the food name and weight, we'll calculate calories, protein, carbs & fat automatically"}</div>
+      <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end">
+        <input type="text" id="customFood" placeholder="${isAr?'اسم الطعام (مثال: صدر فرخة مشوي)':'Food name (e.g. grilled chicken breast)'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:Cairo,sans-serif;font-size:0.85rem;outline:none">
+        <input type="number" id="customWeight" placeholder="${isAr?'وزن (جم)':'Weight (g)'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;width:90px;outline:none">
+        <button id="addCustomFoodBtn" onclick="addCustomFood()" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-weight:700;white-space:nowrap">${isAr?'احسب':'Calculate'}</button>
+      </div>
+      <div id="customFoodMsg" style="font-size:0.78rem;margin-top:6px;display:none"></div>
+      <div id="customFoodManual" style="display:none;margin-top:10px;padding:10px;background:var(--bg);border-radius:10px">
+        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px">${isAr?'أدخل القيم يدوياً لهذا الطعام:':'Enter values manually for this food:'}</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+          <input type="number" id="manCal" placeholder="${isAr?'سعرات':'Cal'}" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;outline:none">
+          <input type="number" id="manProtein" placeholder="${isAr?'بروتين':'Protein'}" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;outline:none">
+          <input type="number" id="manCarbs" placeholder="${isAr?'كارب':'Carbs'}" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;outline:none">
+          <input type="number" id="manFat" placeholder="${isAr?'دهون':'Fat'}" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;outline:none">
+        </div>
+        <button onclick="addCustomFoodManual()" style="width:100%;padding:8px;background:var(--dark);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-weight:700;font-size:0.82rem">${isAr?'إضافة يدوياً':'Add Manually'}</button>
       </div>
       <div id="customFoodList" style="margin-top:8px"></div>
     </div>
 
-    <button onclick="saveNutritionLog()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">${isAr?'حفظ سجل اليوم ✓':'Save Today's Log ✓'}</button>
+    <button onclick="saveNutritionLog()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">${isAr?'حفظ سجل اليوم ✓':"Save Today's Log ✓"}</button>
   </div>
 
   <!-- Graph -->
   <div class="tracker-card">
     <div class="tracker-title">${isAr?'📈 التقدم على مدار الوقت':'📈 Progress Over Time'}</div>
-    <canvas id="nutritionChart" height="200"></canvas>
+    <div style="position:relative;height:280px">
+      <canvas id="nutritionChart"></canvas>
+    </div>
   </div>`;
 
   // Store meals ref
@@ -1281,6 +1430,8 @@ function updateNutrition() {
   (window._customFoods||[]).forEach(f => {
     cal += f.cal||0;
     protein += f.protein||0;
+    carbs += f.carbs||0;
+    fat += f.fat||0;
   });
   const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
   set('totalCal', cal);
@@ -1289,16 +1440,72 @@ function updateNutrition() {
   set('totalFat', fat+'g');
 }
 
-function addCustomFood() {
-  const name = document.getElementById('customFood')?.value.trim();
-  const cal = parseInt(document.getElementById('customCal')?.value)||0;
-  const protein = parseInt(document.getElementById('customProtein')?.value)||0;
+async function addCustomFood() {
+  const isAr = currentLang === 'ar';
+  const nameEl = document.getElementById('customFood');
+  const weightEl = document.getElementById('customWeight');
+  const btn = document.getElementById('addCustomFoodBtn');
+  const msg = document.getElementById('customFoodMsg');
+  const name = nameEl?.value.trim();
+  const weightGrams = parseFloat(weightEl?.value);
+
+  if (!name || !weightGrams || weightGrams <= 0) {
+    msg.style.display = 'block'; msg.style.color = 'var(--coral)';
+    msg.textContent = isAr ? 'اكتب اسم الطعام والوزن بالجرام' : 'Enter both the food name and weight in grams';
+    return;
+  }
+
+  document.getElementById('customFoodManual').style.display = 'none';
+  btn.disabled = true;
+  msg.style.display = 'block'; msg.style.color = 'var(--muted)';
+  msg.textContent = isAr ? 'جارٍ حساب القيم الغذائية...' : 'Calculating nutrition...';
+
+  try {
+    const r = await fetch('/diet/api/nutrition-lookup', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ foodName: name, weightGrams })
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      msg.style.color = 'var(--coral)';
+      msg.textContent = d.error || (isAr ? 'تعذر الحساب' : 'Could not calculate');
+      if (d.notFound) document.getElementById('customFoodManual').style.display = 'block';
+      btn.disabled = false;
+      return;
+    }
+    window._customFoods = window._customFoods || [];
+    window._customFoods.push({ name, weightGrams, cal: d.cal, protein: d.protein, carbs: d.carbs, fat: d.fat });
+    nameEl.value = '';
+    weightEl.value = '';
+    msg.style.display = 'none';
+    renderCustomFoodList();
+    updateNutrition();
+  } catch(e) {
+    msg.style.color = 'var(--coral)';
+    msg.textContent = isAr ? 'خطأ في الاتصال، حاول مرة أخرى' : 'Connection error, try again';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function addCustomFoodManual() {
+  const isAr = currentLang === 'ar';
+  const nameEl = document.getElementById('customFood');
+  const weightEl = document.getElementById('customWeight');
+  const name = nameEl?.value.trim();
+  const weightGrams = parseFloat(weightEl?.value) || null;
+  const cal = parseInt(document.getElementById('manCal')?.value) || 0;
+  const protein = parseInt(document.getElementById('manProtein')?.value) || 0;
+  const carbs = parseInt(document.getElementById('manCarbs')?.value) || 0;
+  const fat = parseInt(document.getElementById('manFat')?.value) || 0;
   if (!name) return;
+
   window._customFoods = window._customFoods || [];
-  window._customFoods.push({name, cal, protein});
-  document.getElementById('customFood').value='';
-  document.getElementById('customCal').value='';
-  document.getElementById('customProtein').value='';
+  window._customFoods.push({ name, weightGrams, cal, protein, carbs, fat });
+  nameEl.value = ''; weightEl.value = '';
+  ['manCal','manProtein','manCarbs','manFat'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('customFoodManual').style.display = 'none';
+  document.getElementById('customFoodMsg').style.display = 'none';
   renderCustomFoodList();
   updateNutrition();
 }
@@ -1308,7 +1515,7 @@ function renderCustomFoodList() {
   if (!el) return;
   el.innerHTML = (window._customFoods||[]).map((f,i) =>
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.82rem">
-      <span>${f.name} — ${f.cal} kcal · ${f.protein}g protein</span>
+      <span>${f.name}${f.weightGrams?` (${f.weightGrams}g)`:''} — ${f.cal} kcal · P:${f.protein}g · C:${f.carbs||0}g · F:${f.fat||0}g</span>
       <button onclick="removeCustomFood(${i})" style="background:none;border:none;color:var(--coral);cursor:pointer;font-size:0.9rem">✕</button>
     </div>`
   ).join('');
@@ -1324,13 +1531,23 @@ async function saveNutritionLog() {
   const meals = window._trackerMeals || [];
   const checkedMeals = meals.map((_,i) => document.getElementById('meal_'+i)?.checked ? i : -1).filter(i=>i>=0);
   const today = new Date().toISOString().split('T')[0];
+  const entry = {date:today, meals:checkedMeals, custom:window._customFoods||[]};
   try {
-    await fetch('/diet/api/nutrition-log', {
+    const r = await fetch('/diet/api/nutrition-log', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({date:today, meals:checkedMeals, custom:window._customFoods||[]})
+      body: JSON.stringify(entry)
     });
+    if (!r.ok) { showToast(currentLang==='ar'?'خطأ في الحفظ':'Error saving log'); return; }
+
+    // Update the local copy the chart reads from, so today's entry shows
+    // immediately instead of only after leaving and reopening this tab.
+    const idx = nutritionLogs.findIndex(l => l.date === today);
+    if (idx >= 0) nutritionLogs[idx] = entry; else nutritionLogs.push(entry);
+    window._todayLog = entry;
+    renderNutritionChart();
+
     showToast(currentLang==='ar'?'تم حفظ سجل اليوم ✓':'Daily log saved ✓');
-  } catch(e) { showToast('Error saving log'); }
+  } catch(e) { showToast(currentLang==='ar'?'خطأ في الحفظ - تأكد من اتصال الإنترنت':'Error saving log - check your connection'); }
 }
 
 function setNutritionPeriod(days) {
@@ -1390,7 +1607,7 @@ async function initLabTracker() {
   const el = document.getElementById('labtrack-content');
 
   // Check if VIP/Elite
-  const isVipElite = ['vip','elite'].includes(plan) || plan === 'admin';
+  const isVipElite = window._betaMode || ['vip','elite'].includes(plan) || plan === 'admin';
 
   if (!isVipElite) {
     el.innerHTML = `
@@ -1451,7 +1668,9 @@ async function initLabTracker() {
     </div>
 
     <!-- Chart -->
-    <canvas id="labChart" height="180" style="margin:16px 0"></canvas>
+    <div style="position:relative;height:260px;margin:16px 0">
+      <canvas id="labChart"></canvas>
+    </div>
 
     <!-- AI Analysis -->
     <div id="labAnalysis" style="display:${latest.analysis?'block':'none'}">
@@ -1469,9 +1688,20 @@ async function initLabTracker() {
     </div>
   </div>
 
+  <!-- Photo upload — auto-extract -->
+  <div class="tracker-card">
+    <div class="tracker-title">${isAr?'📷 صوّر تحليلك وارفعه':'📷 Upload a Photo of Your Report'}</div>
+    <p style="color:var(--muted);font-size:0.85rem;margin:4px 0 12px">${isAr?'صور ورقة التحليل أو ارفع صورة، وهنقرأ النتائج تلقائياً':"Take a photo or upload an image of your lab report — we'll read the values automatically"}</p>
+    <input type="file" id="labPhotoInput" accept="image/*" capture="environment" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;font-family:Cairo,sans-serif">
+    <button onclick="uploadLabPhoto()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--orange),#FF9A6B);color:#fff;border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">
+      ${isAr?'ارفع وحلل تلقائياً 🤖':'Upload & Auto-Analyze 🤖'}
+    </button>
+    <div id="labPhotoStatus" style="text-align:center;padding:10px;color:var(--muted);display:none"></div>
+  </div>
+
   <!-- Input new results -->
   <div class="tracker-card">
-    <div class="tracker-title">${isAr?'➕ أدخل نتائج تحاليلك الجديدة':'➕ Enter New Lab Results'}</div>
+    <div class="tracker-title">${isAr?'➕ أو أدخل النتائج يدوياً':'➕ Or Enter Results Manually'}</div>
     <div style="margin-bottom:12px">
       <label style="font-size:0.82rem;font-weight:600;color:var(--muted)">${isAr?'تاريخ التحليل':'Test Date'}</label>
       <input type="date" id="labDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-family:Cairo,sans-serif;outline:none">
@@ -1507,6 +1737,35 @@ async function initLabTracker() {
 
   window._labTests = labTests;
   renderLabChart();
+}
+
+async function uploadLabPhoto() {
+  const isAr = currentLang === 'ar';
+  const input = document.getElementById('labPhotoInput');
+  const status = document.getElementById('labPhotoStatus');
+  const file = input?.files?.[0];
+  if (!file) {
+    alert(isAr ? 'اختار صورة الأول' : 'Please choose an image first');
+    return;
+  }
+  status.style.display = 'block';
+  status.textContent = isAr ? '⏳ جاري قراءة الصورة وتحليلها... قد يستغرق دقيقة' : '⏳ Reading and analyzing the image... may take a minute';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('date', new Date().toISOString().split('T')[0]);
+    const r = await fetch('/diet/api/lab-results/upload', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok || data.ok === false) {
+      status.textContent = data.error || (isAr ? 'حصل خطأ، جرب تاني' : 'Something went wrong, try again');
+      return;
+    }
+    status.textContent = isAr ? '✅ تم! دي النتائج اللي قرأناها' : '✅ Done! Here\'s what we read';
+    input.value = '';
+    await initLabTracker(); // refresh chart/history/analysis with the new entry
+  } catch (e) {
+    status.textContent = isAr ? 'حصل خطأ، جرب تاني' : 'Something went wrong, try again';
+  }
 }
 
 async function saveLabResults() {
@@ -1668,6 +1927,30 @@ window.setLabPeriod = setLabPeriod;
 let watchChart = null;
 let watchPeriod = 7;
 
+const WATCH_PROVIDERS = [
+  { id: 'garmin', icon: '🔵', name: 'Garmin' },
+  { id: 'fitbit', icon: '💚', name: 'Fitbit' },
+  { id: 'oura', icon: '💍', name: 'Oura' },
+  { id: 'whoop', icon: '🖤', name: 'Whoop' },
+  { id: 'polar', icon: '⚪', name: 'Polar' },
+  { id: 'strava', icon: '🟠', name: 'Strava' },
+  { id: 'suunto', icon: '🧭', name: 'Suunto' },
+  { id: 'ultrahuman', icon: '🔷', name: 'Ultrahuman' },
+];
+
+const MANUAL_ONLY_PROVIDERS = [
+  { id: 'honor_watch', icon: '⌚', name: 'Honor Watch' },
+];
+
+function selectManualSource(sourceId) {
+  const sel = document.getElementById('watchSource');
+  if (sel) sel.value = sourceId;
+  const card = document.getElementById('watchManualCard');
+  if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  const first = document.getElementById('wSteps');
+  if (first) first.focus();
+}
+
 async function initWatchPanel() {
   const isAr = currentLang === 'ar';
   const el = document.getElementById('watch-content');
@@ -1679,13 +1962,43 @@ async function initWatchPanel() {
     watchData = d.data || [];
   } catch(e) { watchData = []; }
 
+  let connectedProviders = [];
+  try {
+    const r = await fetch('/diet/api/watch/connections');
+    const d = await r.json();
+    connectedProviders = (d.connections || []).map(c => c.provider);
+  } catch(e) { connectedProviders = []; }
+
   const latest = watchData[0] || {};
   const today = new Date().toISOString().split('T')[0];
   const todayData = watchData.find(d => d.date === today) || {};
 
   el.innerHTML = `
+  <!-- Connect a real device -->
+  <div style="background:#fff;border-radius:14px;padding:20px;margin-bottom:20px;border:1px solid var(--border)">
+    <div style="font-weight:700;color:var(--dark);margin-bottom:4px">🔗 ${isAr?'ربط جهازك الرياضي':'Connect Your Device'}</div>
+    <p style="color:var(--muted);font-size:0.85rem;margin-bottom:14px">${isAr?'اربط ساعتك الذكية وهنسحب بياناتك تلقائياً كل يوم':"Connect your smartwatch and we'll pull your data automatically every day"}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${WATCH_PROVIDERS.map(p => {
+        const connected = connectedProviders.includes(p.id);
+        return `<a href="${connected ? '#' : '/diet/api/watch/connect/' + p.id}" style="display:flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid ${connected?'var(--green)':'var(--border)'};background:${connected?'rgba(45,106,79,0.08)':'#fff'};color:${connected?'var(--green)':'var(--dark)'};text-decoration:none;font-size:0.82rem;font-weight:600;${connected?'cursor:default':'cursor:pointer'}">
+          <span>${p.icon}</span><span>${p.name}</span>${connected?'<span>✓</span>':''}
+        </a>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:0.75rem;color:var(--muted);margin-bottom:8px">${isAr?'أجهزة أخرى (إدخال يدوي)':'Other devices (manual entry)'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${MANUAL_ONLY_PROVIDERS.map(p => `
+        <a href="#" onclick="selectManualSource('${p.id}');return false;" style="display:flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px dashed var(--border);background:#fff;color:var(--dark);text-decoration:none;font-size:0.82rem;font-weight:600">
+          <span>${p.icon}</span><span>${p.name}</span>
+        </a>`).join('')}
+      </div>
+    </div>
+  </div>
+
   <!-- Vitals Cards -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+  <div id="watchVitals1" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
     <div style="background:#fff;border-radius:14px;padding:16px;text-align:center;border:1px solid var(--border)">
       <div style="font-size:1.8rem">👟</div>
       <div style="font-size:1.4rem;font-weight:700;color:var(--green)">${todayData.steps?.toLocaleString() || '—'}</div>
@@ -1713,7 +2026,7 @@ async function initWatchPanel() {
   </div>
 
   <!-- Second row -->
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+  <div id="watchVitals2" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
     <div style="background:#fff;border-radius:14px;padding:16px;text-align:center;border:1px solid var(--border)">
       <div style="font-size:1.8rem">🫁</div>
       <div style="font-size:1.4rem;font-weight:700;color:#26C6DA">${todayData.spO2 || '—'}${todayData.spO2?'%':''}</div>
@@ -1748,11 +2061,13 @@ async function initWatchPanel() {
         <button class="period-btn ${watchPeriod===90?'active':''}" onclick="setWatchPeriod(90)">90 ${isAr?'يوم':'days'}</button>
       </div>
     </div>
-    <canvas id="watchChart" height="180"></canvas>
+    <div style="position:relative;height:260px">
+      <canvas id="watchChart"></canvas>
+    </div>
   </div>
 
   <!-- Manual Input -->
-  <div style="background:#fff;border-radius:14px;padding:20px;margin-bottom:20px;border:1px solid var(--border)">
+  <div id="watchManualCard" style="background:#fff;border-radius:14px;padding:20px;margin-bottom:20px;border:1px solid var(--border)">
     <div style="font-weight:700;color:var(--dark);margin-bottom:16px">➕ ${isAr?'إدخال يدوي للبيانات':'Manual Data Entry'}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div>
@@ -1767,10 +2082,11 @@ async function initWatchPanel() {
           <option value="wear_os">Wear OS</option>
           <option value="galaxy_watch">Galaxy Watch</option>
           <option value="garmin">Garmin</option>
+          <option value="honor_watch">Honor Watch</option>
         </select>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+    <div id="watchManualRow1" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
       <div>
         <label style="font-size:0.75rem;font-weight:600;color:var(--muted)">👟 ${isAr?'خطوات':'Steps'}</label>
         <input type="number" id="wSteps" placeholder="8000" value="${todayData.steps||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;margin-top:4px;outline:none">
@@ -1788,7 +2104,7 @@ async function initWatchPanel() {
         <input type="number" id="wSleep" placeholder="7.5" step="0.5" value="${todayData.sleep||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;margin-top:4px;outline:none">
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+    <div id="watchManualRow2" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
       <div>
         <label style="font-size:0.75rem;font-weight:600;color:var(--muted)">🫁 SpO2 (%)</label>
         <input type="number" id="wSpO2" placeholder="98" value="${todayData.spO2||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;margin-top:4px;outline:none">
@@ -1825,11 +2141,11 @@ async function initWatchPanel() {
         <tbody>${watchData.slice(0,10).map(d=>`
           <tr style="border-bottom:1px solid var(--border)">
             <td style="padding:8px;font-weight:600">${d.date}</td>
-            <td style="padding:8px;text-align:center">${d.steps?.toLocaleString()||'—'}</td>
-            <td style="padding:8px;text-align:center;color:var(--coral)">${d.heartRate||'—'}</td>
-            <td style="padding:8px;text-align:center;color:var(--orange)">${d.caloriesBurned||'—'}</td>
-            <td style="padding:8px;text-align:center;color:#5C6BC0">${d.sleep||'—'}</td>
-            <td style="padding:8px;text-align:center;color:#29B6F6">${d.water||'—'}</td>
+            <td style="padding:8px;text-align:center">${d.steps!=null?d.steps.toLocaleString():'—'}</td>
+            <td style="padding:8px;text-align:center;color:var(--coral)">${d.heartRate!=null?d.heartRate:'—'}</td>
+            <td style="padding:8px;text-align:center;color:var(--orange)">${d.caloriesBurned!=null?d.caloriesBurned:'—'}</td>
+            <td style="padding:8px;text-align:center;color:#5C6BC0">${d.sleep!=null?d.sleep:'—'}</td>
+            <td style="padding:8px;text-align:center;color:#29B6F6">${d.water!=null?d.water:'—'}</td>
             <td style="padding:8px;text-align:center;font-size:0.75rem;color:var(--muted)">${d.source}</td>
           </tr>`).join('')}
         </tbody>
@@ -1842,9 +2158,15 @@ async function initWatchPanel() {
 
 async function saveWatchData() {
   const isAr = currentLang === 'ar';
+  // Some mobile browsers fail to populate <input type="date">'s value - never
+  // send an empty date, the server rejects it and the row silently never saves.
+  const dateEl = document.getElementById('watchDate');
+  const dateVal = dateEl?.value || new Date().toISOString().split('T')[0];
+  if (dateEl) dateEl.value = dateVal;
+
   const body = {
     source: document.getElementById('watchSource')?.value || 'manual',
-    date:   document.getElementById('watchDate')?.value,
+    date:   dateVal,
     steps:  document.getElementById('wSteps')?.value,
     heartRate: document.getElementById('wHeart')?.value,
     caloriesBurned: document.getElementById('wCal')?.value,
@@ -1853,21 +2175,30 @@ async function saveWatchData() {
     stress: document.getElementById('wStress')?.value,
     water:  document.getElementById('wWater')?.value
   };
+  const hasAnyValue = ['steps','heartRate','caloriesBurned','sleep','spO2','stress','water'].some(k => body[k] !== '' && body[k] != null);
   const msg = document.getElementById('watchSaveMsg');
+  if (!hasAnyValue) {
+    msg.style.display='block'; msg.style.color='var(--coral)';
+    msg.textContent = isAr?'اكتب قيمة واحدة على الأقل قبل الحفظ':'Enter at least one value before saving';
+    return;
+  }
   try {
     const r = await fetch('/diet/api/watch/sync', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(body)
     });
     const d = await r.json();
-    if (d.ok) {
+    if (r.ok && d.ok) {
       msg.style.display='block'; msg.style.color='var(--green)';
       msg.textContent = isAr?'تم الحفظ بنجاح ✓':'Saved successfully ✓';
       setTimeout(()=>initWatchPanel(), 1000);
+    } else {
+      msg.style.display='block'; msg.style.color='var(--coral)';
+      msg.textContent = (isAr?'خطأ في الحفظ: ':'Save error: ') + (d.error || r.status);
     }
   } catch(e) {
     msg.style.display='block'; msg.style.color='var(--coral)';
-    msg.textContent = isAr?'خطأ في الحفظ':'Save error';
+    msg.textContent = isAr?'خطأ في الحفظ - تأكد من اتصال الإنترنت':'Save error - check your connection';
   }
 }
 
@@ -1907,7 +2238,7 @@ window.setWatchPeriod = setWatchPeriod;
 
 <!-- ═══ WEATHER & HYDRATION PANEL ════════════════════════════════════════ -->
 <style>
-#panel-weather{padding:0}
+#p-weather{padding:0}
 .wx-wrap{max-width:700px;margin:0 auto;padding:24px 16px;display:flex;flex-direction:column;gap:20px}
 .wx-card{background:#fff;border-radius:18px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #E8EDF2}
 .wx-main{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
@@ -1958,7 +2289,7 @@ window.setWatchPeriod = setWatchPeriod;
 @media(max-width:500px){.wx-recs-grid{grid-template-columns:1fr}.wx-zone-form{grid-template-columns:1fr}}
 </style>
 
-<div id="panel-weather" class="panel">
+<div id="p-weather" class="panel">
   <div class="wx-wrap">
     <div id="wxStatus" class="wx-status">اضغط لتشغيل خدمة الموقع · Press to enable location</div>
     <button class="wx-btn" id="wxBtn" onclick="wxFetch()">📍 تحديد موقعي والحصول على التوصيات · Get My Location</button>
@@ -2005,18 +2336,45 @@ window.setWatchPeriod = setWatchPeriod;
     if (!navigator.geolocation)
       return (status.textContent = 'المتصفح لا يدعم تحديد الموقع · Geolocation not supported', btn.disabled = false);
 
+    // Safety net: if the native geolocation prompt gets dismissed without an
+    // answer (some mobile browsers never fire either callback in that case),
+    // the button would otherwise stay disabled forever with no way to retry.
+    const safetyTimer = setTimeout(() => {
+      if (btn.disabled) {
+        btn.disabled = false;
+        status.textContent = 'لم يتم الرد على طلب الموقع، حاول مرة أخرى · No response to the location request, try again';
+      }
+    }, 30000);
+
     navigator.geolocation.getCurrentPosition(async pos => {
+      clearTimeout(safetyTimer);
       _wxLat = pos.coords.latitude;
       _wxLon = pos.coords.longitude;
+      const _wxAcc = pos.coords.accuracy;
       status.textContent = `موقعك: ${_wxLat.toFixed(4)}, ${_wxLon.toFixed(4)}`;
       btn.textContent = '🔄 تحديث · Refresh';
       btn.disabled = false;
 
-      const [wx, zoneRes] = await Promise.all([
-        fetch(`/diet/api/weather?lat=${_wxLat}&lon=${_wxLon}`).then(r=>r.json()).catch(()=>null),
-        fetch(`/diet/api/location/check`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({lat:_wxLat,lon:_wxLon}) }).then(r=>r.json()).catch(()=>null)
-      ]);
+      let wx = null, zoneRes = null, fetchFailReason = '';
+      try {
+        const wxRes = await fetch(`/diet/api/weather?lat=${_wxLat}&lon=${_wxLon}&accuracy=${_wxAcc}`, { headers: { 'Accept': 'application/json' } });
+        if (wxRes.status === 401 || wxRes.status === 403) { fetchFailReason = 'auth'; }
+        else if (!wxRes.ok) { fetchFailReason = 'http_' + wxRes.status; }
+        else { wx = await wxRes.json(); }
+      } catch(e) { fetchFailReason = 'network'; }
+      try {
+        const zr = await fetch(`/diet/api/location/check`, { method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'}, body: JSON.stringify({lat:_wxLat,lon:_wxLon}) });
+        zoneRes = zr.ok ? await zr.json() : null;
+      } catch(e) { /* geofence check is non-critical, weather still renders without it */ }
 
+      if (fetchFailReason === 'auth') {
+        status.textContent = 'انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى · Session expired, please log in again';
+        btn.disabled = false; return;
+      }
+      if (fetchFailReason) {
+        status.textContent = 'تعذر الاتصال بالخادم · Could not reach the server';
+        btn.disabled = false; return;
+      }
       if (!wx || wx.setupRequired) {
         status.textContent = 'مفتاح API للطقس غير مُعد · Weather API key not configured';
         btn.disabled = false; return;
@@ -2026,9 +2384,15 @@ window.setWatchPeriod = setWatchPeriod;
       renderWeather(wx, zoneRes);
       loadZones();
     }, err => {
-      status.textContent = 'تم رفض الإذن. يرجى السماح بتحديد الموقع · Location permission denied';
+      clearTimeout(safetyTimer);
+      const msgs = {
+        1: 'تم رفض إذن الموقع. يرجى السماح بتحديد الموقع من إعدادات المتصفح · Location permission denied - allow it in your browser settings',
+        2: 'تعذر تحديد موقعك حالياً · Could not determine your location right now',
+        3: 'انتهت مهلة تحديد الموقع، حاول مرة أخرى · Location request timed out, try again'
+      };
+      status.textContent = msgs[err.code] || 'خطأ غير معروف في تحديد الموقع · Unknown location error';
       btn.disabled = false;
-    }, { timeout: 10000, maximumAge: 60000 });
+    }, { timeout: 25000, maximumAge: 300000, enableHighAccuracy: false });
   }
 
   function tempColor(t) {
@@ -2052,6 +2416,11 @@ window.setWatchPeriod = setWatchPeriod;
     const r = wx.recommendations;
     const hydPct = Math.min((1.5 / r.hydrationL) * 100, 100); // assume 1.5L already drank
     const tempC = Math.round(wx.temp);
+    // Spread the daily target (250mL glasses) across a ~16h waking day, not a single hour.
+    const WAKING_MINUTES = 16 * 60;
+    const glassIntervalMin = Math.round(WAKING_MINUTES / (r.hydrationL * 4));
+    const glassIntervalAr = glassIntervalMin >= 60 ? `${Math.floor(glassIntervalMin/60)} ساعة و${glassIntervalMin%60} دقيقة` : `${glassIntervalMin} دقيقة`;
+    const glassIntervalEn = glassIntervalMin >= 60 ? `${Math.floor(glassIntervalMin/60)}h ${glassIntervalMin%60}m` : `${glassIntervalMin} min`;
 
     c.innerHTML = `
       ${r.alert ? `<div class="wx-alert"><div class="wx-alert-icon">⚠️</div><div class="wx-alert-text">${r.alert}</div></div>` : ''}
@@ -2079,7 +2448,7 @@ window.setWatchPeriod = setWatchPeriod;
         <div class="wx-hydration-amount"><span class="wx-hydration-unit">~</span>${r.hydrationL} <span style="font-size:1.2rem;color:#86EFAC">لتر · L</span></div>
         <div class="wx-hydration-sub">بناءً على درجة الحرارة والرطوبة الحالية · Based on current temp & humidity</div>
         <div class="wx-progress"><div class="wx-progress-bar" style="width:${hydPct}%"></div></div>
-        <div style="font-size:0.75rem;color:#4ADE80;margin-top:6px">اشرب كوباً كل ${Math.round(60/(r.hydrationL*4))} دقيقة · Drink a glass every ${Math.round(60/(r.hydrationL*4))} min</div>
+        <div style="font-size:0.75rem;color:#4ADE80;margin-top:6px">اشرب كوباً كل ${glassIntervalAr} · Drink a glass every ${glassIntervalEn}</div>
       </div>
 
       <div class="wx-card">
@@ -2095,6 +2464,15 @@ window.setWatchPeriod = setWatchPeriod;
           </div>
         </div>
       </div>
+
+      ${r.supplements && r.supplements.length ? `<div class="wx-card">
+        <div class="wx-recs-title">💊 مكملات مقترحة حسب حالتك · Suggested For You Right Now</div>
+        <div class="wx-recs-grid">
+          <div class="wx-rec-group">
+            ${r.supplements.map(s=>`<div class="wx-rec-item">${s.icon} ${s.nameAr} · ${s.name}<div style="font-size:0.72rem;color:#9CA3AF;margin-top:2px">${s.whyAr} · ${s.why}</div></div>`).join('')}
+          </div>
+        </div>
+      </div>` : ''}
 
       ${zoneRes?.activityNote ? `<div class="wx-zone wx-card"><div class="wx-zone-active">🎯 ${zoneRes.activityNote}</div></div>` : ''}
       <div class="wx-updated">آخر تحديث · Updated: ${new Date(wx.updatedAt).toLocaleTimeString()}</div>

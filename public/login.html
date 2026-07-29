@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>DietHub — دخول / تسجيل</title>
@@ -79,6 +82,7 @@ select option{background:#1a1a2e;color:#fff}
 .login-lang-btn{padding:5px 14px;border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:0.82rem;font-weight:700;cursor:pointer;background:none;color:rgba(255,255,255,0.6);transition:all 0.2s}
 .login-lang-btn.active{background:#C8F560;color:#1A1A2E}
 </style>
+<script defer src="https://analytics.talabatito.com/script.js" data-website-id="4ed211ee-9096-49e6-a619-0bbca563db5b"></script>
 </head>
 <body>
 <div class="login-lang-toggle">
@@ -100,12 +104,25 @@ select option{background:#1a1a2e;color:#fff}
   </div>
   <div class="form-section active" id="fLogin">
     <div class="err" id="loginErr"></div>
+    <div id="googleSignInBox" style="display:none;margin-bottom:10px">
+      <div id="googleSignInBtn" style="display:flex;justify-content:center"></div>
+    </div>
+    <div id="facebookSignInBox" style="display:none;margin-bottom:14px">
+      <button type="button" onclick="fbLogin()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:11px;background:#1877F2;border:none;border-radius:11px;color:#fff;font-family:'Cairo',sans-serif;font-size:0.9rem;font-weight:700;cursor:pointer">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M22.675 0h-21.35c-.732 0-1.325.593-1.325 1.325v21.351c0 .731.593 1.324 1.325 1.324h11.495v-9.294h-3.128v-3.622h3.128v-2.671c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12v9.293h6.116c.73 0 1.323-.593 1.323-1.325v-21.35c0-.732-.593-1.325-1.325-1.325z"/></svg>
+        <span id="fbBtnText">المتابعة باستخدام فيسبوك</span>
+      </button>
+    </div>
+    <div id="socialDivider" style="display:none;text-align:center;color:#aaa;font-size:0.8rem;margin:14px 0;align-items:center;gap:10px">
+      <span style="flex:1;height:1px;background:rgba(255,255,255,0.15)"></span>
+      <span id="orDivider">أو</span> <span style="flex:1;height:1px;background:rgba(255,255,255,0.15)"></span>
+    </div>
     <div class="field">
-      <label>اسم المستخدم / Username</label>
+      <label id="lUsrLabel">اسم المستخدم</label>
       <input type="text" id="lUsr" placeholder="أدخل اسم المستخدم" autocomplete="username">
     </div>
     <div class="field">
-      <label>كلمة المرور / Password</label>
+      <label id="lPwdLabel">كلمة المرور</label>
       <div style="position:relative">
       <input type="password" id="lPwd" placeholder="أدخل كلمة المرور" autocomplete="current-password" style="padding-left:44px;width:100%">
       <button type="button" onclick="toggleLoginPwd()" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#aaa;display:flex;align-items:center">
@@ -114,92 +131,221 @@ select option{background:#1a1a2e;color:#fff}
       </div>
     </div>
     <button class="btn-submit" onclick="doLogin()">دخول ←</button>
-    <div style="text-align:center;margin-top:12px"><a href="/diet/forgot-password" style="color:#aaa;font-size:0.85rem;text-decoration:none;">نسيت كلمة المرور؟</a></div>
-    <div class="footer-links"><a href="/diet/demo" class="footer-link">👁️ عرض تجريبي بدون تسجيل</a></div>
+    <div style="text-align:center;margin-top:12px"><a href="/diet/forgot-password" id="forgotLink" style="color:#aaa;font-size:0.85rem;text-decoration:none;">نسيت كلمة المرور؟</a></div>
+    <div class="footer-links"><a href="/diet/demo" class="footer-link" id="demoLink1">👁️ عرض تجريبي بدون تسجيل</a></div>
   </div>
   <div class="form-section" id="fReg">
-    <div class="trial-pill">تجربة مجانية <span>14 يوم</span> — بدون بطاقة ائتمان</div>
+    <div class="trial-pill" id="trialPill">تجربة مجانية <span>14 يوم</span> — بدون بطاقة ائتمان</div>
     <div class="err" id="regErr"></div>
     <div class="ok-msg" id="regOk"></div>
     <div class="reg-scroll">
       <div class="field-row">
-        <div class="field"><label>اسم المستخدم *</label><input type="text" id="rUsr" placeholder="username"></div>
-        <div class="field"><label>كلمة المرور *</label><input type="password" id="rPwd" placeholder="MyDiet2026!" oninput="checkPwdStrength(this.value)"></div>
+        <div class="field"><label id="rUsrLabel">اسم المستخدم *</label><input type="text" id="rUsr" placeholder="username"></div>
+        <div class="field"><label id="rPwdLabel">كلمة المرور *</label><input type="password" id="rPwd" placeholder="MyDiet2026!" oninput="checkPwdStrength(this.value)"></div>
       </div>
       <div id="pwdStrength" style="height:5px;border-radius:4px;background:rgba(255,255,255,0.1);margin:-8px 0 4px;overflow:hidden"><div id="pwdBar" style="height:100%;width:0%;border-radius:4px;transition:width 0.3s,background 0.3s"></div></div>
       <div id="pwdHint" style="font-size:0.7rem;color:rgba(255,255,255,0.45);margin-bottom:10px;min-height:16px"></div>
-      <div style="font-size:0.68rem;color:rgba(255,255,255,0.3);margin-bottom:12px;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:8px">
+      <div id="pwdRequirements" style="font-size:0.68rem;color:rgba(255,255,255,0.3);margin-bottom:12px;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:8px">
         🔒 كلمة المرور يجب أن تحتوي على: حرف كبير (A-Z) + حرف صغير (a-z) + رقم (0-9) + رمز (!@#$%)<br>
         <span style="color:rgba(200,245,96,0.6)">مثال صحيح: MyDiet2026!</span>
       </div>
-      <div class="field"><label>البريد الإلكتروني</label><input type="email" id="rEmail" placeholder="email@example.com"></div>
-      <div class="field"><label>رقم الهاتف</label><input type="tel" id="rPhone" placeholder="01XXXXXXXXX"></div>
-      <div class="divider">🎯 النظام الغذائي والهدف</div>
+      <div class="field"><label id="rEmailLabel">البريد الإلكتروني</label><input type="email" id="rEmail" placeholder="email@example.com"></div>
+      <div class="field"><label id="rPhoneLabel">رقم الهاتف</label><input type="tel" id="rPhone" placeholder="01XXXXXXXXX"></div>
+      <div class="divider" id="dietDivider">🎯 النظام الغذائي والهدف</div>
       <div class="field-row">
-        <div class="field"><label>النظام الغذائي</label><select id="rDiet"><option value="atkins">Atkins آتكينز</option><option value="keto">Keto كيتو</option><option value="mediterranean">Mediterranean متوسطي</option><option value="diabetic">Diabetic سكري</option></select></div>
-        <div class="field"><label>الجنس</label><select id="rGender"><option value="male">ذكر / Male</option><option value="female">أنثى / Female</option></select></div>
+        <div class="field"><label id="rDietLabel">النظام الغذائي</label><select id="rDiet"></select></div>
+        <div class="field"><label id="rGenderLabel">الجنس</label><select id="rGender"></select></div>
       </div>
       <div class="field">
-        <label>الميزانية اليومية للطعام</label>
-        <input type="range" min="100" max="500" value="200" step="25" id="rBudget" oninput="document.getElementById('rBudgetVal').textContent=this.value+' جنيه/يوم'">
+        <label id="rBudgetLabel">الميزانية اليومية للطعام</label>
+        <input type="range" min="100" max="500" value="200" step="25" id="rBudget" oninput="updateBudgetVal()">
         <div class="budget-val" id="rBudgetVal">200 جنيه/يوم</div>
       </div>
-      <div class="divider">📏 القياسات الجسدية (InBody)</div>
+      <div class="divider" id="measureDivider">📏 القياسات الجسدية (InBody)</div>
       <div class="field-3">
-        <div class="field"><label>الوزن (كجم)</label><input type="number" id="rWeight" placeholder="85" min="30" max="250" oninput="calcBMI()"></div>
-        <div class="field"><label>الطول (سم)</label><input type="number" id="rHeight" placeholder="170" min="100" max="230" oninput="calcBMI()"></div>
-        <div class="field"><label>العمر</label><input type="number" id="rAge" placeholder="30" min="15" max="90"></div>
+        <div class="field"><label id="rWeightLabel">الوزن (كجم)</label><input type="number" id="rWeight" placeholder="85" min="30" max="250" oninput="calcBMI()"></div>
+        <div class="field"><label id="rHeightLabel">الطول (سم)</label><input type="number" id="rHeight" placeholder="170" min="100" max="230" oninput="calcBMI()"></div>
+        <div class="field"><label id="rAgeLabel">العمر</label><input type="number" id="rAge" placeholder="30" min="15" max="90"></div>
       </div>
       <div class="bmi-box" id="bmiBox"><div class="bmi-num" id="bmiNum">—</div><div class="bmi-cat" id="bmiCat">مؤشر كتلة الجسم BMI</div></div>
       <div class="field-row">
-        <div class="field"><label>نسبة الدهون % (اختياري)</label><input type="number" id="rFat" placeholder="مثال: 28" min="5" max="60" step="0.1"></div>
-        <div class="field"><label>كتلة العضلات كجم (اختياري)</label><input type="number" id="rMuscle" placeholder="مثال: 35" min="10" max="100" step="0.1"></div>
+        <div class="field"><label id="rFatLabel">نسبة الدهون % (اختياري)</label><input type="number" id="rFat" placeholder="مثال: 28" min="5" max="60" step="0.1"></div>
+        <div class="field"><label id="rMuscleLabel">كتلة العضلات كجم (اختياري)</label><input type="number" id="rMuscle" placeholder="مثال: 35" min="10" max="100" step="0.1"></div>
       </div>
-      <div class="hint">💡 القياسات تساعدنا في حساب احتياجاتك الدقيقة. يمكن الحصول عليها من جهاز InBody في الصيدلية أو النادي الرياضي.</div>
+      <div class="hint" id="measureHint">💡 القياسات تساعدنا في حساب احتياجاتك الدقيقة. يمكن الحصول عليها من جهاز InBody في الصيدلية أو النادي الرياضي.</div>
     </div>
     <button class="btn-submit" onclick="doRegister()">ابدأ تجربتك المجانية ←</button>
-    <div class="footer-links"><a href="/diet/demo" class="footer-link">👁️ عرض تجريبي أولاً</a></div>
+    <div class="footer-links"><a href="/diet/demo" class="footer-link" id="demoLink2">👁️ عرض تجريبي أولاً</a></div>
   </div>
 </div>
 <div class="banner-col"><div class="banner-track" id="rightTrack"></div></div>
 <script>
 const LEFT_FEATS=[
-  {icon:'🥗',title:'خطط وجبات أسبوعية',desc:'خطط مخصصة لنظامك الغذائي: أتكينز، كيتو، متوسطي، سكري',tag:'مخصص',tagClass:'tag-lime'},
-  {icon:'💰',title:'أسعار السوق المصري',desc:'مقارنة أسعار كارفور، مترو، روابي وطلبات في الوقت الفعلي',tag:'توفير',tagClass:'tag-orange'},
-  {icon:'🧬',title:'تحليل InBody',desc:'أدخل قياساتك واحصل على توصيات دقيقة لجسمك',tag:'دقيق',tagClass:'tag-lime'},
-  {icon:'🔬',title:'دليل تحاليل المعمل',desc:'اعرف أي تحاليل تحتاجها ومتى، مع مقارنة أسعار المعامل',tag:'صحة',tagClass:'tag-coral'},
-  {icon:'🤖',title:'مساعد ذكي بالعربي',desc:'دايت بوت يجاوبك على أسئلتك الغذائية فوراً',tag:'VIP',tagClass:'tag-orange'},
-  {icon:'📊',title:'تتبع التقدم',desc:'راقب وزنك ونسبة الدهون وكتلة العضلات أسبوعياً',tag:'تتبع',tagClass:'tag-lime'},
-  {icon:'⚡',title:'14 يوم مجاناً',desc:'جرب كل الميزات بدون بطاقة ائتمان. لا التزامات.',tag:'مجاني',tagClass:'tag-coral'},
-  {icon:'🏆',title:'أنظمة غذائية متعددة',desc:'Atkins كيتو متوسطي ونظام السكري كلها في مكان واحد',tag:'تنوع',tagClass:'tag-lime'},
+  {icon:'🥗',titleAr:'خطط وجبات أسبوعية',titleEn:'Weekly Meal Plans',descAr:'خطط مخصصة لنظامك الغذائي: أتكينز، كيتو، متوسطي، سكري',descEn:'Custom plans for your diet: Atkins, Keto, Mediterranean, Diabetic',tagAr:'مخصص',tagEn:'Custom',tagClass:'tag-lime'},
+  {icon:'💰',titleAr:'أسعار السوق المصري',titleEn:'Egyptian Market Prices',descAr:'مقارنة أسعار كارفور، مترو، روابي وطلبات في الوقت الفعلي',descEn:'Compare Carrefour, Metro, Rabie and Talabat prices in real time',tagAr:'توفير',tagEn:'Savings',tagClass:'tag-orange'},
+  {icon:'🧬',titleAr:'تحليل InBody',titleEn:'InBody Analysis',descAr:'أدخل قياساتك واحصل على توصيات دقيقة لجسمك',descEn:'Enter your measurements and get precise recommendations for your body',tagAr:'دقيق',tagEn:'Precise',tagClass:'tag-lime'},
+  {icon:'🔬',titleAr:'دليل تحاليل المعمل',titleEn:'Lab Test Guide',descAr:'اعرف أي تحاليل تحتاجها ومتى، مع مقارنة أسعار المعامل',descEn:'Know which lab tests you need and when, with price comparisons',tagAr:'صحة',tagEn:'Health',tagClass:'tag-coral'},
+  {icon:'🤖',titleAr:'مساعد ذكي بالعربي',titleEn:'Smart AI Assistant',descAr:'دايت بوت يجاوبك على أسئلتك الغذائية فوراً',descEn:'DietBot answers your nutrition questions instantly',tagAr:'VIP',tagEn:'VIP',tagClass:'tag-orange'},
+  {icon:'📊',titleAr:'تتبع التقدم',titleEn:'Progress Tracking',descAr:'راقب وزنك ونسبة الدهون وكتلة العضلات أسبوعياً',descEn:'Track your weight, body fat and muscle mass weekly',tagAr:'تتبع',tagEn:'Tracking',tagClass:'tag-lime'},
+  {icon:'⚡',titleAr:'14 يوم مجاناً',titleEn:'14 Days Free',descAr:'جرب كل الميزات بدون بطاقة ائتمان. لا التزامات.',descEn:'Try every feature with no credit card. No commitment.',tagAr:'مجاني',tagEn:'Free',tagClass:'tag-coral'},
+  {icon:'🏆',titleAr:'أنظمة غذائية متعددة',titleEn:'Multiple Diet Plans',descAr:'Atkins كيتو متوسطي ونظام السكري كلها في مكان واحد',descEn:'Atkins, Keto, Mediterranean and Diabetic, all in one place',tagAr:'تنوع',tagEn:'Variety',tagClass:'tag-lime'},
 ];
 const RIGHT_FEATS=[
-  {icon:'📅',title:'خطة 7 أيام كاملة',desc:'وجبات الإفطار والغداء والعشاء والسناك لكل يوم في الأسبوع',tag:'شامل',tagClass:'tag-lime'},
-  {icon:'🛒',title:'قائمة تسوق ذكية',desc:'اعرف احتاج إيه وامتين تشتريه وفين بأرخص سعر',tag:'توفير',tagClass:'tag-orange'},
-  {icon:'💊',title:'توصيات المكملات',desc:'فيتامينات ومكملات موصى بها حسب نظامك الغذائي',tag:'صحة',tagClass:'tag-lime'},
-  {icon:'🔥',title:'حساب السعرات',desc:'معرفة دقيقة بالسعرات والبروتين والكارب والدهون لكل وجبة',tag:'دقيق',tagClass:'tag-coral'},
-  {icon:'📱',title:'يعمل على موبايلك',desc:'صُمم بالكامل للهواتف المصرية. سريع وسهل الاستخدام.',tag:'موبايل',tagClass:'tag-lime'},
-  {icon:'🔒',title:'خصوصية تامة',desc:'بياناتك محمية بتشفير عالي المستوى ولا تُشارك مع أحد',tag:'آمن',tagClass:'tag-orange'},
-  {icon:'🌍',title:'عربي وإنجليزي',desc:'واجهة كاملة بالعربية والإنجليزية. اختار اللغة اللي تريحك',tag:'ثنائي',tagClass:'tag-lime'},
-  {icon:'📈',title:'نتائج حقيقية',desc:'آلاف المستخدمين حققوا أهدافهم مع DietHub',tag:'مثبت',tagClass:'tag-coral'},
+  {icon:'📅',titleAr:'خطة 7 أيام كاملة',titleEn:'Full 7-Day Plan',descAr:'وجبات الإفطار والغداء والعشاء والسناك لكل يوم في الأسبوع',descEn:'Breakfast, lunch, dinner and snack meals for every day of the week',tagAr:'شامل',tagEn:'Complete',tagClass:'tag-lime'},
+  {icon:'🛒',titleAr:'قائمة تسوق ذكية',titleEn:'Smart Shopping List',descAr:'اعرف احتاج إيه وامتين تشتريه وفين بأرخص سعر',descEn:'Know what you need, when to buy it, and where it\'s cheapest',tagAr:'توفير',tagEn:'Savings',tagClass:'tag-orange'},
+  {icon:'💊',titleAr:'توصيات المكملات',titleEn:'Supplement Recommendations',descAr:'فيتامينات ومكملات موصى بها حسب نظامك الغذائي',descEn:'Vitamins and supplements recommended for your specific diet',tagAr:'صحة',tagEn:'Health',tagClass:'tag-lime'},
+  {icon:'🔥',titleAr:'حساب السعرات',titleEn:'Calorie Calculator',descAr:'معرفة دقيقة بالسعرات والبروتين والكارب والدهون لكل وجبة',descEn:'Precise calories, protein, carbs and fat for every meal',tagAr:'دقيق',tagEn:'Precise',tagClass:'tag-coral'},
+  {icon:'📱',titleAr:'يعمل على موبايلك',titleEn:'Works on Your Phone',descAr:'صُمم بالكامل للهواتف المصرية. سريع وسهل الاستخدام.',descEn:'Fully designed for Egyptian phones. Fast and easy to use.',tagAr:'موبايل',tagEn:'Mobile',tagClass:'tag-lime'},
+  {icon:'🔒',titleAr:'خصوصية تامة',titleEn:'Complete Privacy',descAr:'بياناتك محمية بتشفير عالي المستوى ولا تُشارك مع أحد',descEn:'Your data is protected with high-level encryption, never shared',tagAr:'آمن',tagEn:'Secure',tagClass:'tag-orange'},
+  {icon:'🌍',titleAr:'عربي وإنجليزي',titleEn:'Arabic & English',descAr:'واجهة كاملة بالعربية والإنجليزية. اختار اللغة اللي تريحك',descEn:'Fully bilingual interface. Choose whichever language you prefer',tagAr:'ثنائي',tagEn:'Bilingual',tagClass:'tag-lime'},
+  {icon:'📈',titleAr:'نتائج حقيقية',titleEn:'Real Results',descAr:'آلاف المستخدمين حققوا أهدافهم مع DietHub',descEn:'Thousands of users have reached their goals with DietHub',tagAr:'مثبت',tagEn:'Proven',tagClass:'tag-coral'},
 ];
-function buildCards(data){return data.map(f=>`<div class="feat-card"><div class="feat-icon">${f.icon}</div><div class="feat-title">${f.title}</div><div class="feat-desc">${f.desc}</div><span class="feat-tag ${f.tagClass}">${f.tag}</span></div>`).join('');}
-document.getElementById('leftTrack').innerHTML=buildCards(LEFT_FEATS)+buildCards(LEFT_FEATS);
-document.getElementById('rightTrack').innerHTML=buildCards(RIGHT_FEATS)+buildCards(RIGHT_FEATS);
+function buildCards(data,isAr){return data.map(f=>`<div class="feat-card"><div class="feat-icon">${f.icon}</div><div class="feat-title">${isAr?f.titleAr:f.titleEn}</div><div class="feat-desc">${isAr?f.descAr:f.descEn}</div><span class="feat-tag ${f.tagClass}">${isAr?f.tagAr:f.tagEn}</span></div>`).join('');}
+function renderFeatureCards(isAr){document.getElementById('leftTrack').innerHTML=buildCards(LEFT_FEATS,isAr)+buildCards(LEFT_FEATS,isAr);document.getElementById('rightTrack').innerHTML=buildCards(RIGHT_FEATS,isAr)+buildCards(RIGHT_FEATS,isAr);}
+renderFeatureCards(true);
 const foods=['🥑','🥦','🍋','🫐','🥕','🍎','🫚','🥚','🥩','🐟','🥗','🍅','🌿','🥜'];
 foods.forEach(f=>{const el=document.createElement('div');el.className='food-icon';el.textContent=f;el.style.cssText=`left:${Math.random()*100}%;font-size:${1.5+Math.random()*2}rem;animation-duration:${8+Math.random()*12}s;animation-delay:-${Math.random()*20}s`;document.getElementById('foodBg').appendChild(el);});
 if(new URLSearchParams(window.location.search).get('tab')==='register')switchAuth('register');
+
+// Google Sign-In — only rendered if the server actually has a Client ID
+// configured (GET /diet/api/config), so no broken/dead button shows up
+// while GOOGLE_CLIENT_ID is unset.
+let _googleLoaded = false;
+function renderGoogleButton() {
+  if (!_googleLoaded) return;
+  document.getElementById('googleSignInBtn').innerHTML = '';
+  google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), {
+    theme: 'outline', size: 'large', width: 320, text: 'continue_with', locale: _loginLang
+  });
+}
+function showSocialDividerIfNeeded() {
+  const anySocial = document.getElementById('googleSignInBox').style.display !== 'none'
+    || document.getElementById('facebookSignInBox').style.display !== 'none';
+  document.getElementById('socialDivider').style.display = anySocial ? 'flex' : 'none';
+}
+
+(function() {
+  fetch('/diet/api/config').then(r=>r.json()).then(cfg => {
+    if (cfg.googleClientId) {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.onload = () => {
+        google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: handleGoogleCredential });
+        document.getElementById('googleSignInBox').style.display = 'block';
+        _googleLoaded = true;
+        renderGoogleButton();
+        showSocialDividerIfNeeded();
+      };
+      document.head.appendChild(script);
+    }
+    if (cfg.facebookAppId) {
+      window.fbAsyncInit = function() {
+        FB.init({ appId: cfg.facebookAppId, cookie: false, xfbml: false, version: 'v19.0' });
+        document.getElementById('facebookSignInBox').style.display = 'block';
+        showSocialDividerIfNeeded();
+      };
+      const script = document.createElement('script');
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }).catch(()=>{});
+})();
+
+async function handleGoogleCredential(response) {
+  try {
+    const r = await fetch('/diet/api/auth/google', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ credential: response.credential })
+    });
+    const d = await r.json();
+    if (d.token) { document.cookie = `dh_token=${d.token};path=/;max-age=28800`; window.location.href = '/diet/dashboard'; }
+    else showErr('loginErr', d.error || (_loginLang==='ar'?'حدث خطأ أثناء تسجيل الدخول بجوجل':'An error occurred signing in with Google'));
+  } catch { showErr('loginErr', _loginLang==='ar'?'حدث خطأ، حاول مرة أخرى':'An error occurred, please try again'); }
+}
+
+function fbLogin() {
+  if (typeof FB === 'undefined') return;
+  FB.login(function(response) {
+    if (response.authResponse) {
+      handleFacebookToken(response.authResponse.accessToken);
+    } else {
+      showErr('loginErr', _loginLang==='ar'?'تم إلغاء تسجيل الدخول بفيسبوك':'Facebook sign-in was cancelled');
+    }
+  }, { scope: 'email' });
+}
+async function handleFacebookToken(accessToken) {
+  try {
+    const r = await fetch('/diet/api/auth/facebook', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ accessToken })
+    });
+    const d = await r.json();
+    if (d.token) { document.cookie = `dh_token=${d.token};path=/;max-age=28800`; window.location.href = '/diet/dashboard'; }
+    else showErr('loginErr', d.error || (_loginLang==='ar'?'حدث خطأ أثناء تسجيل الدخول بفيسبوك':'An error occurred signing in with Facebook'));
+  } catch { showErr('loginErr', _loginLang==='ar'?'حدث خطأ، حاول مرة أخرى':'An error occurred, please try again'); }
+}
 function switchAuth(tab){document.getElementById('tabLogin').classList.toggle('active',tab==='login');document.getElementById('tabReg').classList.toggle('active',tab==='register');document.getElementById('fLogin').classList.toggle('active',tab==='login');document.getElementById('fReg').classList.toggle('active',tab==='register');}
-function calcBMI(){const w=parseFloat(document.getElementById('rWeight').value);const h=parseFloat(document.getElementById('rHeight').value);if(w&&h&&h>0){const bmi=(w/Math.pow(h/100,2)).toFixed(1);document.getElementById('bmiNum').textContent=bmi;let cat='';if(bmi<18.5)cat='⚠️ نقص في الوزن — Underweight';else if(bmi<25)cat='✅ وزن طبيعي — Normal';else if(bmi<30)cat='⚠️ زيادة وزن — Overweight';else cat='🔴 سمنة — Obese';document.getElementById('bmiCat').textContent=cat;document.getElementById('bmiBox').style.display='block';}}
+function calcBMI(){const w=parseFloat(document.getElementById('rWeight').value);const h=parseFloat(document.getElementById('rHeight').value);const isAr=_loginLang==='ar';if(w&&h&&h>0){const bmi=(w/Math.pow(h/100,2)).toFixed(1);document.getElementById('bmiNum').textContent=bmi;let cat='';if(bmi<18.5)cat=isAr?'⚠️ نقص في الوزن':'⚠️ Underweight';else if(bmi<25)cat=isAr?'✅ وزن طبيعي':'✅ Normal';else if(bmi<30)cat=isAr?'⚠️ زيادة وزن':'⚠️ Overweight';else cat=isAr?'🔴 سمنة':'🔴 Obese';document.getElementById('bmiCat').textContent=cat;document.getElementById('bmiBox').style.display='block';}}
 function toggleLoginPwd(){const input=document.getElementById("lPwd");const eye=document.getElementById("loginEye");if(input.type==="password"){input.type="text";eye.innerHTML='<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';eye.setAttribute("stroke","#C8F560");}else{input.type="password";eye.innerHTML='<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';eye.setAttribute("stroke","currentColor");}}
-async function doLogin(){const usr=document.getElementById('lUsr').value.trim();const pwd=document.getElementById('lPwd').value;if(!usr||!pwd){showErr('loginErr','يرجى ملء جميع الحقول');return;}try{const r=await fetch('/diet/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:usr,password:pwd})});const d=await r.json();if(d.token){document.cookie=`dh_token=${d.token};path=/;max-age=28800`;window.location.href='/diet/dashboard';}else showErr('loginErr',d.error||'اسم المستخدم أو كلمة المرور غير صحيحة');}catch{showErr('loginErr','حدث خطأ، حاول مرة أخرى');}}
-async function doRegister(){const usr=document.getElementById('rUsr').value.trim();const pwd=document.getElementById('rPwd').value;if(!usr||!pwd){showErr('regErr','اسم المستخدم وكلمة المرور مطلوبان');return;}if(pwd.length<6){showErr('regErr','كلمة المرور يجب أن تكون 6 أحرف على الأقل');return;}const body={username:usr,password:pwd,email:document.getElementById('rEmail').value.trim(),phone:document.getElementById('rPhone').value.trim(),diet:document.getElementById('rDiet').value,gender:document.getElementById('rGender').value,budget:document.getElementById('rBudget').value,weight:document.getElementById('rWeight').value,height:document.getElementById('rHeight').value,age:document.getElementById('rAge').value,bodyFat:document.getElementById('rFat').value,muscleMass:document.getElementById('rMuscle').value};try{const r=await fetch('/diet/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok&&d.requiresVerification){document.getElementById('regOk').textContent='✅ تم إنشاء الحساب! تحقق من بريدك الإلكتروني للتفعيل';document.getElementById('regOk').style.display='block';setTimeout(()=>window.location.href='/diet/verify-pending',1800);}else if(d.ok&&d.token){document.getElementById('regOk').textContent='✅ تم إنشاء الحساب! جاري التحويل...';document.getElementById('regOk').style.display='block';document.cookie=`dh_token=${d.token};path=/;max-age=28800`;setTimeout(()=>window.location.href='/diet/dashboard',1200);}else showErr('regErr',d.error||'حدث خطأ في إنشاء الحساب');}catch{showErr('regErr','حدث خطأ، حاول مرة أخرى');}}
+async function doLogin(){const usr=document.getElementById('lUsr').value.trim();const pwd=document.getElementById('lPwd').value;const isAr=_loginLang==='ar';if(!usr||!pwd){showErr('loginErr',isAr?'يرجى ملء جميع الحقول':'Please fill in all fields');return;}try{const r=await fetch('/diet/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:usr,password:pwd})});const d=await r.json();if(d.token){document.cookie=`dh_token=${d.token};path=/;max-age=28800`;window.location.href='/diet/dashboard';}else showErr('loginErr',d.error||(isAr?'اسم المستخدم أو كلمة المرور غير صحيحة':'Incorrect username or password'));}catch{showErr('loginErr',isAr?'حدث خطأ، حاول مرة أخرى':'An error occurred, please try again');}}
+async function doRegister(){const usr=document.getElementById('rUsr').value.trim();const pwd=document.getElementById('rPwd').value;const isAr=_loginLang==='ar';if(!usr||!pwd){showErr('regErr',isAr?'اسم المستخدم وكلمة المرور مطلوبان':'Username and password are required');return;}if(pwd.length<6){showErr('regErr',isAr?'كلمة المرور يجب أن تكون 6 أحرف على الأقل':'Password must be at least 6 characters');return;}const body={username:usr,password:pwd,email:document.getElementById('rEmail').value.trim(),phone:document.getElementById('rPhone').value.trim(),diet:document.getElementById('rDiet').value,gender:document.getElementById('rGender').value,budget:document.getElementById('rBudget').value,weight:document.getElementById('rWeight').value,height:document.getElementById('rHeight').value,age:document.getElementById('rAge').value,bodyFat:document.getElementById('rFat').value,muscleMass:document.getElementById('rMuscle').value};try{const r=await fetch('/diet/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok&&d.requiresVerification){document.getElementById('regOk').textContent=isAr?'✅ تم إنشاء الحساب! تحقق من بريدك الإلكتروني للتفعيل':'✅ Account created! Check your email to verify it';document.getElementById('regOk').style.display='block';setTimeout(()=>window.location.href='/diet/verify-pending?lang='+_loginLang,1800);}else if(d.ok&&d.token){document.getElementById('regOk').textContent=isAr?'✅ تم إنشاء الحساب! جاري التحويل...':'✅ Account created! Redirecting...';document.getElementById('regOk').style.display='block';document.cookie=`dh_token=${d.token};path=/;max-age=28800`;setTimeout(()=>window.location.href='/diet/dashboard',1200);}else showErr('regErr',d.error||(isAr?'حدث خطأ في إنشاء الحساب':'An error occurred creating the account'));}catch{showErr('regErr',isAr?'حدث خطأ، حاول مرة أخرى':'An error occurred, please try again');}}
 function showErr(id,msg){['loginErr','regErr'].forEach(eid=>{const e=document.getElementById(eid);if(e)e.style.display='none';});const el=document.getElementById(id);if(!el)return;el.innerHTML='⚠️ '+msg;el.style.display='block';el.scrollIntoView({behavior:'smooth',block:'center'});clearTimeout(el._timer);el._timer=setTimeout(()=>{el.style.display='none';},8000);}
 document.addEventListener('keydown',e=>{if(e.key==='Enter'){if(document.getElementById('fLogin').classList.contains('active'))doLogin();else doRegister();}});
-function checkPwdStrength(pwd){const bar=document.getElementById('pwdBar');const hint=document.getElementById('pwdHint');if(!bar||!hint)return;let score=0;const checks=[{re:/[a-z]/,msg:'حرف صغير a-z'},{re:/[A-Z]/,msg:'حرف كبير A-Z'},{re:/[0-9]/,msg:'رقم 0-9'},{re:/[!@#$%^&*()\-_=+\[\]{};:'",.<>?\/\\|`~]/,msg:'رمز خاص !@#$%'},{re:/.{8,}/,msg:'8 أحرف على الأقل'}];const missing=[];checks.forEach(c=>{if(c.re.test(pwd))score++;else missing.push(c.msg);});const colors=['#FF5757','#FF7A3D','#FFD63D','#A8E063','#C8F560'];const labels=['ضعيف جداً','ضعيف','متوسط','قوي','ممتاز!'];bar.style.width=(score*20)+'%';bar.style.background=colors[score-1]||'#FF5757';if(pwd.length===0){hint.textContent='';bar.style.width='0%';}else if(missing.length>0){hint.textContent='⚠️ ينقصها: '+missing.join(' · ');}else{hint.style.color='#C8F560';hint.textContent='✅ '+(labels[score-1]||'');}}
-const LOGIN_STRINGS={ar:{tabLogin:'تسجيل الدخول',tabReg:'حساب جديد',userLabel:'اسم المستخدم',userPlaceholder:'أدخل اسم المستخدم',pwdLabel:'كلمة المرور',pwdPlaceholder:'أدخل كلمة المرور',loginBtn:'دخول ←',forgot:'نسيت كلمة المرور؟',demo:'👁️ عرض تجريبي بدون تسجيل',regBtn:'ابدأ تجربتك المجانية ←',subtitle:'منصة الصحة والتغذية المصرية'},en:{tabLogin:'Login',tabReg:'New Account',userLabel:'Username',userPlaceholder:'Enter your username',pwdLabel:'Password',pwdPlaceholder:'Enter your password',loginBtn:'Login →',forgot:'Forgot password?',demo:'👁️ Try demo without signing up',regBtn:'Start your free trial →',subtitle:'Egyptian Health & Nutrition Platform'}};
-function setLoginLang(lang){const s=LOGIN_STRINGS[lang];const isAr=lang==='ar';document.querySelector('html').setAttribute('lang',lang);document.querySelector('html').setAttribute('dir',isAr?'rtl':'ltr');document.getElementById('lBtnAr').classList.toggle('active',isAr);document.getElementById('lBtnEn').classList.toggle('active',!isAr);const tabLogin=document.getElementById('tabLogin');if(tabLogin)tabLogin.textContent=s.tabLogin;const tabReg=document.querySelector('#tabReg');if(tabReg)tabReg.textContent=s.tabReg;const lUsr=document.getElementById('lUsr');if(lUsr)lUsr.placeholder=s.userPlaceholder;const lPwd=document.getElementById('lPwd');if(lPwd)lPwd.placeholder=s.pwdPlaceholder;const loginBtn=document.querySelector('#fLogin .btn-submit');if(loginBtn)loginBtn.textContent=s.loginBtn;const forgotLink=document.querySelector('a[href="/diet/forgot-password"]');if(forgotLink)forgotLink.textContent=s.forgot;const regBtn=document.querySelector('#fReg .btn-submit');if(regBtn)regBtn.textContent=s.regBtn;const subtitle=document.querySelector('.sub');if(subtitle)subtitle.textContent=s.subtitle;}
+function checkPwdStrength(pwd){const bar=document.getElementById('pwdBar');const hint=document.getElementById('pwdHint');if(!bar||!hint)return;const isAr=_loginLang==='ar';let score=0;const checks=[{re:/[a-z]/,msgAr:'حرف صغير a-z',msgEn:'lowercase a-z'},{re:/[A-Z]/,msgAr:'حرف كبير A-Z',msgEn:'uppercase A-Z'},{re:/[0-9]/,msgAr:'رقم 0-9',msgEn:'a number 0-9'},{re:/[!@#$%^&*()\-_=+\[\]{};:'",.<>?\/\\|`~]/,msgAr:'رمز خاص !@#$%',msgEn:'a special symbol !@#$%'},{re:/.{8,}/,msgAr:'8 أحرف على الأقل',msgEn:'at least 8 characters'}];const missing=[];checks.forEach(c=>{if(c.re.test(pwd))score++;else missing.push(isAr?c.msgAr:c.msgEn);});const colors=['#FF5757','#FF7A3D','#FFD63D','#A8E063','#C8F560'];const labelsAr=['ضعيف جداً','ضعيف','متوسط','قوي','ممتاز!'];const labelsEn=['Very weak','Weak','Medium','Strong','Excellent!'];const labels=isAr?labelsAr:labelsEn;bar.style.width=(score*20)+'%';bar.style.background=colors[score-1]||'#FF5757';if(pwd.length===0){hint.textContent='';bar.style.width='0%';}else if(missing.length>0){hint.textContent=(isAr?'⚠️ ينقصها: ':'⚠️ Missing: ')+missing.join(' · ');}else{hint.style.color='#C8F560';hint.textContent='✅ '+(labels[score-1]||'');}}
+
+const DIET_OPTIONS=[
+  {value:'atkins',ar:'أتكينز',en:'Atkins'},{value:'keto',ar:'كيتو',en:'Keto'},
+  {value:'mediterranean',ar:'متوسطي',en:'Mediterranean'},{value:'diabetic',ar:'مرضى السكري',en:'Diabetic'},
+  {value:'women',ar:'المرأة',en:'Women'},{value:'women_40',ar:'المرأة فوق الأربعين',en:'Women Over 40'},
+  {value:'men',ar:'الرجل',en:'Men'},{value:'men_40',ar:'الرجل فوق الأربعين',en:'Men Over 40'},
+  {value:'kids',ar:'الأطفال',en:'Kids'},
+];
+const GENDER_OPTIONS=[{value:'male',ar:'ذكر',en:'Male'},{value:'female',ar:'أنثى',en:'Female'}];
+function renderSelectOptions(selectId,options,isAr){const sel=document.getElementById(selectId);if(!sel)return;const prev=sel.value;sel.innerHTML=options.map(o=>`<option value="${o.value}">${isAr?o.ar:o.en}</option>`).join('');if(prev)sel.value=prev;}
+function updateBudgetVal(){const isAr=_loginLang==='ar';const v=document.getElementById('rBudget').value;document.getElementById('rBudgetVal').textContent=v+(isAr?' جنيه/يوم':' EGP/day');}
+
+let _loginLang='ar';
+const LOGIN_STRINGS={ar:{tabLogin:'تسجيل الدخول',tabReg:'حساب جديد 🆓',userLabel:'اسم المستخدم',userPlaceholder:'أدخل اسم المستخدم',pwdLabel:'كلمة المرور',pwdPlaceholder:'أدخل كلمة المرور',loginBtn:'دخول ←',forgot:'نسيت كلمة المرور؟',demo:'👁️ عرض تجريبي بدون تسجيل',regBtn:'ابدأ تجربتك المجانية ←',subtitle:'منصة الصحة والتغذية المصرية',orDivider:'أو',fbBtn:'المتابعة باستخدام فيسبوك',trialPill:'تجربة مجانية <span>14 يوم</span> — بدون بطاقة ائتمان',rUsrLabel:'اسم المستخدم *',rPwdLabel:'كلمة المرور *',pwdReq:'🔒 كلمة المرور يجب أن تحتوي على: حرف كبير (A-Z) + حرف صغير (a-z) + رقم (0-9) + رمز (!@#$%)<br><span style="color:rgba(200,245,96,0.6)">مثال صحيح: MyDiet2026!</span>',rEmailLabel:'البريد الإلكتروني',rPhoneLabel:'رقم الهاتف',dietDivider:'🎯 النظام الغذائي والهدف',rDietLabel:'النظام الغذائي',rGenderLabel:'الجنس',rBudgetLabel:'الميزانية اليومية للطعام',measureDivider:'📏 القياسات الجسدية (InBody)',rWeightLabel:'الوزن (كجم)',rHeightLabel:'الطول (سم)',rAgeLabel:'العمر',rFatLabel:'نسبة الدهون % (اختياري)',rMuscleLabel:'كتلة العضلات كجم (اختياري)',measureHint:'💡 القياسات تساعدنا في حساب احتياجاتك الدقيقة. يمكن الحصول عليها من جهاز InBody في الصيدلية أو النادي الرياضي.'},en:{tabLogin:'Login',tabReg:'New Account 🆓',userLabel:'Username',userPlaceholder:'Enter your username',pwdLabel:'Password',pwdPlaceholder:'Enter your password',loginBtn:'Login →',forgot:'Forgot password?',demo:'👁️ Try demo without signing up',regBtn:'Start your free trial →',subtitle:'Egyptian Health & Nutrition Platform',orDivider:'or',fbBtn:'Continue with Facebook',trialPill:'Free trial <span>14 days</span> — no credit card',rUsrLabel:'Username *',rPwdLabel:'Password *',pwdReq:'🔒 Password must contain: uppercase (A-Z) + lowercase (a-z) + number (0-9) + symbol (!@#$%)<br><span style="color:rgba(200,245,96,0.6)">Valid example: MyDiet2026!</span>',rEmailLabel:'Email',rPhoneLabel:'Phone Number',dietDivider:'🎯 Diet & Goal',rDietLabel:'Diet Type',rGenderLabel:'Gender',rBudgetLabel:'Daily Food Budget',measureDivider:'📏 Body Measurements (InBody)',rWeightLabel:'Weight (kg)',rHeightLabel:'Height (cm)',rAgeLabel:'Age',rFatLabel:'Body Fat % (optional)',rMuscleLabel:'Muscle Mass kg (optional)',measureHint:'💡 These measurements help us calculate your precise needs. You can get them from an InBody machine at a pharmacy or gym.'}};
+function setLoginLang(lang){
+  const s=LOGIN_STRINGS[lang];const isAr=lang==='ar';_loginLang=lang;
+  document.querySelector('html').setAttribute('lang',lang);document.querySelector('html').setAttribute('dir',isAr?'rtl':'ltr');
+  document.getElementById('lBtnAr').classList.toggle('active',isAr);document.getElementById('lBtnEn').classList.toggle('active',!isAr);
+  const set=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+  const setHtml=(id,val)=>{const el=document.getElementById(id);if(el)el.innerHTML=val;};
+  set('tabLogin',s.tabLogin);set('tabReg',s.tabReg);
+  const lUsr=document.getElementById('lUsr');if(lUsr)lUsr.placeholder=s.userPlaceholder;
+  const lPwd=document.getElementById('lPwd');if(lPwd)lPwd.placeholder=s.pwdPlaceholder;
+  set('lUsrLabel',s.userLabel);set('lPwdLabel',s.pwdLabel);
+  const loginBtn=document.querySelector('#fLogin .btn-submit');if(loginBtn)loginBtn.textContent=s.loginBtn;
+  const forgotLink=document.getElementById('forgotLink');if(forgotLink){forgotLink.textContent=s.forgot;forgotLink.setAttribute('href','/diet/forgot-password?lang='+lang);}
+  const regBtn=document.querySelector('#fReg .btn-submit');if(regBtn)regBtn.textContent=s.regBtn;
+  set('demoLink1',s.demo);set('demoLink2',s.demo);
+  const d1=document.getElementById('demoLink1');if(d1)d1.setAttribute('href','/diet/demo?lang='+lang);
+  const d2=document.getElementById('demoLink2');if(d2)d2.setAttribute('href','/diet/demo?lang='+lang);
+  const subtitle=document.querySelector('.sub');if(subtitle)subtitle.textContent=s.subtitle;
+  set('orDivider',s.orDivider);
+  set('fbBtnText',s.fbBtn);
+  setHtml('trialPill',s.trialPill);
+  set('rUsrLabel',s.rUsrLabel);set('rPwdLabel',s.rPwdLabel);
+  setHtml('pwdRequirements',s.pwdReq);
+  set('rEmailLabel',s.rEmailLabel);set('rPhoneLabel',s.rPhoneLabel);
+  set('dietDivider',s.dietDivider);set('rDietLabel',s.rDietLabel);set('rGenderLabel',s.rGenderLabel);
+  set('rBudgetLabel',s.rBudgetLabel);
+  renderSelectOptions('rDiet',DIET_OPTIONS,isAr);renderSelectOptions('rGender',GENDER_OPTIONS,isAr);
+  updateBudgetVal();
+  set('measureDivider',s.measureDivider);
+  set('rWeightLabel',s.rWeightLabel);set('rHeightLabel',s.rHeightLabel);set('rAgeLabel',s.rAgeLabel);
+  set('rFatLabel',s.rFatLabel);set('rMuscleLabel',s.rMuscleLabel);
+  set('measureHint',s.measureHint);
+  calcBMI();
+  checkPwdStrength(document.getElementById('rPwd').value);
+  renderFeatureCards(isAr);
+  renderGoogleButton();
+}
 window.setLoginLang=setLoginLang;
+setLoginLang(new URLSearchParams(window.location.search).get('lang')==='en' ? 'en' : 'ar');
 </script>
 
 <!-- Universal Back Button -->
