@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const store = require('./db');
 const { buildHealthProfile, coachSummary } = require('./health');
+const ai = require('./ai');
 const app = express();
 
 // X-Forwarded-For is only honored when the connection comes from a trusted
@@ -911,23 +912,8 @@ ${summary}
 ${generateQuestions ? 'مهمتك الآن: اطرح 3 أسئلة متابعة قصيرة ومخصصة بناءً على ملفه الصحي وتنبيهاته الحالية ووقت اليوم. أرسل الأسئلة فقط كقائمة مرقمة بدون مقدمة.' : 'أجب على رسالة المستخدم بإيجاز وادعمه في رحلته الصحية.'}`;
 
   try {
-    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 500,
-        system: systemPrompt,
-        messages: (messages && messages.length) ? messages : [{ role: 'user', content: 'ابدأ' }]
-      })
-    });
-    if (!anthropicRes.ok) throw new Error('Anthropic error: ' + anthropicRes.status);
-    const data = await anthropicRes.json();
-    res.json({ reply: data.content?.[0]?.text || 'عذراً، لم أفهم. حاول مجدداً.' });
+    const { text } = await ai.chat({ system: systemPrompt, messages, maxTokens: 500 });
+    res.json({ reply: text || 'عذراً، لم أفهم. حاول مجدداً.' });
   } catch(e) {
     console.error('Chatbot error:', e.message);
     res.status(500).json({ error: 'خطأ في المساعد الذكي: ' + e.message });
@@ -985,14 +971,10 @@ app.post(`${BASE}/api/lab-results`, auth, async (req,res) => {
   try {
     const u = req.userObj;
     const diet = u.profile?.diet || 'balanced';
-    const prompt = `You are a medical nutrition AI assistant. Analyze these lab results for a patient on a ${diet} diet:\n${JSON.stringify(results)}\n\nProvide a brief analysis in Arabic and English covering:\n1. Which values are normal/abnormal\n2. What dietary changes could help\n3. Overall health trend\n\nReturn JSON: {"analysis_ar":"...","analysis_en":"...","status":"good|warning|critical","recommendations_ar":["..."],"recommendations_en":["..."]}`;
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01'},
-      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:800,messages:[{role:'user',content:prompt}]})
-    });
-    const aiData = await aiRes.json();
-    const analysis = JSON.parse(aiData.content?.[0]?.text || '{}');
+    const prompt = `You are a medical nutrition AI assistant. Analyze these lab results for a patient on a ${diet} diet:\n${JSON.stringify(results)}\n\nProvide a brief analysis in Arabic and English covering:\n1. Which values are normal/abnormal\n2. What dietary changes could help\n3. Overall health trend\n\nReturn ONLY valid JSON (no markdown, no code fences): {"analysis_ar":"...","analysis_en":"...","status":"good|warning|critical","recommendations_ar":["..."],"recommendations_en":["..."]}`;
+    const { text } = await ai.chat({ messages: [{ role:'user', content: prompt }], maxTokens: 800 });
+    // Free models sometimes wrap JSON in ```; strip fences before parsing.
+    const analysis = JSON.parse((text || '{}').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
     // Re-read under a transaction so the analysis merges onto the latest state
     // instead of clobbering anything written during the await above.
     update('lab_results.json', all => {
