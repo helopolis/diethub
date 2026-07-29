@@ -1,11 +1,22 @@
 const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const multer = require('multer');
 const { OAuth2Client } = require('google-auth-library');
 const { Webhook } = require('svix');
+const store = require('./db');
+const { buildHealthProfile, coachSummary } = require('./health');
+const ai = require('./ai');
 const app = express();
+
+// X-Forwarded-For is only honored when the connection comes from a trusted
+// proxy — by default the local reverse proxy (nginx on the same host).
+// Override with TRUST_PROXY: "false" if the app is exposed directly,
+// a hop count like "1", or an address list like "loopback, 10.0.0.0/8".
+const TP = process.env.TRUST_PROXY ?? 'loopback';
+app.set('trust proxy', TP === 'true' ? true : TP === 'false' ? false : /^\d+$/.test(TP) ? parseInt(TP) : TP);
 
 // verify: stashes the exact raw bytes alongside the parsed body - needed
 // because Svix signature verification (watch webhook receiver) must HMAC
@@ -15,7 +26,7 @@ app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = 
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const DATA_DIR = '/data/diethub';
+const DATA_DIR = process.env.DATA_DIR || '/data/diethub';
 const JWT_SECRET = process.env.JWT_SECRET || 'diethub_secret_2026_CHANGE_IN_PROD';
 const BASE = '/diet';
 const TRIAL_DAYS = 14;
@@ -43,6 +54,35 @@ const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : nul
 // container's environment.
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || '';
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || '';
+
+// ─── PLANS & KASHIER ──────────────────────────────────────────────────────────
+const PLAN_PRICES = { basic:99, standard:179, premium:249, vip:349, elite:449 };
+// The Payment API Key (a.k.a. iframe key) signs the HPP hash and the webhook —
+// it is SECRET and lives only here on the server, never in the browser.
+const KASHIER = {
+  mid:     process.env.KASHIER_MERCHANT_ID || '',
+  payKey:  process.env.KASHIER_PAYMENT_API_KEY || process.env.KASHIER_SECRET_KEY || '',
+  mode:    process.env.KASHIER_MODE === 'live' ? 'live' : 'test',
+  baseUrl: process.env.PUBLIC_BASE_URL || 'https://diet.talabatito.com',
+};
+function kashierConfigured() { return !!(KASHIER.mid && KASHIER.payKey && !/YOUR_|XX-XXXX/.test(KASHIER.mid)); }
+// HPP order hash — HMAC-SHA256 of "/?payment=MID.ORDER.AMOUNT.CURRENCY" with the
+// Payment API Key. Verified byte-for-byte against Kashier's published test vector.
+function kashierHash(orderId, amount, currency='EGP') {
+  return crypto.createHmac('sha256', KASHIER.payKey)
+    .update(`/?payment=${KASHIER.mid}.${orderId}.${amount}.${currency}`).digest('hex');
+}
+// Kashier names the fields it signed in `signatureKeys`; we rebuild key=value&…
+// in that order and HMAC-SHA256 with the Payment API Key, then timing-safe compare.
+const KASHIER_SIG_KEYS = ['amount','channel','currency','kashierOrderId','merchantOrderId','method','orderReference','status','transactionId','transactionResponseCode'];
+function kashierVerify(data, signatureKeys, signature) {
+  if (!signature || !KASHIER.payKey) return false;
+  const keys = (Array.isArray(signatureKeys) && signatureKeys.length) ? signatureKeys : KASHIER_SIG_KEYS;
+  const qs = keys.filter(k => data[k] !== undefined).map(k => `${k}=${data[k]}`).join('&');
+  const expected = crypto.createHmac('sha256', KASHIER.payKey).update(qs).digest('hex');
+  try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(signature))); }
+  catch { return false; }
+}
 
 // ─── SECURITY CONFIG ──────────────────────────────────────────────────────────
 const SEC = {
@@ -82,7 +122,10 @@ setInterval(() => { const now = Date.now(); for (const [k, v] of rl) if (now - v
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function getIP(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  // req.ip respects the 'trust proxy' setting: X-Forwarded-For is only used
+  // when the request actually came through a trusted proxy, so clients can't
+  // spoof their way past the rate limiter by sending fake headers.
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 function sanitize(s) {
   if (typeof s !== 'string') return s;
@@ -154,12 +197,41 @@ function trial(u) {
 }
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
-function load(f) { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8')); } catch { return null; } }
-function save(f, d) { fs.mkdirSync(DATA_DIR,{recursive:true}); fs.writeFileSync(path.join(DATA_DIR,f), JSON.stringify(d,null,2)); }
+// Backed by SQLite (see db.js). Same key→JSON interface as the old flat files,
+// but atomic and durable. `update()` gives transactional read-modify-write.
+const { load, save, update } = store;
 function secLog(event, ip, extra={}) {
   const logs = load('security_log.json') || [];
   logs.unshift({ ts:new Date().toISOString(), event, ip, ...extra });
   save('security_log.json', logs.slice(0, 500));
+}
+
+// ─── ANALYTICS / EVENT TRACKING ───────────────────────────────────────────────
+// One place records every lifecycle event. It powers the admin funnel/CAC
+// dashboard AND, if N8N_WEBHOOK_URL is set, forwards each event to n8n so
+// automations (welcome emails, abandoned-checkout, retention, Slack/WhatsApp
+// alerts) can fire on it. Analytics must never break a request, so it's all
+// wrapped and fire-and-forget.
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || '';
+function utmFrom(req) {
+  const b = req?.body || {}, q = req?.query || {};
+  return {
+    utmSource:   b.utm_source   || q.utm_source   || null,
+    utmMedium:   b.utm_medium   || q.utm_medium   || null,
+    utmCampaign: b.utm_campaign || q.utm_campaign || null,
+  };
+}
+function track(name, { req, userId, anonId, props } = {}) {
+  try {
+    const uid = userId || req?.user?.id || null;
+    store.logEvent({ name, userId: uid, anonId: anonId || req?.body?.anonId || null,
+      props: props || {}, ip: req ? getIP(req) : null, ...utmFrom(req) });
+    if (N8N_WEBHOOK_URL) {
+      fetch(N8N_WEBHOOK_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ event:name, userId:uid, ts:new Date().toISOString(), props:props||{} }) })
+        .catch(()=>{});
+    }
+  } catch(e) { /* analytics is best-effort — never surface to the caller */ }
 }
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
@@ -189,7 +261,12 @@ function auth(req, res, next) {
       : res.redirect(`${BASE}/verify-pending`);
   }
   const tr = trial(u);
-  if (tr.expired && !req.path.startsWith('/payment') && !req.path.startsWith('/api/payment')) {
+  // req.path includes the BASE prefix (e.g. /diet/api/payment/...), so match on
+  // the full prefix — the old bare '/payment' check never matched and locked
+  // expired users out of the very page where they pay.
+  const onPaymentRoute = req.path.startsWith(`${BASE}/payment`) || req.path.startsWith(`${BASE}/api/payment`);
+  if (tr.expired && !onPaymentRoute) {
+    track('paywall_hit', { userId: u.id, props: { path: req.path } });
     return req.headers.accept?.includes('json') ? res.status(402).json({expired:true}) : res.redirect(`${BASE}/payment`);
   }
   req.user = d; req.userObj = u; req.trial = tr;
@@ -199,10 +276,17 @@ function adminOnly(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({error:'Forbidden'});
   next();
 }
+// Decodes the session token if present but never blocks — lets public routes
+// attribute events/actions to a user when one is logged in.
+function optionalAuth(req, res, next) {
+  const t = getCookie(req) || (req.headers.authorization||'').replace('Bearer ','');
+  const d = t ? checkToken(t) : null;
+  if (d) req.user = d;
+  next();
+}
 
 // ─── INIT DATA ────────────────────────────────────────────────────────────────
 function initData() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, {recursive:true});
   const files = {
     'users.json': [{
       id:'u1', username:'admin', password: hashPwd('DietAdmin2026!@#'),
@@ -234,9 +318,14 @@ function initData() {
     'meal_plans.json': buildMealPlans(),
     'labs.json': buildLabTests(),
   };
+  // Import any legacy flat-file JSON left over from the old storage (one-time,
+  // idempotent), then seed defaults for any document still missing.
+  const allKeys = Object.keys(files).concat(
+    ['password_resets.json','nutrition_logs.json','lab_results.json','watch_data.json','geofence_zones.json']
+  );
+  store.migrateFromJson(DATA_DIR, allKeys);
   Object.entries(files).forEach(([f, d]) => {
-    const fp = path.join(DATA_DIR, f);
-    if (!fs.existsSync(fp)) fs.writeFileSync(fp, JSON.stringify(d,null,2));
+    if (load(f) === null) save(f, d);
   });
 }
 
@@ -919,6 +1008,7 @@ app.get(`${BASE}/verify-email`, (req,res) => {
   save('users.json', users);
   save('pending_verifications.json', pending.filter(p => p.token !== token));
   secLog('EMAIL_VERIFIED', 'system', { userId: rec.userId });
+  track('email_verified', { userId: rec.userId });
   const t = mkToken(users[idx]);
   res.setHeader('Set-Cookie', `dh_token=${t};path=/;max-age=28800;HttpOnly;SameSite=Strict`);
   res.redirect(`${BASE}/dashboard?verified=1`);
@@ -974,6 +1064,7 @@ app.post(`${BASE}/auth`, (req,res) => {
   save('users.json', users);
   rlReset(ip, 'login');
   secLog('LOGIN_OK', ip, {username});
+  track('login', { userId: u.id, req });
   const tr = trial(u);
   res.json({token:mkToken(u), role:u.role, plan:u.plan, username:u.username, trial:tr, lang:u.lang||'ar', emailVerified:u.emailVerified});
 });
@@ -1183,6 +1274,10 @@ app.post(`${BASE}/register`, async (req,res) => {
   users.push(newUser);
   save('users.json', users);
   secLog('REGISTERED', ip, {username, email:cleanEmail});
+  // Captures utm_* from the register body so every signup is attributed to a
+  // channel — the raw material for per-channel CAC.
+  track('user_registered', { userId: newUser.id, req, props: { diet: newUser.profile.diet } });
+  track('trial_started', { userId: newUser.id, req });
 
   // Email verification
   let emailSent = false;
@@ -1224,6 +1319,41 @@ app.post(`${BASE}/api/profile`, auth, (req,res) => {
   if (req.body.lang && ['ar','en'].includes(req.body.lang)) users[idx].lang=req.body.lang;
   save('users.json', users);
   res.json({ok:true, bmi, bmr});
+});
+
+// ─── UNIFIED HEALTH PROFILE (the hub) ─────────────────────────────────────────
+// One consolidated view of the user's health: demographics, goals, derived
+// energy/protein/hydration targets, latest wearable + lab signals, and risk
+// flags. Read by the dashboard and (next) the AI coach.
+app.get(`${BASE}/api/health-profile`, auth, (req,res) => {
+  const profile = buildHealthProfile(store, req.user.id);
+  if (!profile) return res.status(404).json({ error: 'Profile not found' });
+  track('health_profile_viewed', { userId: req.user.id });
+  res.json(profile);
+});
+// Update the durable goal inputs that drive the targets above.
+app.post(`${BASE}/api/health-profile/goals`, auth, (req,res) => {
+  const { goalType, targetWeight, activityLevel } = req.body;
+  const patch = {};
+  if (goalType !== undefined) {
+    if (!['lose','maintain','gain'].includes(goalType)) return res.status(400).json({ error: 'Invalid goalType' });
+    patch.goalType = goalType;
+  }
+  if (activityLevel !== undefined) {
+    if (!['sedentary','light','moderate','active','very_active'].includes(activityLevel)) return res.status(400).json({ error: 'Invalid activityLevel' });
+    patch.activityLevel = activityLevel;
+  }
+  if (targetWeight !== undefined) {
+    const tw = parseFloat(targetWeight);
+    if (!Number.isFinite(tw) || tw < 30 || tw > 400) return res.status(400).json({ error: 'Invalid targetWeight' });
+    patch.targetWeight = tw;
+  }
+  update('users.json', users => {
+    const u = users.find(x => x.id === req.user.id);
+    if (u) u.profile = { ...u.profile, ...patch };
+    return users;
+  }, []);
+  res.json({ ok: true, profile: buildHealthProfile(store, req.user.id) });
 });
 
 // MEAL PLAN API
@@ -1356,6 +1486,8 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const budget = Math.min(Math.max(parseInt(req.query.budget||req.userObj?.profile?.budget||200),50),1000);
   const date = req.query.date || new Date().toISOString().split('T')[0];
   const budgetTier = budgetTierFor(budget);
+  track('meal_plan_viewed', { userId: req.user.id, props: { diet } }); // activation signal
+
   const plans = load('meal_plans.json');
   const plan = plans?.[diet]||plans?.atkins;
   if (!plan) return res.json({error:'Plan not found'});
@@ -1458,6 +1590,18 @@ app.get(`${BASE}/api/activity-plan`, auth, (req,res) => {
   res.json(plan);
 });
 
+// Public event ingest — for landing pages, the PWA, demo, and marketing pixels
+// to record top-of-funnel events (page_view, demo_viewed, cta_click, …) with an
+// anonymous id and UTM tags, before a user account exists. Rate limited.
+app.post(`${BASE}/api/track`, (req,res)=>{
+  const r = rateLimit(getIP(req),'track',120,60000);
+  if(!r.ok) return res.status(429).json({error:'Too many events'});
+  const name = sanitize(req.body.name);
+  if(!name) return res.status(400).json({error:'name required'});
+  track(name, { req, anonId: req.body.anonId, props: (req.body.props && typeof req.body.props==='object') ? req.body.props : {} });
+  res.json({ok:true});
+});
+
 // DEMO (public, rate limited)
 app.get(`${BASE}/api/demo/meal-plan`, (req,res)=>{
   const r=rateLimit(getIP(req),'demo',20,60000);
@@ -1487,29 +1631,47 @@ app.get(`${BASE}/api/ratings`,(req,res)=>{
   res.json({ratings:approved.slice(0,10),average:approved.length?parseFloat((approved.reduce((s,r)=>s+r.rating,0)/approved.length).toFixed(1)):0,total:approved.length});
 });
 
-// PAYMENT (Kashier)
-app.post(`${BASE}/api/payment/initiate`,(req,res)=>{
+// PAYMENT (Kashier) ─────────────────────────────────────────────────────────
+// Flow: initiate (server signs the order) → user pays on Kashier's hosted page →
+// Kashier calls our webhook server-to-server (signed) → webhook is the ONLY thing
+// that grants paid access. The browser never decides who becomes paid, and the
+// API key never leaves the server.
+app.post(`${BASE}/api/payment/initiate`,optionalAuth,(req,res)=>{
   const ip=getIP(req);
   const r=rateLimit(ip,'pay',10,3600000);
   if(!r.ok)return res.status(429).json({error:'Too many payment requests'});
-  const {plan,email,phone}=req.body;
-  const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
-  if(!pp[plan])return res.status(400).json({error:'Invalid plan'});
-  const amount=pp[plan];
-  const mid=process.env.KASHIER_MERCHANT_ID, sk=process.env.KASHIER_SECRET_KEY;
-  if(!mid||!sk||mid==='YOUR_KASHIER_MERCHANT_ID')return res.json({ok:false,setupRequired:true,amount,plan});
-  const orderId='DH-'+Date.now();
-  const hash=crypto.createHash('sha256').update(`${mid}.${orderId}.${amount}.EGP.${sk}`).digest('hex');
-  res.json({ok:true,kashierUrl:`https://checkout.kashier.io/?merchantId=${mid}&orderId=${orderId}&amount=${amount}&currency=EGP&hash=${hash}&mode=live`,orderId,amount,plan});
+  const { plan } = req.body;
+  if(!PLAN_PRICES[plan])return res.status(400).json({error:'Invalid plan'});
+  const amount=PLAN_PRICES[plan];
+  const email = sanitize(req.body.email||'')||'';
+  track('checkout_started', { req, props:{ plan, amount } });
+  if(!kashierConfigured())return res.json({ok:false,setupRequired:true,amount,plan});
+
+  const orderId='DH-'+Date.now()+'-'+randToken(3);
+  // Persist the order so the webhook can resolve who paid. Server-side only.
+  update('payment_orders.json', o=>{
+    o[orderId] = { orderId, userId:req.user?.id||null, email, plan, amount, currency:'EGP', status:'pending', createdAt:new Date().toISOString() };
+    return o;
+  }, {});
+
+  const hash = kashierHash(orderId, amount, 'EGP');
+  const redirect = `${KASHIER.baseUrl}${BASE}/payment?order=${orderId}`;
+  const webhook = `${KASHIER.baseUrl}${BASE}/api/payment/webhook`;
+  const url = `https://checkout.kashier.io/?merchantId=${encodeURIComponent(KASHIER.mid)}`
+    + `&orderId=${encodeURIComponent(orderId)}&amount=${amount}&currency=EGP`
+    + `&hash=${hash}&mode=${KASHIER.mode}`
+    + `&merchantRedirect=${encodeURIComponent(redirect)}`
+    + `&serverWebhook=${encodeURIComponent(webhook)}`
+    + `&allowedMethods=card,wallet&display=ar&brandColor=%232D6A4F`;
+  res.json({ ok:true, kashierUrl:url, orderId, amount, plan });
 });
-// Admin-only: this must never be reachable by a self-service user — it sets
-// paid=true from client-supplied plan/paymentRef with no verification against
-// Kashier at all. The real payment flow redirects to Kashier's hosted
-// checkout and is meant to be confirmed via a server-to-server webhook (see
-// payment.html's webhookUrl), not this endpoint. Kept for admins to manually
-// grant access (e.g. after a manual bank transfer), gated the same way
-// /api/admin/users/:id/markpaid already is.
-app.post(`${BASE}/api/payment/confirm`,auth,adminOnly,(req,res)=>{
+// Admin-only manual grant (e.g. after a manual bank transfer) — moved off
+// /api/payment/confirm, which is now the authoritative-webhook return-page
+// status poll below. This sets paid=true directly with no Kashier
+// verification, so it must stay admin-gated the same way
+// /api/admin/users/:id/markpaid already is, and must never share a route
+// with the self-service confirm endpoint.
+app.post(`${BASE}/api/admin/payment/manual-grant`,auth,adminOnly,(req,res)=>{
   const {paymentRef,plan}=req.body;
   const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
   if(!pp[plan])return res.status(400).json({error:'Invalid plan'});
@@ -1523,6 +1685,57 @@ app.post(`${BASE}/api/payment/confirm`,auth,adminOnly,(req,res)=>{
   save('subscriptions.json',subs);
   secLog('PAYMENT_CONFIRMED',getIP(req),{userId:req.user.id,plan});
   res.json({ok:true});
+});
+
+// Server-to-server webhook — the authoritative source of truth for payment.
+app.post(`${BASE}/api/payment/webhook`,(req,res)=>{
+  if(!kashierConfigured())return res.status(503).json({error:'Payments not configured'});
+  const data = req.body?.data || req.body || {};
+  const signature = data.signature || req.body?.signature;
+  if(!kashierVerify(data, data.signatureKeys || req.body?.signatureKeys, signature)){
+    secLog('PAYMENT_WEBHOOK_BADSIG', getIP(req), { orderId:data.merchantOrderId });
+    return res.status(400).json({error:'invalid signature'});
+  }
+  const orderId = data.merchantOrderId;
+  const success = String(data.status||'').toUpperCase()==='SUCCESS';
+  const orders = load('payment_orders.json') || {};
+  const order = orders[orderId];
+  if(!order){ secLog('PAYMENT_WEBHOOK_NOORDER', getIP(req), { orderId }); return res.json({ok:true}); }
+  if(order.status==='paid') return res.json({ok:true}); // idempotent — already granted
+  if(Number(data.amount)!==Number(order.amount)){
+    secLog('PAYMENT_WEBHOOK_AMOUNT', getIP(req), { orderId, got:data.amount, expected:order.amount });
+    return res.status(400).json({error:'amount mismatch'});
+  }
+  if(!success){
+    update('payment_orders.json', o=>{ if(o[orderId]) o[orderId].status='failed'; return o; }, {});
+    return res.json({ok:true});
+  }
+  // Grant access — the single authoritative path.
+  update('payment_orders.json', o=>{ if(o[orderId]){ o[orderId].status='paid'; o[orderId].transactionId=data.transactionId; o[orderId].paidAt=new Date().toISOString(); } return o; }, {});
+  // Resolve the user by stored id, or fall back to the email on the order.
+  let uid = order.userId;
+  update('users.json', users=>{
+    let u = uid ? users.find(x=>x.id===uid) : null;
+    if(!u && order.email) u = users.find(x=>x.email===order.email);
+    if(u){ u.paid=true; u.plan=order.plan; uid=u.id; }
+    return users;
+  }, []);
+  update('subscriptions.json', subs=>{
+    subs.push({ userId:uid, plan:order.plan, startDate:new Date().toISOString().split('T')[0], endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0], amount:order.amount, status:'active', paymentRef:data.transactionId||('KASHIER_'+orderId) });
+    return subs;
+  }, []);
+  if(uid) track('subscription_paid', { userId:uid, props:{ plan:order.plan, amount:order.amount } });
+  secLog('PAYMENT_CONFIRMED', getIP(req), { orderId, userId:uid, plan:order.plan, transactionId:data.transactionId });
+  res.json({ ok:true });
+});
+
+// Status poll — used by the return page after redirect. Reports the
+// webhook-confirmed state; it does NOT grant access itself.
+app.post(`${BASE}/api/payment/confirm`,auth,(req,res)=>{
+  const orderId = req.body.order;
+  let orderStatus = null;
+  if(orderId){ const o=(load('payment_orders.json')||{})[orderId]; if(o && (o.userId===req.user.id || o.email===req.userObj.email)) orderStatus=o.status; }
+  res.json({ ok:true, paid: !!req.userObj.paid, plan: req.userObj.plan, orderStatus });
 });
 
 // ADMIN
@@ -1559,6 +1772,26 @@ app.get(`${BASE}/api/admin/ratings`,auth,adminOnly,(req,res)=>res.json(load('rat
 app.post(`${BASE}/api/admin/ratings/:id/approve`,auth,adminOnly,(req,res)=>{const ratings=load('ratings.json')||[];const r=ratings.find(r=>r.id===req.params.id);if(!r)return res.json({ok:false});r.approved=true;save('ratings.json',ratings);res.json({ok:true});});
 app.post(`${BASE}/api/admin/food-prices`,auth,adminOnly,(req,res)=>{const p=load('food_prices.json');p.items=req.body.items;p.lastUpdated=new Date().toISOString().split('T')[0];save('food_prices.json',p);res.json({ok:true,lastUpdated:p.lastUpdated});});
 app.get(`${BASE}/api/admin/subscriptions`,auth,adminOnly,(req,res)=>res.json(load('subscriptions.json')||[]));
+// Acquisition funnel, conversion, CAC-by-source inputs and daily series.
+app.get(`${BASE}/api/admin/analytics`,auth,adminOnly,(req,res)=>{
+  res.json(store.analytics(Math.min(Math.max(parseInt(req.query.days)||30,1),365)));
+});
+// Raw recent event feed.
+app.get(`${BASE}/api/admin/events`,auth,adminOnly,(req,res)=>{
+  res.json(store.recentEvents(Math.min(Math.max(parseInt(req.query.limit)||100,1),1000)));
+});
+// Download a full, consistent snapshot of the database (safe to take live).
+app.get(`${BASE}/api/admin/backup`,auth,adminOnly,(req,res)=>{
+  const tmp = path.join(os.tmpdir(), `diethub_backup_${Date.now()}.db`);
+  try {
+    store.backup(tmp);
+    secLog('DB_BACKUP', getIP(req), { adminId: req.user.id });
+    res.download(tmp, `diethub_backup_${new Date().toISOString().split('T')[0]}.db`, () => fs.unlink(tmp, ()=>{}));
+  } catch(e) {
+    fs.unlink(tmp, ()=>{});
+    res.status(500).json({ error: 'Backup failed: ' + e.message });
+  }
+});
 app.get(`${BASE}/api/admin/export`,auth,adminOnly,(req,res)=>{
   const users=load('users.json')||[];const subs=load('subscriptions.json')||[];
   const rows=[['ID','Username','Email','Phone','Plan','Role','Status','EmailVerified','Paid','Diet','Budget','Weight','Height','Age','BMI','BMR','BodyFat%','MuscleMass','Created','SubEnd']];
@@ -1620,47 +1853,30 @@ app.post(`${BASE}/api/chatbot`, auth, async (req, res) => {
     return res.status(403).json({ error: 'هذه الميزة متاحة لأعضاء VIP و Elite فقط' });
   }
   const { messages, generateQuestions } = req.body;
-  const profile = u.profile || {};
-  const dietMap = { atkins:'أتكينز', mediterranean:'متوسطي', keto:'كيتو', diabetic:'مرضى السكري', women:'المرأة', women_40:'المرأة فوق الأربعين', men:'الرجل', men_40:'الرجل فوق الأربعين', kids:'الأطفال', lowcarb:'قليل الكربوهيدرات', highprotein:'عالي البروتين', balanced:'متوازن' };
-  const dietName = dietMap[profile.diet] || profile.diet || 'متوازن';
+  // Coach now reads the full unified health profile (labs + wearables + targets
+  // + risk flags), not just the thin demographic fields — this is what turns it
+  // from a generic chatbot into a coach that knows the user's actual state.
+  // Also fixes the earlier bug where a standalone dietMap here mapped
+  // demographic-plan codes (women_40, men_40, diabetic, kids, ...) inconsistently;
+  // diet naming now lives in one place, health.js's DIET_AR (see below).
+  const hp = buildHealthProfile(store, u.id);
+  const summary = coachSummary(hp);
 
-  const systemPrompt = `أنت مساعد متابعة غذائي ذكي داخل تطبيق DietHub. اسمك "دايت بوت".
-${u.lang==='en' ? 'Always reply in English in a friendly, encouraging and concise style.' : 'تتحدث بالعربية دائماً بأسلوب ودود ومشجع وموجز.'}
-معلومات المستخدم:
-- الاسم: ${u.username}
-- نظام غذائي: ${dietName}
-- الميزانية اليومية: ${profile.budget || 200} جنيه
-- الوزن: ${profile.weight || 'غير محدد'} كجم
-- الطول: ${profile.height || 'غير محدد'} سم
-- العمر: ${profile.age || 'غير محدد'}
-- الجنس: ${profile.gender === 'female' ? 'أنثى' : 'ذكر'}
-${generateQuestions
-      ? (u.lang==='en'
-          ? `Your task: Ask 3 smart personalized follow-up questions for this user based on their ${dietName} diet and current time of day. Make questions practical and related to their diet adherence and health. Send questions only as a numbered list with no introduction.`
-          : `مهمتك: اطرح 3 أسئلة متابعة ذكية ومخصصة لهذا المستخدم بناءً على نظامه الغذائي ${dietName} ووقت اليوم الحالي. اجعل الأسئلة عملية وتتعلق بالتزامه بالنظام الغذائي وصحته. أرسل الأسئلة فقط كقائمة مرقمة بدون مقدمة.`)
-      : (u.lang==='en'
-          ? `Reply to the user's messages briefly and support them on their health journey. If they ask about something outside nutrition and health, gently redirect them back to their diet topic.`
-          : `أجب على رسائل المستخدم بإيجاز ودعمه في رحلته الغذائية. إذا سألك عن شيء خارج نطاق الغذاء والصحة، أعده بلطف لموضوع نظامه الغذائي.`)
-    }`;
+  const systemPrompt = `أنت "دايت بوت"، مساعد متابعة صحي وغذائي ذكي داخل تطبيق DietHub. تتحدث بالعربية دائماً بأسلوب ودود ومشجع وموجز.
+
+الملف الصحي الكامل للمستخدم (استخدمه لتخصيص كل رد):
+${summary}
+
+إرشادات مهمة:
+- استخدم أرقام المستخدم الحقيقية (السعرات، البروتين، الماء، الوزن، بيانات الساعة) في نصائحك بدلاً من النصائح العامة.
+- إن وُجدت "تنبيهات مهمة" فعالِجها أولاً بلطف ودون تخويف.
+- أنت لست بديلاً عن الطبيب. إذا ظهرت مؤشرات خطيرة (تحاليل حرجة مثلاً) انصح المستخدم بمراجعة طبيبه.
+- ابقَ ضمن نطاق الغذاء والصحة واللياقة، وأعد المستخدم بلطف للموضوع إن خرج عنه.
+${generateQuestions ? 'مهمتك الآن: اطرح 3 أسئلة متابعة قصيرة ومخصصة بناءً على ملفه الصحي وتنبيهاته الحالية ووقت اليوم. أرسل الأسئلة فقط كقائمة مرقمة بدون مقدمة.' : 'أجب على رسالة المستخدم بإيجاز وادعمه في رحلته الصحية.'}`;
 
   try {
-    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 500,
-        system: systemPrompt,
-        messages: (messages && messages.length) ? messages : [{ role: 'user', content: 'ابدأ' }]
-      })
-    });
-    if (!anthropicRes.ok) throw new Error('Anthropic error: ' + anthropicRes.status);
-    const data = await anthropicRes.json();
-    res.json({ reply: data.content?.[0]?.text || 'عذراً، لم أفهم. حاول مجدداً.' });
+    const { text } = await ai.chat({ system: systemPrompt, messages, maxTokens: 500 });
+    res.json({ reply: text || 'عذراً، لم أفهم. حاول مجدداً.' });
   } catch(e) {
     console.error('Chatbot error:', e.message);
     res.status(500).json({ error: 'خطأ في المساعد الذكي: ' + e.message });
@@ -1964,12 +2180,35 @@ app.post(`${BASE}/api/lab-results`, auth, async (req,res) => {
   for (const id of LAB_TEST_IDS) {
     if (typeof results[id] === 'number') numericResults[id] = results[id];
   }
-  saveLabEntry(req.user.id, date, results, numericResults);
+  const uid = req.user.id;
+  const entry = { date, results, numericResults, savedAt: new Date().toISOString() };
+  // Atomic upsert — safe even if another request touches this user's log.
+  update('lab_results.json', all => {
+    if (!all[uid]) all[uid] = [];
+    const i = all[uid].findIndex(l => l.date === date);
+    if (i >= 0) all[uid][i] = entry; else all[uid].push(entry);
+    all[uid] = all[uid].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,24);
+    return all;
+  }, {});
 
   try {
-    const diet = req.userObj.profile?.diet || 'balanced';
-    const analysis = await analyzeLabResults(results, diet);
-    updateLabEntryAnalysis(req.user.id, date, analysis);
+    const u = req.userObj;
+    const diet = u.profile?.diet || 'balanced';
+    const prompt = `You are a medical nutrition AI assistant. Analyze these lab results for a patient on a ${diet} diet:\n${JSON.stringify(results)}\n\nProvide a brief analysis in Arabic and English covering:\n1. Which values are normal/abnormal\n2. What dietary changes could help\n3. Overall health trend\n\nReturn ONLY valid JSON (no markdown, no code fences): {"analysis_ar":"...","analysis_en":"...","status":"good|warning|critical","recommendations_ar":["..."],"recommendations_en":["..."]}`;
+    // 800 was too low here too (see analyzeLabResults above) - full bilingual
+    // analysis with recommendation lists gets cut off mid-JSON at that budget.
+    const { text } = await ai.chat({ messages: [{ role:'user', content: prompt }], maxTokens: 2000 });
+    // Free models sometimes wrap JSON in ```; strip fences before parsing.
+    const analysis = JSON.parse((text || '{}').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
+    // Re-read under a transaction so the analysis merges onto the latest state
+    // instead of clobbering anything written during the await above.
+    update('lab_results.json', all => {
+      if (!all[uid]) all[uid] = [];
+      const i = all[uid].findIndex(l => l.date === date);
+      if (i >= 0) all[uid][i] = { ...all[uid][i], analysis };
+      else all[uid].push({ ...entry, analysis });
+      return all;
+    }, {});
     res.json({ok:true, analysis});
   } catch(e) {
     res.json({ok:true, analysis:null});

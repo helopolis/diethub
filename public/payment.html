@@ -165,35 +165,10 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--dark);min-h
   </div>
 </div>
 
-<!-- HIDDEN KASHIER REDIRECT FORM -->
-<form id="kashierForm" method="GET" action="https://checkout.kashier.io/" style="display:none">
-  <input type="hidden" name="merchantId"       id="f_merchantId">
-  <input type="hidden" name="orderId"          id="f_orderId">
-  <input type="hidden" name="amount"           id="f_amount">
-  <input type="hidden" name="currency"         id="f_currency"  value="EGP">
-  <input type="hidden" name="hash"             id="f_hash">
-  <input type="hidden" name="mode"             id="f_mode">
-  <input type="hidden" name="merchantRedirect" id="f_redirect">
-  <input type="hidden" name="serverWebhook"    id="f_webhook">
-  <input type="hidden" name="allowedMethods"   id="f_methods"   value="card,wallet">
-  <input type="hidden" name="metaData"         id="f_meta">
-  <input type="hidden" name="display"          value="ar">
-  <input type="hidden" name="brandColor"       value="2D6A4F">
-</form>
 
 <script>
-// ============================================================
-//  🔧 CONFIGURATION — عدّل هذه القيم قبل الإطلاق
-// ============================================================
-const KASHIER = {
-  merchantId:  'MID-XX-XXXX',                                       // ← Merchant ID من لوحة kashier.io
-  secretKey:   'YOUR_SECRET_KEY_HERE',                              // ← Secret Key من Integrate Now
-  mode:        'test',                                               // ← غيّر إلى 'live' عند الإطلاق
-  redirectUrl: 'https://diet.talabatito.com/diet/payment-success',  // ← صفحة نجاح الدفع
-  webhookUrl:  'https://n8n.talabatito.com/webhook/kashier-payment', // ← n8n webhook لتفعيل الاشتراك
-};
-// ============================================================
-
+// Payment is initiated on the server (/api/payment/initiate). The Kashier
+// merchant id, key, hash and mode all live on the backend — never in this page.
 let selectedPlan = null;
 let selectedAmount = 0;
 
@@ -209,6 +184,27 @@ if (params.get('plan')) {
     }
   });
   if (params.get('email')) document.getElementById('payEmail').value = params.get('email');
+}
+// Returning from Kashier lands here as ?order=… — poll the server for the
+// webhook-confirmed status and forward to the dashboard once paid.
+if (params.get('order')) pollPaymentStatus(params.get('order'));
+
+async function pollPaymentStatus(orderId, tries = 0) {
+  try {
+    const r = await fetch('/diet/api/payment/confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ order: orderId })
+    });
+    const d = await r.json();
+    if (d.paid || d.orderStatus === 'paid') {
+      document.getElementById('loadingOverlay')?.classList.remove('active');
+      alert('✅ تم تفعيل اشتراكك بنجاح! جاري تحويلك للوحة التحكم');
+      window.location.href = '/diet/dashboard';
+      return;
+    }
+    if (d.orderStatus === 'failed') { alert('لم تكتمل عملية الدفع. يرجى المحاولة مرة أخرى.'); return; }
+  } catch (e) { /* keep polling */ }
+  if (tries < 8) setTimeout(() => pollPaymentStatus(orderId, tries + 1), 2500);
 }
 
 function selectPlan(el, plan, amount) {
@@ -229,18 +225,6 @@ function selectPlan(el, plan, amount) {
   box.scrollIntoView({ behavior: 'smooth' });
 }
 
-// HMAC-SHA256 using browser Web Crypto API — no backend needed
-async function hmacSHA256(key, message) {
-  const enc  = new TextEncoder();
-  const cKey = await crypto.subtle.importKey(
-    'raw', enc.encode(key),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false, ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', cKey, enc.encode(message));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-
 async function initiatePayment() {
   const email = document.getElementById('payEmail').value.trim();
   const phone = document.getElementById('payPhone').value.trim();
@@ -255,41 +239,23 @@ async function initiatePayment() {
   document.getElementById('loadingOverlay').classList.add('active');
 
   try {
-    const orderId  = 'DH-' + selectedPlan.toUpperCase() + '-' + Date.now();
-    const amount   = selectedAmount;
-    const currency = 'EGP';
-
-    // Kashier hash format: HMAC-SHA256(secretKey, "/?payment=MID.orderId.amount.currency")
-    const hashPath = `/?payment=${KASHIER.merchantId}.${orderId}.${amount}.${currency}`;
-    const hash     = await hmacSHA256(KASHIER.secretKey, hashPath);
-
-    const redirect = KASHIER.redirectUrl
-      + '?plan='  + encodeURIComponent(selectedPlan)
-      + '&email=' + encodeURIComponent(email);
-
-    const meta = JSON.stringify({ plan: selectedPlan, email, phone });
-
-    // Fill hidden form
-    document.getElementById('f_merchantId').value = KASHIER.merchantId;
-    document.getElementById('f_orderId').value    = orderId;
-    document.getElementById('f_amount').value     = amount;
-    document.getElementById('f_currency').value   = currency;
-    document.getElementById('f_hash').value       = hash;
-    document.getElementById('f_mode').value       = KASHIER.mode;
-    document.getElementById('f_redirect').value   = encodeURIComponent(redirect);
-    document.getElementById('f_webhook').value    = encodeURIComponent(KASHIER.webhookUrl);
-    document.getElementById('f_methods').value    = 'card,wallet';
-    document.getElementById('f_meta').value       = encodeURIComponent(meta);
-
-    // Redirect to Kashier ✈️
-    document.getElementById('kashierForm').submit();
-
+    // Server signs the order and returns the hosted checkout URL. Card details
+    // are entered only on Kashier's page — they never touch this site.
+    const r = await fetch('/diet/api/payment/initiate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: selectedPlan, email, phone })
+    });
+    const d = await r.json();
+    if (d.ok && d.kashierUrl) { window.location.href = d.kashierUrl; return; }
+    alert(d.setupRequired ? 'بوابة الدفع غير مهيأة بعد. يرجى المحاولة لاحقاً.' : (d.error || 'حدث خطأ، حاول مرة أخرى'));
   } catch (err) {
-    console.error('Kashier error:', err);
+    console.error('Payment error:', err);
     alert(isAr?'حدث خطأ أثناء الاتصال، يرجى المحاولة مرة أخرى':'A connection error occurred, please try again');
     btn.disabled = false;
     document.getElementById('loadingOverlay').classList.remove('active');
   }
+  btn.disabled = false;
+  document.getElementById('loadingOverlay').classList.remove('active');
 }
 
 const PAY_STRINGS = {

@@ -354,20 +354,9 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
     </div>
   </div>
 
-  <div class="grid-3">
-    <div class="card">
-      <div class="stat-val" style="color:var(--green)" id="hsDiet">—</div>
-      <div class="stat-label" id="lsDiet">النظام الغذائي</div>
-    </div>
-    <div class="card">
-      <div class="stat-val" style="color:var(--orange)">1,650</div>
-      <div class="stat-label" id="lsCal">سعرات يومية</div>
-    </div>
-    <div class="card">
-      <div class="stat-val" style="color:var(--coral)">3</div>
-      <div class="stat-label" id="lsLabs">تحاليل عاجلة</div>
-    </div>
-  </div>
+  <!-- LIVE HEALTH PROFILE (the unified hub) -->
+  <div class="card-title" id="ltHealth" style="margin:4px 0 10px" data-ar="🧬 ملفك الصحي" data-en="🧬 Your Health Profile">🧬 ملفك الصحي</div>
+  <div id="hpBody"><div class="card" style="text-align:center;color:var(--muted)">⏳</div></div>
 
   <div class="grid-2">
     <div class="card">
@@ -688,6 +677,50 @@ async function init() {
   }
   buildWeekNav();
   loadActivityPlan();
+  setLevel(document.querySelector('.level-btn.active'), 'beginner');
+  loadHealthProfile();
+}
+
+// Live health-profile card — reads the unified hub (/api/health-profile) and
+// shows the user's real derived targets and risk flags instead of static text.
+function renderHealthProfile(hp) {
+  const lang = (window.currentLang || currentLang || 'ar');
+  const en = lang === 'en';
+  const d = hp.demographics, t = hp.targets, w = hp.wearable;
+  const stat = (val, label, color) =>
+    `<div class="card"><div class="stat-val" style="color:${color}">${val}</div><div class="stat-label">${label}</div></div>`;
+  const bmiLabel = en ? `BMI${d.bmiCategory ? ' · ' + d.bmiCategory.en : ''}` : `كتلة الجسم${d.bmiCategory ? ' · ' + d.bmiCategory.ar : ''}`;
+  const fmt = n => (n == null ? '—' : Number(n).toLocaleString());
+  const flags = hp.riskFlags.length
+    ? hp.riskFlags.map(f => {
+        const cls = f.severity === 'info' ? 'alert-info' : 'alert-warning';
+        const icon = f.severity === 'critical' ? '🔴' : f.severity === 'warning' ? '⚠️' : '💡';
+        return `<div class="alert ${cls}">${icon} ${en ? f.en : f.ar}</div>`;
+      }).join('')
+    : `<div class="alert alert-success">✅ ${en ? 'No health flags — great work!' : 'لا توجد تنبيهات — أداء رائع!'}</div>`;
+  return `
+    <div class="grid-3" style="margin-bottom:12px">
+      ${stat(d.bmi != null ? d.bmi : '—', bmiLabel, 'var(--green)')}
+      ${stat(fmt(t.calorieTarget), en ? 'Daily calorie target' : 'هدف السعرات اليومي', 'var(--orange)')}
+      ${stat(t.proteinTargetG ? t.proteinTargetG + 'g' : '—', en ? 'Protein target' : 'هدف البروتين', 'var(--coral)')}
+    </div>
+    <div class="grid-3" style="margin-bottom:14px">
+      ${stat(t.hydrationTargetL ? t.hydrationTargetL + 'L' : '—', en ? 'Water target' : 'هدف الماء', 'var(--green)')}
+      ${stat(fmt(t.tdee), en ? 'Est. daily need' : 'الاحتياج التقديري', 'var(--orange)')}
+      ${stat(w && w.avgSteps != null ? fmt(w.avgSteps) : '—', en ? 'Avg steps (7d)' : 'متوسط الخطوات', 'var(--coral)')}
+    </div>
+    <div class="card-title" style="font-size:0.92rem;margin:6px 0">${en ? '🔔 Health flags' : '🔔 تنبيهات صحية'}</div>
+    ${flags}`;
+}
+async function loadHealthProfile() {
+  const el = document.getElementById('hpBody');
+  const card = document.getElementById('ltHealth');
+  if (!el) return;
+  try {
+    const r = await fetch('/diet/api/health-profile');
+    if (!r.ok) { el.style.display = 'none'; if (card) card.style.display = 'none'; return; }
+    el.innerHTML = renderHealthProfile(await r.json());
+  } catch (e) { el.style.display = 'none'; if (card) card.style.display = 'none'; }
 }
 
 function buildWeekNav() {
