@@ -1,7 +1,9 @@
 const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const store = require('./db');
 const app = express();
 
 // X-Forwarded-For is only honored when the connection comes from a trusted
@@ -15,7 +17,7 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const DATA_DIR = '/data/diethub';
+const DATA_DIR = process.env.DATA_DIR || '/data/diethub';
 const JWT_SECRET = process.env.JWT_SECRET || 'diethub_secret_2026_CHANGE_IN_PROD';
 const BASE = '/diet';
 const TRIAL_DAYS = 14;
@@ -123,8 +125,9 @@ function trial(u) {
 }
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
-function load(f) { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8')); } catch { return null; } }
-function save(f, d) { fs.mkdirSync(DATA_DIR,{recursive:true}); fs.writeFileSync(path.join(DATA_DIR,f), JSON.stringify(d,null,2)); }
+// Backed by SQLite (see db.js). Same key→JSON interface as the old flat files,
+// but atomic and durable. `update()` gives transactional read-modify-write.
+const { load, save, update } = store;
 function secLog(event, ip, extra={}) {
   const logs = load('security_log.json') || [];
   logs.unshift({ ts:new Date().toISOString(), event, ip, ...extra });
@@ -171,7 +174,6 @@ function adminOnly(req, res, next) {
 
 // ─── INIT DATA ────────────────────────────────────────────────────────────────
 function initData() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, {recursive:true});
   const files = {
     'users.json': [{
       id:'u1', username:'admin', password: hashPwd('DietAdmin2026!@#'),
@@ -215,9 +217,14 @@ function initData() {
       ]
     }
   };
+  // Import any legacy flat-file JSON left over from the old storage (one-time,
+  // idempotent), then seed defaults for any document still missing.
+  const allKeys = Object.keys(files).concat(
+    ['password_resets.json','nutrition_logs.json','lab_results.json','watch_data.json','geofence_zones.json']
+  );
+  store.migrateFromJson(DATA_DIR, allKeys);
   Object.entries(files).forEach(([f, d]) => {
-    const fp = path.join(DATA_DIR, f);
-    if (!fs.existsSync(fp)) fs.writeFileSync(fp, JSON.stringify(d,null,2));
+    if (load(f) === null) save(f, d);
   });
 }
 
@@ -626,6 +633,18 @@ app.get(`${BASE}/api/admin/ratings`,auth,adminOnly,(req,res)=>res.json(load('rat
 app.post(`${BASE}/api/admin/ratings/:id/approve`,auth,adminOnly,(req,res)=>{const ratings=load('ratings.json')||[];const r=ratings.find(r=>r.id===req.params.id);if(!r)return res.json({ok:false});r.approved=true;save('ratings.json',ratings);res.json({ok:true});});
 app.post(`${BASE}/api/admin/food-prices`,auth,adminOnly,(req,res)=>{const p=load('food_prices.json');p.items=req.body.items;p.lastUpdated=new Date().toISOString().split('T')[0];save('food_prices.json',p);res.json({ok:true,lastUpdated:p.lastUpdated});});
 app.get(`${BASE}/api/admin/subscriptions`,auth,adminOnly,(req,res)=>res.json(load('subscriptions.json')||[]));
+// Download a full, consistent snapshot of the database (safe to take live).
+app.get(`${BASE}/api/admin/backup`,auth,adminOnly,(req,res)=>{
+  const tmp = path.join(os.tmpdir(), `diethub_backup_${Date.now()}.db`);
+  try {
+    store.backup(tmp);
+    secLog('DB_BACKUP', getIP(req), { adminId: req.user.id });
+    res.download(tmp, `diethub_backup_${new Date().toISOString().split('T')[0]}.db`, () => fs.unlink(tmp, ()=>{}));
+  } catch(e) {
+    fs.unlink(tmp, ()=>{});
+    res.status(500).json({ error: 'Backup failed: ' + e.message });
+  }
+});
 app.get(`${BASE}/api/admin/export`,auth,adminOnly,(req,res)=>{
   const users=load('users.json')||[];const subs=load('subscriptions.json')||[];
   const rows=[['ID','Username','Email','Phone','Plan','Role','Status','EmailVerified','Paid','Diet','Budget','Weight','Height','Age','BMI','BodyFat%','MuscleMass','Created','SubEnd']];
@@ -760,14 +779,16 @@ app.post(`${BASE}/api/lab-results`, auth, async (req,res) => {
     return res.status(403).json({error:'VIP/Elite only'});
   const { date, results } = req.body;
   if (!date || !results) return res.status(400).json({error:'Date and results required'});
-  const all = load('lab_results.json') || {};
-  if (!all[req.user.id]) all[req.user.id] = [];
-  const existing = all[req.user.id].findIndex(l => l.date === date);
+  const uid = req.user.id;
   const entry = { date, results, savedAt: new Date().toISOString() };
-  if (existing >= 0) all[req.user.id][existing] = entry;
-  else all[req.user.id].push(entry);
-  all[req.user.id] = all[req.user.id].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,24);
-  save('lab_results.json', all);
+  // Atomic upsert — safe even if another request touches this user's log.
+  update('lab_results.json', all => {
+    if (!all[uid]) all[uid] = [];
+    const i = all[uid].findIndex(l => l.date === date);
+    if (i >= 0) all[uid][i] = entry; else all[uid].push(entry);
+    all[uid] = all[uid].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,24);
+    return all;
+  }, {});
 
   // AI analysis
   try {
@@ -781,9 +802,15 @@ app.post(`${BASE}/api/lab-results`, auth, async (req,res) => {
     });
     const aiData = await aiRes.json();
     const analysis = JSON.parse(aiData.content?.[0]?.text || '{}');
-    entry.analysis = analysis;
-    all[req.user.id][all[req.user.id].findIndex(l=>l.date===date)] = entry;
-    save('lab_results.json', all);
+    // Re-read under a transaction so the analysis merges onto the latest state
+    // instead of clobbering anything written during the await above.
+    update('lab_results.json', all => {
+      if (!all[uid]) all[uid] = [];
+      const i = all[uid].findIndex(l => l.date === date);
+      if (i >= 0) all[uid][i] = { ...all[uid][i], analysis };
+      else all[uid].push({ ...entry, analysis });
+      return all;
+    }, {});
     res.json({ok:true, analysis});
   } catch(e) {
     res.json({ok:true, analysis:null});
