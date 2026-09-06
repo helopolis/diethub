@@ -4,10 +4,23 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const multer = require('multer');
-const { OAuth2Client } = require('google-auth-library');
+const sharp = require('sharp');
+const { OAuth2Client, GoogleAuth } = require('google-auth-library');
 const { Webhook } = require('svix');
+// Official Apple/Google server libraries for native mobile IAP subscriptions
+// (see IAP plan, memory project_healthpace_market_validation.md) — the web
+// checkout below stays on Kashier; App Store/Play policy require native
+// billing for a fitness-coaching app's mobile subscriptions. Using Apple's
+// own library (not hand-rolled JWS/x5c chain verification) because getting
+// that crypto wrong is exactly the kind of thing "nontrivial to hand-roll
+// safely" undersells — this is the same trust boundary as payment webhooks.
+const { AppStoreServerAPIClient, SignedDataVerifier, Environment: AppleEnv, Status: AppleSubStatus } = require('@apple/app-store-server-library');
+const { androidpublisher } = require('@googleapis/androidpublisher');
 const store = require('./db');
 const { buildHealthProfile, coachSummary } = require('./health');
+const aiLanguage = require('./ai_language');
+const { runReminderCheck } = require('./reminders');
+const { buildDailyBrief, buildWeeklySummary } = require('./daily_brief');
 const ai = require('./ai');
 const app = express();
 
@@ -27,13 +40,42 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const DATA_DIR = process.env.DATA_DIR || '/data/diethub';
+// Profile photos (2026-09-03) — real files on disk, not SQLite documents:
+// binary image data doesn't belong in a JSON-blob document store (see the
+// database architecture audit this session), and this mirrors how certs/
+// already live as real files rather than going through db.js. Served
+// publicly (see the express.static mount below) with a random filename per
+// upload — anyone with the exact link can view it (same as Slack/WhatsApp/
+// Gravatar avatars), but nobody can guess or enumerate one.
+const AVATAR_DIR = path.join(DATA_DIR, 'uploads', 'avatars');
+fs.mkdirSync(AVATAR_DIR, { recursive: true });
+// Long cache lifetime is safe here specifically because every upload gets a
+// brand-new random filename (see POST /api/profile/avatar below) — there is
+// no "stale cached old photo" case to worry about, a changed photo is
+// always a different URL.
+app.use('/uploads/avatars', express.static(AVATAR_DIR, { maxAge: '30d', immutable: true }));
 const JWT_SECRET = process.env.JWT_SECRET || 'diethub_secret_2026_CHANGE_IN_PROD';
 const BASE = '/diet';
 const TRIAL_DAYS = 14;
+// The 9 structured allergen categories — matches RegisterScreen.js's
+// ALLERGEN_OPTIONS exactly. Real per-food tags exist in FOOD_DB for these.
+// Anything outside this set is a free-text "Other" allergy instead (see
+// customAllergyText / allergyKeywordsMatch()), matched by keyword against
+// food names rather than a structured tag.
+// 'sesame' added during the ingredient-database audit — it's the FDA's 9th
+// recognized major food allergen (FASTER Act 2021, enforced Jan 2023) and
+// this database genuinely contains sesame-based foods (tahini, za'atar,
+// and hummus's own core recipe) with no way to flag them before this.
+const KNOWN_ALLERGENS = ['milk','eggs','fish','crustaceans','nuts','peanuts','gluten','soybeans','sesame'];
+// Self-reported conditions used to gate real safety logic (deficit goals,
+// diet contraindication warnings) — not a diagnosis, not a full medical
+// history. Deliberately small and scoped to what this app actually acts on
+// today; adding a condition here means also adding real gating logic for
+// it, not just collecting the label.
+const KNOWN_MEDICAL_CONDITIONS = ['type1_diabetes', 'type2_diabetes', 'pregnant', 'breastfeeding', 'ckd'];
 const GMAIL_USER = process.env.GMAIL_USER || '';
 const GMAIL_PASS = process.env.GMAIL_APP_PASS || '';
 const GMAIL_AUTH = process.env.GMAIL_AUTH || GMAIL_USER;
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 // BETA_MODE (2026-07-18): launch flag — bypasses trial expiration and all
 // plan-tier gates (VIP/Elite-only features) app-wide, so beta users get full
 // access for free while the product is proven out. Flip to 'false' via env
@@ -56,7 +98,32 @@ const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || '';
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || '';
 
 // ─── PLANS & KASHIER ──────────────────────────────────────────────────────────
-const PLAN_PRICES = { basic:99, standard:179, premium:249, vip:349, elite:449 };
+// Restructured 2026-09-02 from 5 tiers (basic/standard/premium/vip/elite) to 3,
+// now differentiated purely by connected-device access rather than feature
+// bundling. Manual entry (typed-in numbers) is never gated at all — it's not
+// a device integration. Real devices split into three tiers:
+//   tier1: no device integration of any kind.
+//   tier2: phone-health-app middleware only (Apple Health / Health Connect —
+//     the wearable syncs to the user's own phone health app, Health Pace
+//     reads from there). No direct vendor connection.
+//   tier3: adds direct-to-vendor-cloud OAuth (Garmin/Fitbit/Oura/Whoop/
+//     Polar/Strava/Suunto/Ultrahuman via Open Wearables) AND the Bluetooth
+//     medical devices (BP/glucose/scale) built in connectedHealth/.
+// See /api/watch/sync's own gate comment for the exact per-source split.
+// Chatbot and lab-results used to be VIP/Elite-only; all 3 tiers now get
+// them (see hasActiveCoverage() gate below). Existing paying users on any
+// of the 5 old tiers were grandfathered onto tier3 (see
+// migrate_to_3_tiers.js) since none of the old tiers gated device access —
+// that's the mapping that doesn't reduce anyone's existing access.
+const PLAN_PRICES = { tier1: 100, tier2: 150, tier3: 500 };
+// Display names (Essential/Active/Complete) live client-side only — mobile's
+// SubscribeScreen.js/MySubscriptionScreen.js and public/payment.html each
+// have their own copy, since the backend never renders a plan name into any
+// text (email, receipt, etc.) today.
+// Bluetooth medical-device provider ids (see connectedHealth/index.js) —
+// a /api/watch/sync call whose `source` is one of these needs tier3
+// specifically, not just any device-capable tier (tier2 gets wearables only).
+const MEDICAL_DEVICE_SOURCES = ['medical_device:blood_pressure_monitor', 'medical_device:blood_glucose_meter', 'medical_device:smart_scale'];
 // The Payment API Key (a.k.a. iframe key) signs the HPP hash and the webhook —
 // it is SECRET and lives only here on the server, never in the browser.
 const KASHIER = {
@@ -84,9 +151,158 @@ function kashierVerify(data, signatureKeys, signature) {
   catch { return false; }
 }
 
+// ─── NATIVE IAP (Apple/Google mobile subscriptions) ────────────────────────
+// Same 5 tiers as PLAN_PRICES above, mapped to the product ID scheme
+// iap.js (mobile) already uses — com.talabatito.diethub.sub.<tier>, one
+// product ID shared across both platforms (App Store Connect and Play
+// Console each register it under their own console, but the string is the
+// same, so this map doesn't need separate iOS/Android lists).
+const IAP_PRODUCT_ID_PREFIX = 'com.talabatito.diethub.sub.';
+function tierFromIapProductId(productId) {
+  const tier = String(productId || '').replace(IAP_PRODUCT_ID_PREFIX, '');
+  return PLAN_PRICES[tier] ? tier : null;
+}
+
+const APPLE_IAP = {
+  keyId:     process.env.APPLE_IAP_KEY_ID || '',
+  issuerId:  process.env.APPLE_IAP_ISSUER_ID || '',
+  // Raw .p8 contents (PEM, including -----BEGIN/END PRIVATE KEY----- lines),
+  // base64-encoded as a single-line env var — same "blob in container env"
+  // pattern as FIREBASE_SERVICE_ACCOUNT (see push.js).
+  privateKeyB64: process.env.APPLE_IAP_PRIVATE_KEY || '',
+  bundleId:  process.env.APPLE_IAP_BUNDLE_ID || 'com.talabatito.diethub',
+  environment: process.env.APPLE_IAP_ENV === 'production' ? AppleEnv.PRODUCTION : AppleEnv.SANDBOX,
+};
+function appleIapConfigured() { return !!(APPLE_IAP.keyId && APPLE_IAP.issuerId && APPLE_IAP.privateKeyB64); }
+
+let _appleClient = null, _appleVerifier = null;
+function getAppleClient() {
+  if (!appleIapConfigured()) return null;
+  if (!_appleClient) {
+    const signingKey = Buffer.from(APPLE_IAP.privateKeyB64, 'base64').toString('utf8');
+    _appleClient = new AppStoreServerAPIClient(signingKey, APPLE_IAP.keyId, APPLE_IAP.issuerId, APPLE_IAP.bundleId, APPLE_IAP.environment);
+  }
+  return _appleClient;
+}
+function getAppleVerifier() {
+  if (!appleIapConfigured()) return null;
+  if (!_appleVerifier) {
+    const rootCA = fs.readFileSync(path.join(__dirname, 'certs', 'AppleRootCA-G3.cer'));
+    // enableOnlineChecks (revocation/OCSP) needs outbound network access from
+    // this container — fine here, same posture as any other outbound API call.
+    _appleVerifier = new SignedDataVerifier([rootCA], true, APPLE_IAP.environment, APPLE_IAP.bundleId);
+  }
+  return _appleVerifier;
+}
+
+const GOOGLE_PLAY_IAP = {
+  // Full service-account JSON, single-line env var — same pattern as
+  // FIREBASE_SERVICE_ACCOUNT / APPLE_IAP_PRIVATE_KEY above.
+  serviceAccountJson: process.env.GOOGLE_PLAY_SERVICE_ACCOUNT || '',
+  packageName: process.env.GOOGLE_PLAY_PACKAGE_NAME || 'com.talabatito.diethub',
+};
+function googlePlayConfigured() { return !!GOOGLE_PLAY_IAP.serviceAccountJson; }
+
+let _androidPublisherAuthClient = null;
+async function getAndroidPublisherClient() {
+  if (!googlePlayConfigured()) return null;
+  if (!_androidPublisherAuthClient) {
+    const credentials = JSON.parse(GOOGLE_PLAY_IAP.serviceAccountJson);
+    const auth = new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/androidpublisher'] });
+    _androidPublisherAuthClient = await auth.getClient();
+  }
+  return androidpublisher({ version: 'v3', auth: _androidPublisherAuthClient });
+}
+
+// Cross-source truth: a user can be covered by Kashier (web), Apple, or
+// Google — paid status is the OR of all of them, not a single flat flag one
+// path sets and forgets, since a lapsed Apple sub shouldn't revoke access a
+// user separately has via Kashier, and vice versa.
+function hasActiveCoverage(userId) {
+  const subs = load('subscriptions.json') || [];
+  const now = Date.now();
+  return subs.some(s => s.userId === userId
+    && ['active', 'grace_period', 'on_hold'].includes(s.status)
+    && (!s.endDate || new Date(s.endDate).getTime() > now));
+}
+// Device-tier gating (2026-09-02) — deliberately does NOT check BETA_MODE,
+// unlike the chatbot/lab-results gate below: this is new monetization tied
+// to real hardware integration work (wearables/BP/glucose/scale), not
+// something to give away free during the beta launch window. tier1 has no
+// device access at all, tier2 adds wearables, tier3 adds the Bluetooth
+// medical devices — see MEDICAL_DEVICE_SOURCES above.
+const DEVICE_TIER_RANK = { tier1: 1, tier2: 2, tier3: 3 };
+function hasDeviceTier(u, minTier) {
+  if (u.role === 'admin') return true;
+  if (!hasActiveCoverage(u.id)) return false;
+  return (DEVICE_TIER_RANK[u.plan] || 0) >= DEVICE_TIER_RANK[minTier];
+}
+// Recomputes user.paid from hasActiveCoverage and sets user.plan to whichever
+// currently-covering row expires furthest out — deliberately does NOT clear
+// plan/paid when coverage lapses with nothing else active (matches Kashier's
+// existing behavior today, which never auto-downgrades on its own fixed
+// 30-day expiry either — this is an existing product behavior, not something
+// introduced here).
+function refreshUserPaidStatus(userId) {
+  update('users.json', users => {
+    const u = users.find(x => x.id === userId);
+    if (!u) return users;
+    const covered = hasActiveCoverage(userId);
+    if (covered) {
+      const subs = load('subscriptions.json') || [];
+      const active = subs.filter(s => s.userId === userId && ['active', 'grace_period', 'on_hold'].includes(s.status));
+      const furthest = active.sort((a, b) => new Date(b.endDate || 0) - new Date(a.endDate || 0))[0];
+      u.paid = true;
+      if (furthest) u.plan = furthest.plan;
+    }
+    return users;
+  }, []);
+}
+
+// Single choke point both /iap/verify and the two /notify webhooks funnel
+// into for writing subscription state — mirrors how the Kashier webhook is
+// today's single choke point for its own flow. Idempotent per externalRef
+// (Apple originalTransactionId / Google purchaseToken), but — unlike
+// Kashier's one-time-order idempotency — still applies updates for a
+// genuinely new renewal event on an already-paid user, since a subscription
+// renews repeatedly rather than existing as a single order.
+function reconcileIapSubscription({ platform, userId, productId, plan, expiresDate, status, externalRef, environment, autoRenewing }) {
+  if (!userId || !plan || !externalRef) return;
+  update('subscriptions.json', subs => {
+    const row = subs.find(s => s.externalRef === externalRef && s.source === platform);
+    const endDate = expiresDate ? new Date(expiresDate).toISOString().split('T')[0] : null;
+    if (row) {
+      row.status = status; row.endDate = endDate || row.endDate; row.plan = plan;
+      // Only overwrite a previously-known value with a fresh null when the
+      // caller genuinely has no signal this time (e.g. a renewal-info decode
+      // failure) — never let a transient miss erase a real prior reading.
+      if (autoRenewing != null) row.autoRenewing = autoRenewing;
+    } else {
+      subs.push({
+        userId, plan, source: platform, externalRef, environment,
+        startDate: new Date().toISOString().split('T')[0], endDate,
+        amount: PLAN_PRICES[plan] || 0, status,
+        paymentRef: externalRef,
+        autoRenewing: autoRenewing ?? null,
+      });
+    }
+    return subs;
+  }, []);
+  refreshUserPaidStatus(userId);
+}
+
 // ─── SECURITY CONFIG ──────────────────────────────────────────────────────────
 const SEC = {
   PWD_MIN: 8, PWD_MAX: 128,
+  // Live password-policy regex; the flagged \[ \] \/ escapes below are
+  // functionally redundant inside this character class but harmless, and
+  // this pattern gates every real password in the system. Deliberately
+  // left untouched rather than "fixed" for style — touching a
+  // security-critical regex to satisfy a cosmetic lint rule is a real risk
+  // with zero real benefit. Verified via the real unit tests
+  // (tests/unit/security-critical.test.js) that it still accepts/rejects
+  // exactly the same passwords either way.
+  // eslint-disable-next-line no-useless-escape
   PWD_REGEX: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()\-_=+\[\]{};:'",.<>?\/\\|`~]).{8,128}$/,
   USR_MIN: 3, USR_MAX: 30,
   USR_REGEX: /^[a-zA-Z0-9_.-]{3,30}$/,
@@ -96,6 +312,7 @@ const SEC = {
   API_MAX: 60, API_WIN: 60 * 1000,
   VERIFY_EXP: 24 * 60 * 60 * 1000,
   SESSION_H: 8,
+  IMPERSONATION_SESSION_H: 1, // shorter-lived than a real session — reduces exposure window for an already-sensitive capability
   INJECTION: [
     /(<script[\s>]|<\/script>|javascript:|on\w+\s*=)/i,
     /(union[\s+]select|drop[\s+]table|insert[\s+]into|delete[\s+]from|exec[\s+(]|eval[\s+(])/i,
@@ -119,6 +336,12 @@ function rateLimit(ip, action, max, win) {
 }
 function rlReset(ip, action) { rl.delete(`${action}:${ip}`); }
 setInterval(() => { const now = Date.now(); for (const [k, v] of rl) if (now - v.start > SEC.LOGIN_WIN * 4) rl.delete(k); }, 30 * 60 * 1000);
+
+// Polling cadence for reminders.js — each individual reminder type only
+// actually fires within its own real time window and is deduped per day, so
+// this interval is just how often we check, not a per-tick send.
+setInterval(() => { runReminderCheck(store).catch(e => console.error('[reminders] check failed:', e.message)); }, 5 * 60 * 1000);
+runReminderCheck(store).catch(e => console.error('[reminders] initial check failed:', e.message));
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function getIP(req) {
@@ -172,9 +395,21 @@ function calcBmiBmr(weight, height, age, gender) {
   return { bmi, bmr };
 }
 function b64url(s) { return Buffer.from(s).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'); }
-function mkToken(u) {
+// Production hardening pass (independent audit, Part 2/6): `impersonatedBy`
+// is new and optional — every existing call site is unaffected (it's simply
+// undefined for a real login) — but when set, it does two real things: (1)
+// it's actually encoded into the token payload, unlike the previous
+// `_impersonated: true` flag on the impersonation route below, which was
+// silently dropped because mkToken() never read it, making an impersonation
+// session byte-for-byte indistinguishable from a real one; (2) auth() below
+// uses its presence to apply a shorter session lifetime to impersonation
+// tokens specifically, reducing the real exposure window.
+function mkToken(u, impersonatedBy) {
   const h = b64url(JSON.stringify({ alg:'HS256' }));
-  const p = b64url(JSON.stringify({ id:u.id, usr:u.username, role:u.role, plan:u.plan, exp:Date.now()+SEC.SESSION_H*3600*1000 }));
+  const sessionMs = impersonatedBy ? SEC.IMPERSONATION_SESSION_H * 3600 * 1000 : SEC.SESSION_H * 3600 * 1000;
+  const payload = { id:u.id, usr:u.username, role:u.role, plan:u.plan, exp:Date.now()+sessionMs };
+  if (impersonatedBy) payload.imp = impersonatedBy;
+  const p = b64url(JSON.stringify(payload));
   const s = b64url(crypto.createHmac('sha256', JWT_SECRET).update(`${h}.${p}`).digest('base64'));
   return `${h}.${p}.${s}`;
 }
@@ -189,6 +424,44 @@ function checkToken(token) {
   } catch { return null; }
 }
 function getCookie(req) { const m = (req.headers.cookie||'').match(/dh_token=([^;]+)/); return m?.[1]; }
+// Secure flag was previously always omitted — harmless in production only
+// because nginx's HTTP→HTTPS redirect meant a plain-HTTP request never
+// reached this app, but nothing at the app layer actually enforced it.
+// req.secure correctly reflects the original scheme here because
+// TRUST_PROXY + nginx's `X-Forwarded-Proto` header are both already
+// configured (verified live) — false in CI's direct-HTTP E2E run
+// (E2E_BASE_URL=http://localhost:3200), true behind the real HTTPS proxy,
+// so this can't silently break the existing Playwright login-flow tests.
+function setSessionCookie(req, res, token, maxAgeSec) {
+  const secure = req.secure ? ';Secure' : '';
+  res.setHeader('Set-Cookie', `dh_token=${token};path=/;max-age=${maxAgeSec}${secure};HttpOnly;SameSite=Strict`);
+}
+function clearSessionCookie(req, res) {
+  const secure = req.secure ? ';Secure' : '';
+  res.setHeader('Set-Cookie', `dh_token=;path=/;max-age=0${secure};HttpOnly;SameSite=Strict`);
+}
+
+// ─── REFRESH TOKENS ───────────────────────────────────────────────────────────
+// Access tokens (mkToken) are short-lived (SEC.SESSION_H = 8h) and stateless —
+// fine for the website, which just redirects to /login on expiry. A mobile
+// app needs to stay signed in far longer without re-prompting for a password,
+// so this adds a real, server-tracked refresh token: opaque (a lookup key, not
+// a JWT — nothing to decode), revocable, and rotated on every use (the old one
+// is deleted the instant a new one is issued), so a leaked refresh token only
+// works once before the legitimate client's next refresh invalidates it.
+// Purely additive — the existing cookie/access-token flow is untouched.
+const REFRESH_TOKEN_DAYS = 30;
+function mkRefreshToken(userId) {
+  const token = randToken(32);
+  const tokens = load('refresh_tokens.json') || {};
+  tokens[token] = { userId, createdAt: Date.now(), expiresAt: Date.now() + REFRESH_TOKEN_DAYS * 86400000 };
+  save('refresh_tokens.json', tokens);
+  return token;
+}
+function revokeRefreshToken(token) {
+  const tokens = load('refresh_tokens.json') || {};
+  if (tokens[token]) { delete tokens[token]; save('refresh_tokens.json', tokens); }
+}
 function trial(u) {
   if (BETA_MODE || u.role === 'admin' || u.paid) return { active:true, daysLeft:999, expired:false };
   const days = Math.floor((Date.now() - new Date(u.trialStart||u.created)) / 86400000);
@@ -231,7 +504,7 @@ function track(name, { req, userId, anonId, props } = {}) {
         body: JSON.stringify({ event:name, userId:uid, ts:new Date().toISOString(), props:props||{} }) })
         .catch(()=>{});
     }
-  } catch(e) { /* analytics is best-effort — never surface to the caller */ }
+  } catch { /* analytics is best-effort — never surface to the caller */ }
 }
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
@@ -291,9 +564,9 @@ function initData() {
     'users.json': [{
       id:'u1', username:'admin', password: hashPwd('DietAdmin2026!@#'),
       email:'admin@diet.talabatito.com', emailVerified:true,
-      role:'admin', plan:'elite', created:'2026-04-19', active:true,
+      role:'admin', plan:'tier3', created:'2026-04-19', active:true,
       trialStart:'2026-04-19', paid:true, lang:'ar',
-      loginAttempts:0, lastLogin:null, profile:{}
+      loginAttempts:0, lastLogin:null, avatarUrl:null, profile:{}
     }],
     'subscriptions.json': [],
     'ratings.json': [],
@@ -302,17 +575,17 @@ function initData() {
     'food_prices.json': {
       lastUpdated:'2026-04-20',
       items:[
-        {id:'chicken',name:'صدر فراخ طازج',nameEn:'Chicken Breast',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',carrefour:185,metro:175,royal:165,talabat:195,category:'protein'},
-        {id:'eggs',name:'بيض أحمر',nameEn:'Eggs (30 pcs)',unit:'carton',qty:'2-3 eggs per serving',qtyAr:'2-3 بيضات',carrefour:130,metro:125,royal:135,talabat:140,category:'protein'},
-        {id:'fish',name:'سمك بلطي',nameEn:'Tilapia Fish',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',carrefour:85,metro:90,royal:95,talabat:100,category:'protein'},
-        {id:'beef',name:'لحمة كندوز',nameEn:'Beef',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',carrefour:280,metro:265,royal:275,talabat:295,category:'protein'},
-        {id:'cheese',name:'جبن قريش',nameEn:'Fresh Cheese',unit:'500g',qty:'3-4 tbsp (60g)',qtyAr:'60 جم',carrefour:45,metro:42,royal:38,talabat:50,category:'dairy'},
-        {id:'veggies',name:'خضار مشكلة',nameEn:'Mixed Vegetables',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',carrefour:35,metro:28,royal:32,talabat:40,category:'vegetables'},
-        {id:'avocado',name:'أفوكادو',nameEn:'Avocado',unit:'kg',qty:'half (80g)',qtyAr:'نصف حبة (80 جم)',carrefour:95,metro:88,royal:92,talabat:105,category:'vegetables'},
-        {id:'olive_oil',name:'زيت زيتون',nameEn:'Olive Oil',unit:'500ml',qty:'1 tbsp per meal',qtyAr:'ملعقة للوجبة',carrefour:120,metro:135,royal:130,talabat:145,category:'fats'},
-        {id:'nuts',name:'مكسرات مشكلة',nameEn:'Mixed Nuts',unit:'250g',qty:'30g handful',qtyAr:'30 جم',carrefour:95,metro:98,royal:89,talabat:108,category:'fats'},
-        {id:'cucumber',name:'خيار',nameEn:'Cucumber',unit:'kg',qty:'1 medium (120g)',qtyAr:'حبة متوسطة (120 جم)',carrefour:12,metro:10,royal:11,talabat:15,category:'vegetables'},
-        {id:'tomato',name:'طماطم',nameEn:'Tomatoes',unit:'kg',qty:'1 medium (100g)',qtyAr:'حبة متوسطة (100 جم)',carrefour:15,metro:12,royal:14,talabat:18,category:'vegetables'}
+        {id:'chicken',name:'صدر فراخ طازج',nameEn:'Chicken Breast',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',metro:175,category:'protein'},
+        {id:'eggs',name:'بيض أحمر',nameEn:'Eggs (30 pcs)',unit:'carton',qty:'2-3 eggs per serving',qtyAr:'2-3 بيضات',metro:125,category:'protein'},
+        {id:'fish',name:'سمك بلطي',nameEn:'Tilapia Fish',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',metro:90,category:'protein'},
+        {id:'beef',name:'لحمة كندوز',nameEn:'Beef',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',metro:265,category:'protein'},
+        {id:'cheese',name:'جبن قريش',nameEn:'Fresh Cheese',unit:'500g',qty:'3-4 tbsp (60g)',qtyAr:'60 جم',metro:42,category:'dairy'},
+        {id:'veggies',name:'خضار مشكلة',nameEn:'Mixed Vegetables',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',metro:28,category:'vegetables'},
+        {id:'avocado',name:'أفوكادو',nameEn:'Avocado',unit:'kg',qty:'half (80g)',qtyAr:'نصف حبة (80 جم)',metro:88,category:'vegetables'},
+        {id:'olive_oil',name:'زيت زيتون',nameEn:'Olive Oil',unit:'500ml',qty:'1 tbsp per meal',qtyAr:'ملعقة للوجبة',metro:135,category:'fats'},
+        {id:'nuts',name:'مكسرات مشكلة',nameEn:'Mixed Nuts',unit:'250g',qty:'30g handful',qtyAr:'30 جم',metro:98,category:'fats'},
+        {id:'cucumber',name:'خيار',nameEn:'Cucumber',unit:'kg',qty:'1 medium (120g)',qtyAr:'حبة متوسطة (120 جم)',metro:10,category:'vegetables'},
+        {id:'tomato',name:'طماطم',nameEn:'Tomatoes',unit:'kg',qty:'1 medium (100g)',qtyAr:'حبة متوسطة (100 جم)',metro:12,category:'vegetables'}
       ]
     },
     'meal_plans.json': buildMealPlans(),
@@ -335,7 +608,7 @@ function buildMealPlans() {
   const ing = (item,itemEn,qty,grams) => ({item,itemEn,qty,grams});
   return {
     atkins:{
-      nameAr:'آتكينز',nameEn:'Atkins',dailyCalories:1650,dailyCarbs:'20g',dailyProtein:'120g',dailyFat:'130g',
+      nameAr:'آتكينز',nameEn:'Atkins',dailyCalories:1471,dailyCarbs:'25g',dailyProtein:'115g',dailyFat:'93g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','بيض مسلوق بالجبن القريش','Boiled eggs with fresh cheese',[ing('بيض أحمر','Eggs','3 بيضات / 3 eggs',180),ing('جبن قريش','Fresh Cheese','4 ملاعق / 4 tbsp',80),ing('زيت زيتون','Olive Oil','ملعقة / 1 tbsp',14)],420,'28g','3g','32g',22),
@@ -382,7 +655,7 @@ function buildMealPlans() {
       ]
     },
     keto:{
-      nameAr:'كيتو',nameEn:'Keto',dailyCalories:1600,dailyCarbs:'25g',dailyProtein:'90g',dailyFat:'140g',
+      nameAr:'كيتو',nameEn:'Keto',dailyCalories:1653,dailyCarbs:'16g',dailyProtein:'108g',dailyFat:'125g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','أومليت بالجبن والزبدة','Cheese butter omelette',[ing('بيض أحمر','Eggs','3 بيضات / 3 eggs',180),ing('جبنة رومي','Roumy Cheese','2 شريحة / 2 slices',60),ing('زبدة','Butter','ملعقة / 1 tbsp',14)],460,'24g','2g','40g',24),
@@ -429,7 +702,7 @@ function buildMealPlans() {
       ]
     },
     mediterranean:{
-      nameAr:'متوسطي',nameEn:'Mediterranean',dailyCalories:1750,dailyCarbs:'180g',dailyProtein:'90g',dailyFat:'70g',
+      nameAr:'متوسطي',nameEn:'Mediterranean',dailyCalories:1451,dailyCarbs:'159g',dailyProtein:'83g',dailyFat:'51g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','فول مدمس بزيت الزيتون والطماطم','Foul medames with olive oil and tomato',[ing('فول مدمس','Foul Medames','200 جم / 200g',200),ing('زيت زيتون','Olive Oil','ملعقتان / 2 tbsp',28),ing('طماطم','Tomatoes','حبة / 1 piece',100)],380,'16g','48g','12g',15),
@@ -476,37 +749,42 @@ function buildMealPlans() {
       ]
     },
     diabetic:{
-      nameAr:'مرضى السكري',nameEn:'Diabetic',dailyCalories:1500,dailyCarbs:'130g',dailyProtein:'100g',dailyFat:'55g',
+      nameAr:'مرضى السكري',nameEn:'Diabetic',dailyCalories:1216,dailyCarbs:'88g',dailyProtein:'93g',dailyFat:'48g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','بيض مسلوق مع خبز أسمر وخيار','Boiled eggs with brown bread and cucumber',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('عيش أسمر','Brown Bread','رغيف صغير / 1 small loaf',60),ing('خيار','Cucumber','حبة / 1 piece',120)],320,'18g','32g','12g',16),
           meal('غداء','Lunch','1:00 PM','صدر دجاج مشوي مع أرز بني وخضار','Grilled chicken breast with brown rice and vegetables',[ing('صدر فراخ طازج','Chicken Breast','180 جم / 180g',180),ing('أرز بني','Brown Rice','120 جم / 120g',120),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150)],460,'42g','40g','10g',52),
           meal('عشاء','Dinner','7:00 PM','سمك مشوي مع سلطة خضراء','Grilled fish with green salad',[ing('سمك بلطي','Tilapia Fish','180 جم / 180g',180),ing('سلطة خضراء','Green Salad','150 جم / 150g',150),ing('زيت زيتون','Olive Oil','نصف ملعقة / half tbsp',7)],300,'36g','8g','12g',48),
-          meal('سناك','Snack','4:00 PM','زبادي بدون سكر مع قرفة','Unsweetened yogurt with cinnamon',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('قرفة','Cinnamon','رشة / pinch',2)],90,'6g','7g','3g',14)
+          meal('سناك','Snack','4:00 PM','زبادي بدون سكر مع قرفة','Unsweetened yogurt with cinnamon',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('قرفة','Cinnamon','رشة / pinch',2)],90,'6g','7g','3g',14),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','15 جم / 15g',15)],87,'3g','3g','8g',10)
         ]),
         mk('الاثنين','Monday',[
           meal('إفطار','Breakfast','7:00 AM','شوفان بالقرفة بدون سكر','Oats with cinnamon, no added sugar',[ing('شوفان','Oats','40 جم / 40g',40),ing('لبن','Milk','150 مل / 150ml',150),ing('قرفة','Cinnamon','رشة / pinch',2)],260,'11g','38g','6g',15),
           meal('غداء','Lunch','1:00 PM','كفتة مشوية مع خضار سوتيه','Grilled kofta with sautéed vegetables',[ing('لحمة مفرومة','Ground Beef','150 جم / 150g',150),ing('خضار مشكلة','Mixed Vegetables','200 جم / 200g',200),ing('زيت زيتون','Olive Oil','نصف ملعقة / half tbsp',7)],420,'32g','16g','24g',55),
           meal('عشاء','Dinner','7:00 PM','عدس بخضار بدون خبز','Lentil soup with vegetables, no bread',[ing('عدس','Lentils','180 جم / 180g',180),ing('خضار مشكلة','Mixed Vegetables','100 جم / 100g',100)],240,'14g','36g','2g',14),
-          meal('سناك','Snack','4:00 PM','حفنة لوز','A handful of almonds',[ing('لوز','Almonds','20 جم / 20g',20)],120,'4g','4g','10g',12)
+          meal('سناك','Snack','4:00 PM','حفنة لوز','A handful of almonds',[ing('لوز','Almonds','20 جم / 20g',20)],120,'4g','4g','10g',12),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز إضافي','Extra almonds',[ing('لوز','Almonds','30 جم / 30g',30)],174,'6g','7g','15g',18)
         ]),
         mk('الثلاثاء','Tuesday',[
           meal('إفطار','Breakfast','7:00 AM','جبنة قريش مع خبز أسمر وطماطم','Cottage cheese with brown bread and tomato',[ing('جبنة قريش','Cottage Cheese','100 جم / 100g',100),ing('عيش أسمر','Brown Bread','رغيف صغير / 1 small loaf',60),ing('طماطم','Tomatoes','حبة / 1 piece',100)],280,'18g','34g','6g',18),
           meal('غداء','Lunch','1:00 PM','سمك بالفرن مع بطاطا مسلوقة','Baked fish with boiled potato',[ing('سمك بلطي','Tilapia Fish','180 جم / 180g',180),ing('بطاطس مسلوقة','Boiled Potato','120 جم / 120g',120),ing('خضار مشكلة','Mixed Vegetables','100 جم / 100g',100)],380,'38g','36g','6g',48),
           meal('عشاء','Dinner','7:00 PM','صدر دجاج بالخضار المشوية','Chicken breast with grilled vegetables',[ing('صدر فراخ طازج','Chicken Breast','150 جم / 150g',150),ing('خضار مشكلة','Mixed Vegetables','200 جم / 200g',200)],320,'36g','14g','8g',42),
-          meal('سناك','Snack','4:00 PM','تفاحة صغيرة','A small apple',[ing('تفاح','Apple','حبة صغيرة / 1 small',100)],55,'0g','14g','0g',8)
+          meal('سناك','Snack','4:00 PM','تفاحة صغيرة','A small apple',[ing('تفاح','Apple','حبة صغيرة / 1 small',100)],55,'0g','14g','0g',8),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','30 جم / 30g',30)],174,'6g','7g','15g',18)
         ]),
         mk('الأربعاء','Wednesday',[
           meal('إفطار','Breakfast','7:00 AM','بياض بيض بالخضار','Egg whites with vegetables',[ing('بياض بيض','Egg Whites','4 بيضات / 4 whites',140),ing('خضار مشكلة','Mixed Vegetables','100 جم / 100g',100)],180,'20g','8g','4g',14),
           meal('غداء','Lunch','1:00 PM','فراخ مسلوقة مع أرز بني وسلطة','Boiled chicken with brown rice and salad',[ing('صدر فراخ طازج','Chicken Breast','180 جم / 180g',180),ing('أرز بني','Brown Rice','100 جم / 100g',100),ing('سلطة خضراء','Green Salad','100 جم / 100g',100)],420,'42g','36g','8g',50),
           meal('عشاء','Dinner','7:00 PM','شوربة خضار بالدجاج','Chicken vegetable soup',[ing('صدر فراخ طازج','Chicken Breast','120 جم / 120g',120),ing('خضار مشكلة','Mixed Vegetables','200 جم / 200g',200)],240,'28g','12g','6g',35),
-          meal('سناك','Snack','4:00 PM','خيار وجزر مقطع','Sliced cucumber and carrot',[ing('خيار','Cucumber','حبة / 1 piece',120),ing('جزر','Carrot','حبة / 1 piece',80)],45,'1g','9g','0g',6)
+          meal('سناك','Snack','4:00 PM','خيار وجزر مقطع','Sliced cucumber and carrot',[ing('خيار','Cucumber','حبة / 1 piece',120),ing('جزر','Carrot','حبة / 1 piece',80)],45,'1g','9g','0g',6),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','55 جم / 55g',55)],318,'12g','12g','28g',33)
         ]),
         mk('الخميس','Thursday',[
           meal('إفطار','Breakfast','7:00 AM','بيض مسلوق مع أفوكادو','Boiled eggs with avocado',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('أفوكادو','Avocado','نصف حبة / half',80)],260,'14g','8g','20g',20),
           meal('غداء','Lunch','1:00 PM','لحمة مشوية مع خضار وأرز بني','Grilled beef with vegetables and brown rice',[ing('لحمة كندوز','Beef','150 جم / 150g',150),ing('أرز بني','Brown Rice','100 جم / 100g',100),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150)],460,'34g','38g','16g',65),
           meal('عشاء','Dinner','7:00 PM','سمك مشوي بالليمون','Grilled fish with lemon',[ing('سمك بلطي','Tilapia Fish','180 جم / 180g',180),ing('سلطة خضراء','Green Salad','100 جم / 100g',100)],260,'36g','6g','8g',46),
-          meal('سناك','Snack','4:00 PM','مكسرات مشكلة قليلة','A small handful of mixed nuts',[ing('مكسرات مشكلة','Mixed Nuts','15 جم / 15g',15)],90,'3g','3g','8g',10)
+          meal('سناك','Snack','4:00 PM','مكسرات مشكلة قليلة','A small handful of mixed nuts',[ing('مكسرات مشكلة','Mixed Nuts','15 جم / 15g',15)],90,'3g','3g','8g',10),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','25 جم / 25g',25)],145,'5g','6g','13g',15)
         ]),
         mk('الجمعة','Friday',[
           meal('إفطار','Breakfast','8:00 AM','فطور عائلي متوازن','Family balanced breakfast',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('جبنة قريش','Cottage Cheese','60 جم / 60g',60),ing('عيش أسمر','Brown Bread','رغيف صغير / 1 small loaf',60)],340,'24g','30g','14g',22),
@@ -518,12 +796,13 @@ function buildMealPlans() {
           meal('إفطار','Breakfast','7:00 AM','عجة خضار بزيت زيتون قليل','Vegetable omelette with a little olive oil',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('خضار مشكلة','Mixed Vegetables','80 جم / 80g',80),ing('زيت زيتون','Olive Oil','نصف ملعقة / half tbsp',7)],250,'14g','8g','18g',18),
           meal('غداء','Lunch','1:00 PM','كبدة مشوية مع خضار وأرز بني','Grilled liver with vegetables and brown rice',[ing('كبدة بقري','Beef Liver','150 جم / 150g',150),ing('أرز بني','Brown Rice','100 جم / 100g',100),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150)],420,'38g','38g','10g',48),
           meal('عشاء','Dinner','7:00 PM','شوربة عدس خفيفة','Light lentil soup',[ing('عدس','Lentils','150 جم / 150g',150)],180,'11g','28g','2g',10),
-          meal('سناك','Snack','4:00 PM','حبة خيار وجبنة قريش','Cucumber with cottage cheese',[ing('خيار','Cucumber','حبة / 1 piece',120),ing('جبنة قريش','Cottage Cheese','40 جم / 40g',40)],90,'6g','5g','2g',10)
+          meal('سناك','Snack','4:00 PM','حبة خيار وجبنة قريش','Cucumber with cottage cheese',[ing('خيار','Cucumber','حبة / 1 piece',120),ing('جبنة قريش','Cottage Cheese','40 جم / 40g',40)],90,'6g','5g','2g',10),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','45 جم / 45g',45)],261,'9g','10g','23g',27)
         ])
       ]
     },
     women:{
-      nameAr:'المرأة',nameEn:'Women',dailyCalories:1800,dailyCarbs:'200g',dailyProtein:'80g',dailyFat:'65g',
+      nameAr:'المرأة',nameEn:'Women',dailyCalories:1227,dailyCarbs:'122g',dailyProtein:'85g',dailyFat:'39g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','زبادي بالفواكه والمكسرات','Yogurt with fruit and nuts',[ing('زبادي','Plain Yogurt','170 جم / 170g',170),ing('موز','Banana','حبة / 1 piece',120),ing('مكسرات مشكلة','Mixed Nuts','15 جم / 15g',15)],320,'12g','42g','12g',26),
@@ -570,7 +849,7 @@ function buildMealPlans() {
       ]
     },
     women_40:{
-      nameAr:'المرأة فوق الأربعين',nameEn:'Women Over 40',dailyCalories:1700,dailyCarbs:'170g',dailyProtein:'90g',dailyFat:'60g',
+      nameAr:'المرأة فوق الأربعين',nameEn:'Women Over 40',dailyCalories:1232,dailyCarbs:'87g',dailyProtein:'94g',dailyFat:'52g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','زبادي يوناني بالمكسرات واللوز','Greek yogurt with nuts and almonds',[ing('زبادي يوناني','Greek Yogurt','170 جم / 170g',170),ing('لوز','Almonds','15 جم / 15g',15),ing('مكسرات مشكلة','Mixed Nuts','10 جم / 10g',10)],300,'16g','20g','16g',34),
@@ -582,7 +861,8 @@ function buildMealPlans() {
           meal('إفطار','Breakfast','7:00 AM','بيض مع جبنة بيضاء وخبز أسمر','Eggs with white cheese and brown bread',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('جبنة بيضاء','White Cheese','40 جم / 40g',40),ing('عيش أسمر','Brown Bread','رغيف صغير / 1 small loaf',60)],340,'22g','32g','14g',24),
           meal('غداء','Lunch','1:00 PM','صدر دجاج مشوي مع بروكلي وأرز بني','Grilled chicken breast with broccoli and brown rice',[ing('صدر فراخ طازج','Chicken Breast','180 جم / 180g',180),ing('بروكلي','Broccoli','150 جم / 150g',150),ing('أرز بني','Brown Rice','100 جم / 100g',100)],440,'44g','38g','9g',56),
           meal('عشاء','Dinner','7:00 PM','شوربة عدس','Lentil soup',[ing('عدس','Lentils','180 جم / 180g',180)],240,'14g','38g','2g',12),
-          meal('سناك','Snack','4:00 PM','زبادي بالتوت','Yogurt with berries',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('توت مشكل','Mixed Berries','60 جم / 60g',60)],140,'6g','16g','4g',22)
+          meal('سناك','Snack','4:00 PM','زبادي بالتوت','Yogurt with berries',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('توت مشكل','Mixed Berries','60 جم / 60g',60)],140,'6g','16g','4g',22),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','15 جم / 15g',15)],87,'3g','3g','8g',10)
         ]),
         mk('الثلاثاء','Tuesday',[
           meal('إفطار','Breakfast','7:00 AM','شوفان باللبن والمكسرات','Oats with milk and nuts',[ing('شوفان','Oats','40 جم / 40g',40),ing('لبن','Milk','180 مل / 180ml',180),ing('مكسرات مشكلة','Mixed Nuts','15 جم / 15g',15)],340,'14g','48g','10g',22),
@@ -600,7 +880,8 @@ function buildMealPlans() {
           meal('إفطار','Breakfast','7:00 AM','زبادي يوناني بالعسل','Greek yogurt with honey',[ing('زبادي يوناني','Greek Yogurt','170 جم / 170g',170),ing('عسل نحل','Honey','ملعقة / 1 tbsp',20)],220,'13g','24g','5g',30),
           meal('غداء','Lunch','1:00 PM','لحمة مشوية قليلة الدهن مع خضار وأرز بني','Lean grilled beef with vegetables and brown rice',[ing('لحمة كندوز','Beef','140 جم / 140g',140),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150),ing('أرز بني','Brown Rice','100 جم / 100g',100)],440,'32g','40g','15g',62),
           meal('عشاء','Dinner','7:00 PM','سمك بالفرن مع بروكلي','Baked fish with broccoli',[ing('سمك بلطي','Tilapia Fish','180 جم / 180g',180),ing('بروكلي','Broccoli','150 جم / 150g',150)],300,'38g','10g','8g',50),
-          meal('سناك','Snack','4:00 PM','جبنة قريش','Cottage cheese',[ing('جبنة قريش','Cottage Cheese','80 جم / 80g',80)],80,'9g','3g','3g',14)
+          meal('سناك','Snack','4:00 PM','جبنة قريش','Cottage cheese',[ing('جبنة قريش','Cottage Cheese','80 جم / 80g',80)],80,'9g','3g','3g',14),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','30 جم / 30g',30)],174,'6g','7g','15g',18)
         ]),
         mk('الجمعة','Friday',[
           meal('إفطار','Breakfast','8:00 AM','فطور متكامل (بيض وجبنة وخضار)','Balanced breakfast (eggs, cheese, vegetables)',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('جبنة بيضاء','White Cheese','30 جم / 30g',30),ing('خضار مشكلة','Mixed Vegetables','80 جم / 80g',80)],300,'22g','12g','20g',24),
@@ -612,12 +893,13 @@ function buildMealPlans() {
           meal('إفطار','Breakfast','7:00 AM','بيض بالأفوكادو والجبنة','Eggs with avocado and cheese',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('أفوكادو','Avocado','نصف حبة / half',80),ing('جبنة بيضاء','White Cheese','20 جم / 20g',20)],320,'18g','8g','24g',24),
           meal('غداء','Lunch','1:00 PM','عدس بالخضار','Lentils with vegetables',[ing('عدس','Lentils','180 جم / 180g',180),ing('خضار مشكلة','Mixed Vegetables','100 جم / 100g',100)],280,'16g','44g','3g',16),
           meal('عشاء','Dinner','7:00 PM','جمبري بالثوم مع سلطة','Garlic shrimp with salad',[ing('جمبري','Shrimp','150 جم / 150g',150),ing('سلطة خضراء','Green Salad','100 جم / 100g',100),ing('زيت زيتون','Olive Oil','نصف ملعقة / half tbsp',7)],260,'28g','8g','12g',82),
-          meal('سناك','Snack','4:00 PM','زبادي بالمكسرات','Yogurt with nuts',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('مكسرات مشكلة','Mixed Nuts','10 جم / 10g',10)],140,'7g','9g','8g',20)
+          meal('سناك','Snack','4:00 PM','زبادي بالمكسرات','Yogurt with nuts',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('مكسرات مشكلة','Mixed Nuts','10 جم / 10g',10)],140,'7g','9g','8g',20),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','35 جم / 35g',35)],203,'7g','8g','18g',21)
         ])
       ]
     },
     men:{
-      nameAr:'الرجل',nameEn:'Men',dailyCalories:2400,dailyCarbs:'250g',dailyProtein:'130g',dailyFat:'80g',
+      nameAr:'الرجل',nameEn:'Men',dailyCalories:2070,dailyCarbs:'213g',dailyProtein:'140g',dailyFat:'73g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','بيض بالجبنة والخبز الأسمر','Eggs with cheese and brown bread',[ing('بيض أحمر','Eggs','4 بيضات / 4 eggs',240),ing('جبنة بيضاء','White Cheese','50 جم / 50g',50),ing('عيش أسمر','Brown Bread','رغيف / 1 loaf',120)],560,'34g','56g','22g',36),
@@ -664,37 +946,42 @@ function buildMealPlans() {
       ]
     },
     men_40:{
-      nameAr:'الرجل فوق الأربعين',nameEn:'Men Over 40',dailyCalories:2100,dailyCarbs:'200g',dailyProtein:'120g',dailyFat:'70g',
+      nameAr:'الرجل فوق الأربعين',nameEn:'Men Over 40',dailyCalories:1520,dailyCarbs:'117g',dailyProtein:'112g',dailyFat:'64g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:00 AM','بيض بالجبنة والخبز الأسمر','Eggs with cheese and brown bread',[ing('بيض أحمر','Eggs','3 بيضات / 3 eggs',180),ing('جبنة بيضاء','White Cheese','40 جم / 40g',40),ing('عيش أسمر','Brown Bread','رغيف صغير / 1 small loaf',60)],420,'28g','36g','20g',30),
           meal('غداء','Lunch','1:00 PM','سمك مشوي مع أرز بني وخضار','Grilled fish with brown rice and vegetables',[ing('سمك بلطي','Tilapia Fish','200 جم / 200g',200),ing('أرز بني','Brown Rice','150 جم / 150g',150),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150)],500,'46g','54g','10g',62),
           meal('عشاء','Dinner','7:00 PM','صدر دجاج بالخضار','Chicken breast with vegetables',[ing('صدر فراخ طازج','Chicken Breast','200 جم / 200g',200),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150)],380,'44g','12g','12g',54),
-          meal('سناك','Snack','4:00 PM','طماطم وجبنة','Tomato and cheese',[ing('طماطم','Tomatoes','2 حبة / 2 pieces',200),ing('جبنة قريش','Cottage Cheese','60 جم / 60g',60)],140,'10g','10g','5g',16)
+          meal('سناك','Snack','4:00 PM','طماطم وجبنة','Tomato and cheese',[ing('طماطم','Tomatoes','2 حبة / 2 pieces',200),ing('جبنة قريش','Cottage Cheese','60 جم / 60g',60)],140,'10g','10g','5g',16),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','15 جم / 15g',15)],87,'3g','3g','8g',10)
         ]),
         mk('الاثنين','Monday',[
           meal('إفطار','Breakfast','7:00 AM','شوفان بالحليب قليل الدسم والمكسرات','Oats with low-fat milk and nuts',[ing('شوفان','Oats','50 جم / 50g',50),ing('لبن','Milk','200 مل / 200ml',200),ing('مكسرات مشكلة','Mixed Nuts','15 جم / 15g',15)],380,'16g','58g','10g',22),
           meal('غداء','Lunch','1:00 PM','فراخ مشوية مع بروكلي وأرز بني','Grilled chicken with broccoli and brown rice',[ing('صدر فراخ طازج','Chicken Breast','200 جم / 200g',200),ing('بروكلي','Broccoli','150 جم / 150g',150),ing('أرز بني','Brown Rice','120 جم / 120g',120)],460,'46g','44g','9g',56),
           meal('عشاء','Dinner','7:00 PM','شوربة عدس بالخضار','Lentil soup with vegetables',[ing('عدس','Lentils','180 جم / 180g',180),ing('خضار مشكلة','Mixed Vegetables','100 جم / 100g',100)],280,'15g','44g','3g',16),
-          meal('سناك','Snack','4:00 PM','زبادي بالتوت','Yogurt with berries',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('توت مشكل','Mixed Berries','60 جم / 60g',60)],140,'6g','16g','4g',22)
+          meal('سناك','Snack','4:00 PM','زبادي بالتوت','Yogurt with berries',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('توت مشكل','Mixed Berries','60 جم / 60g',60)],140,'6g','16g','4g',22),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','45 جم / 45g',45)],261,'9g','10g','23g',27)
         ]),
         mk('الثلاثاء','Tuesday',[
           meal('إفطار','Breakfast','7:00 AM','بياض بيض بالخضار وخبز أسمر','Egg whites with vegetables and brown bread',[ing('بياض بيض','Egg Whites','4 بيضات / 4 whites',140),ing('خضار مشكلة','Mixed Vegetables','80 جم / 80g',80),ing('عيش أسمر','Brown Bread','رغيف صغير / 1 small loaf',60)],320,'26g','36g','4g',22),
           meal('غداء','Lunch','1:00 PM','سلمون مشوي مع خضار وأرز بني','Grilled salmon with vegetables and brown rice',[ing('سلمون','Salmon','200 جم / 200g',200),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150),ing('أرز بني','Brown Rice','100 جم / 100g',100)],540,'44g','40g','22g',98),
           meal('عشاء','Dinner','7:00 PM','كفتة مشوية قليلة الدهن مع سلطة','Lean grilled kofta with salad',[ing('لحمة مفرومة','Ground Beef','160 جم / 160g',160),ing('سلطة خضراء','Green Salad','100 جم / 100g',100)],360,'32g','8g','22g',60),
-          meal('سناك','Snack','4:00 PM','مكسرات مشكلة قليلة','A small handful of mixed nuts',[ing('مكسرات مشكلة','Mixed Nuts','20 جم / 20g',20)],130,'4g','5g','11g',14)
+          meal('سناك','Snack','4:00 PM','مكسرات مشكلة قليلة','A small handful of mixed nuts',[ing('مكسرات مشكلة','Mixed Nuts','20 جم / 20g',20)],130,'4g','5g','11g',14),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','30 جم / 30g',30)],174,'6g','7g','15g',18)
         ]),
         mk('الأربعاء','Wednesday',[
           meal('إفطار','Breakfast','7:00 AM','عجة بالطماطم والجبنة القريش','Tomato and cottage cheese omelette',[ing('بيض أحمر','Eggs','3 بيضات / 3 eggs',180),ing('طماطم','Tomatoes','حبة / 1 piece',100),ing('جبنة قريش','Cottage Cheese','50 جم / 50g',50)],340,'26g','10g','22g',24),
           meal('غداء','Lunch','1:00 PM','فراخ بالخضار مع أرز بني','Chicken with vegetables and brown rice',[ing('صدر فراخ طازج','Chicken Breast','200 جم / 200g',200),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150),ing('أرز بني','Brown Rice','120 جم / 120g',120)],460,'46g','46g','9g',58),
           meal('عشاء','Dinner','7:00 PM','سمك بالفرن بالليمون والأعشاب','Baked fish with lemon and herbs',[ing('سمك بلطي','Tilapia Fish','200 جم / 200g',200),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150)],360,'40g','12g','10g',52),
-          meal('سناك','Snack','4:00 PM','تفاح ولوز','Apple and almonds',[ing('تفاح','Apple','حبة / 1 piece',150),ing('لوز','Almonds','15 جم / 15g',15)],180,'4g','24g','9g',18)
+          meal('سناك','Snack','4:00 PM','تفاح ولوز','Apple and almonds',[ing('تفاح','Apple','حبة / 1 piece',150),ing('لوز','Almonds','15 جم / 15g',15)],180,'4g','24g','9g',18),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','30 جم / 30g',30)],174,'6g','7g','15g',18)
         ]),
         mk('الخميس','Thursday',[
           meal('إفطار','Breakfast','7:00 AM','زبادي يوناني بالمكسرات','Greek yogurt with nuts',[ing('زبادي يوناني','Greek Yogurt','170 جم / 170g',170),ing('مكسرات مشكلة','Mixed Nuts','15 جم / 15g',15)],240,'15g','16g','13g',34),
           meal('غداء','Lunch','1:00 PM','لحمة مشوية قليلة الدهن مع خضار وأرز بني','Lean grilled beef with vegetables and brown rice',[ing('لحمة كندوز','Beef','160 جم / 160g',160),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150),ing('أرز بني','Brown Rice','100 جم / 100g',100)],460,'36g','42g','16g',66),
           meal('عشاء','Dinner','7:00 PM','شوربة خضار بالدجاج','Chicken vegetable soup',[ing('صدر فراخ طازج','Chicken Breast','150 جم / 150g',150),ing('خضار مشكلة','Mixed Vegetables','200 جم / 200g',200)],300,'34g','14g','7g',42),
-          meal('سناك','Snack','4:00 PM','طماطم وجبنة قريش','Tomato and cottage cheese',[ing('طماطم','Tomatoes','حبة / 1 piece',100),ing('جبنة قريش','Cottage Cheese','60 جم / 60g',60)],110,'9g','5g','4g',14)
+          meal('سناك','Snack','4:00 PM','طماطم وجبنة قريش','Tomato and cottage cheese',[ing('طماطم','Tomatoes','حبة / 1 piece',100),ing('جبنة قريش','Cottage Cheese','60 جم / 60g',60)],110,'9g','5g','4g',14),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','70 جم / 70g',70)],405,'15g','15g','35g',42)
         ]),
         mk('الجمعة','Friday',[
           meal('إفطار','Breakfast','8:00 AM','فطور متوازن (بيض وجبنة وخبز أسمر وطماطم)','Balanced breakfast (eggs, cheese, brown bread, tomato)',[ing('بيض أحمر','Eggs','3 بيضات / 3 eggs',180),ing('جبنة بيضاء','White Cheese','40 جم / 40g',40),ing('عيش أسمر','Brown Bread','رغيف صغير / 1 small loaf',60),ing('طماطم','Tomatoes','حبة / 1 piece',100)],440,'30g','40g','20g',32),
@@ -706,12 +993,13 @@ function buildMealPlans() {
           meal('إفطار','Breakfast','7:00 AM','بيض بالأفوكادو','Eggs with avocado',[ing('بيض أحمر','Eggs','2 بيضة / 2 eggs',120),ing('أفوكادو','Avocado','نصف حبة / half',80)],280,'14g','8g','22g',20),
           meal('غداء','Lunch','1:00 PM','سمك مشوي مع خضار وأرز بني','Grilled fish with vegetables and brown rice',[ing('سمك بلطي','Tilapia Fish','200 جم / 200g',200),ing('خضار مشكلة','Mixed Vegetables','150 جم / 150g',150),ing('أرز بني','Brown Rice','120 جم / 120g',120)],480,'46g','52g','9g',58),
           meal('عشاء','Dinner','7:00 PM','عدس بالخضار','Lentils with vegetables',[ing('عدس','Lentils','180 جم / 180g',180),ing('خضار مشكلة','Mixed Vegetables','100 جم / 100g',100)],280,'16g','44g','3g',16),
-          meal('سناك','Snack','4:00 PM','زبادي بالعسل','Yogurt with honey',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('عسل نحل','Honey','ملعقة / 1 tbsp',20)],150,'6g','20g','3g',20)
+          meal('سناك','Snack','4:00 PM','زبادي بالعسل','Yogurt with honey',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('عسل نحل','Honey','ملعقة / 1 tbsp',20)],150,'6g','20g','3g',20),
+          meal('سناك إضافي','Extra Snack','9:00 PM','لوز','Almonds',[ing('لوز','Almonds','55 جم / 55g',55)],318,'12g','12g','28g',33)
         ])
       ]
     },
     kids:{
-      nameAr:'الأطفال',nameEn:'Kids',dailyCalories:1600,dailyCarbs:'210g',dailyProtein:'55g',dailyFat:'55g',
+      nameAr:'الأطفال',nameEn:'Kids',dailyCalories:1223,dailyCarbs:'163g',dailyProtein:'61g',dailyFat:'34g',
       week:[
         mk('الأحد','Sunday',[
           meal('إفطار','Breakfast','7:30 AM','بيض مسلوق مع توست وجبنة','Boiled eggs with toast and cheese',[ing('بيض أحمر','Eggs','بيضتان / 2 eggs',120),ing('عيش فينو','White Bread','رغيف صغير / 1 small loaf',60),ing('جبنة بيضاء','White Cheese','30 جم / 30g',30)],340,'18g','36g','12g',22),
@@ -987,18 +1275,60 @@ async function sendResetEmail(email, username, token) {
   } catch(e) { console.error('Reset email error:', e.message); return { error: e.message }; }
 }
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
-app.get(`${BASE}/login`, (req,res) => res.sendFile(path.join(__dirname,'public','login.html')));
+// RC1 Web Pilot Promotion (2026-08-14): login-pilot.html promoted to the
+// canonical /login route — verified full feature parity with login.html
+// (Google/Facebook sign-in, register tab, forgot-password link, hero
+// banner) during the Identity & Authentication domain migration. The
+// legacy file remains on disk, unreferenced by any route, as the rollback
+// artifact — see server.js.backup-before-rc1-pilot-promotion-2026-08-14 for
+// the one-line revert if needed.
+app.get(`${BASE}/login`, (req,res) => res.sendFile(path.join(__dirname,'public','login-pilot.html')));
 app.get(`${BASE}/demo`, (req,res) => res.sendFile(path.join(__dirname,'public','demo.html')));
 app.get(`${BASE}/payment`, (req,res) => res.sendFile(path.join(__dirname,'public','payment.html')));
-app.get(`${BASE}/verify-pending`, (req,res) => res.sendFile(path.join(__dirname,'public','verify_pending.html')));
+// RC1 Web Pilot Promotion (2026-08-14) — see /login's comment above for the
+// pattern/rollback note.
+app.get(`${BASE}/verify-pending`, (req,res) => res.sendFile(path.join(__dirname,'public','verify-pending-pilot.html')));
 app.get(['/', BASE, `${BASE}/`], (req,res) => res.redirect(`${BASE}/dashboard`));
 app.get(`${BASE}/dashboard`, auth, (req,res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname,'public', req.user.role==='admin'?'admin.html':'dashboard.html')); });
+// Platform Preferences (2026-08-14) — auth-gated like /dashboard, unlike the
+// other *-pilot pages which are plain static files under express.static and
+// gate client-side via GET /api/me. This one gates server-side because it's
+// the one pilot page that can act on the account itself (password/deletion),
+// so an unauthenticated visit should never even receive the page shell.
+app.get(`${BASE}/settings-pilot`, auth, (req,res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname,'public','settings-pilot.html')); });
+app.get(`${BASE}/subscription-pilot`, auth, (req,res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname,'public','subscription-pilot.html')); });
+// RC1 Web Pilot Promotion (2026-08-14): canonical, permanent URLs for the
+// three pages that have no legacy predecessor to replace (Settings,
+// Subscription, and — new here — a real auth-gated route for the chatbot
+// page, upgrading it from the client-side-only gate every other *-pilot
+// page uses to the same server-side auth() gate settings/subscription
+// already had, since it's now a first-class, permanently-linked surface).
+// The old -pilot URLs are left working, not removed — harmless aliases,
+// zero risk of breaking anything that still links to them directly.
+app.get(`${BASE}/settings`, auth, (req,res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname,'public','settings-pilot.html')); });
+app.get(`${BASE}/subscription`, auth, (req,res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname,'public','subscription-pilot.html')); });
+app.get(`${BASE}/chatbot`, auth, (req,res) => { res.setHeader('Cache-Control','no-store'); res.sendFile(path.join(__dirname,'public','chatbot-pilot.html')); });
 
 // Verify email
 app.get(`${BASE}/verify-email`, (req,res) => {
+  // Previously the only auth-adjacent, token-possession route with zero rate
+  // limiting (not even the generic /api limiter, since this path isn't under
+  // /api). Tokens are 256-bit random (randToken()) so brute-forcing one isn't
+  // practical regardless, but this closes the one real gap in an otherwise
+  // fully rate-limited auth surface at negligible cost to real users.
+  const r = rateLimit(getIP(req), 'verify-email', 20, 60000);
+  if (!r.ok) return res.redirect(`${BASE}/login?error=ratelimited`);
   const {token} = req.query;
   if (!token) return res.redirect(`${BASE}/login?error=invalid`);
-  const pending = load('pending_verifications.json') || [];
+  // Real production bug found live: this array can contain a corrupted
+  // `null` entry (confirmed one at index 8 in the live data — likely from
+  // an old lost-update race on this file's raw load/push/save pattern,
+  // not from the real, correctly-formed push at registration). `.find()`
+  // over an array containing null throws "Cannot read properties of null"
+  // the moment it reaches that entry, 500ing this route for every token
+  // whose real match sits after the null — filtering defensively means a
+  // stray corrupted entry can never take this route down again.
+  const pending = (load('pending_verifications.json') || []).filter(Boolean);
   const rec = pending.find(p => p.token === token);
   if (!rec || Date.now() > rec.expiresAt) return res.redirect(`${BASE}/login?error=expired`);
   const users = load('users.json') || [];
@@ -1010,7 +1340,7 @@ app.get(`${BASE}/verify-email`, (req,res) => {
   secLog('EMAIL_VERIFIED', 'system', { userId: rec.userId });
   track('email_verified', { userId: rec.userId });
   const t = mkToken(users[idx]);
-  res.setHeader('Set-Cookie', `dh_token=${t};path=/;max-age=28800;HttpOnly;SameSite=Strict`);
+  setSessionCookie(req, res, t, 28800);
   res.redirect(`${BASE}/dashboard?verified=1`);
 });
 
@@ -1023,7 +1353,7 @@ app.post(`${BASE}/resend-verification`, (req,res) => {
   const u = users.find(u => u.email === email && !u.emailVerified);
   if (!u) return res.json({ok:true}); // Don't leak
   const token = randToken();
-  const pending = load('pending_verifications.json') || [];
+  const pending = (load('pending_verifications.json') || []).filter(Boolean);
   save('pending_verifications.json', [...pending.filter(p=>p.userId!==u.id), {userId:u.id,token,email,expiresAt:Date.now()+SEC.VERIFY_EXP}]);
   sendVerifyEmail(email, u.username, token);
   res.json({ok:true});
@@ -1066,7 +1396,36 @@ app.post(`${BASE}/auth`, (req,res) => {
   secLog('LOGIN_OK', ip, {username});
   track('login', { userId: u.id, req });
   const tr = trial(u);
-  res.json({token:mkToken(u), role:u.role, plan:u.plan, username:u.username, trial:tr, lang:u.lang||'ar', emailVerified:u.emailVerified});
+  const accessToken = mkToken(u);
+  // RC1 security review, 2026-08-14: the web login pages (login.html,
+  // login-pilot.html) were setting this same cookie themselves via
+  // client-side `document.cookie`, which can never carry HttpOnly — the
+  // exact real, working HttpOnly pattern already existed elsewhere in this
+  // file (the email-verification redirect, line ~1188) but was never
+  // applied to the actual username/password login path every real user
+  // takes. Setting it server-side here closes that gap; the corresponding
+  // client-side document.cookie lines are removed in the same pass so they
+  // can't immediately overwrite this with a non-HttpOnly copy. Mobile is
+  // unaffected — it never reads cookies, only the `token` field below.
+  setSessionCookie(req, res, accessToken, 28800);
+  res.json({token:accessToken, refreshToken:mkRefreshToken(u.id), role:u.role, plan:u.plan, username:u.username, trial:tr, lang:u.lang||'ar', emailVerified:u.emailVerified});
+});
+
+// Mobile clients exchange a refresh token for a new access token here instead
+// of re-prompting for a password every SEC.SESSION_H hours. Rotates the
+// refresh token on every use — see mkRefreshToken above for why.
+app.post(`${BASE}/api/auth/refresh`, (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: 'Missing refreshToken' });
+  const tokens = load('refresh_tokens.json') || {};
+  const rec = tokens[refreshToken];
+  if (!rec || Date.now() > rec.expiresAt) return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  const users = load('users.json') || [];
+  const u = users.find(uu => uu.id === rec.userId && uu.active);
+  if (!u) return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  delete tokens[refreshToken];
+  save('refresh_tokens.json', tokens);
+  res.json({ token: mkToken(u), refreshToken: mkRefreshToken(u.id), role: u.role, plan: u.plan, username: u.username });
 });
 
 // GOOGLE SIGN-IN — uses Google Identity Services (frontend gets an ID token
@@ -1100,10 +1459,20 @@ app.post(`${BASE}/api/auth/google`, async (req, res) => {
   }
 
   const email = payload.email.toLowerCase().trim();
-  const users = load('users.json') || [];
-  let user = users.find(u => u.email === email);
 
-  if (!user) {
+  // Find-or-create inside a real transaction (2026-09-02 fix): two
+  // simultaneous Google sign-ins for the same brand-new email used to both
+  // pass the `!user` check (the await above yields the event loop before
+  // either one reads users.json) and each `push()` its own new row — a
+  // real duplicate-account race, not hypothetical. update()'s mutator runs
+  // inside a single SQLite IMMEDIATE transaction, so the second concurrent
+  // call sees the first one's just-committed row instead of racing it.
+  let user = null, isNewUser = false;
+  update('users.json', (current) => {
+    const users = current || [];
+    const existing = users.find(u => u.email === email);
+    if (existing) { user = existing; return users; }
+
     // New signup via Google — email is already verified by Google, so skip
     // our own email-verification step. No phone/weight/height/age available
     // from Google — profile starts empty, same as any user would complete
@@ -1118,7 +1487,7 @@ app.post(`${BASE}/api/auth/google`, async (req, res) => {
     let username = base, n = 1;
     while (users.find(u => u.username === username)) username = `${base}${++n}`;
 
-    user = {
+    const newUser = {
       id: 'u' + Date.now() + randToken(4),
       username, password: hashPwd(randToken(24)), // unusable random password — this account only ever signs in via Google
       email, phone: '',
@@ -1126,14 +1495,17 @@ app.post(`${BASE}/api/auth/google`, async (req, res) => {
       created: new Date().toISOString().split('T')[0],
       active: true, emailVerified: true,
       trialStart: new Date().toISOString().split('T')[0],
-      paid: false, lang: 'ar', loginAttempts: 0, lastLogin: null,
+      paid: false, lang: 'ar', loginAttempts: 0, lastLogin: null, avatarUrl: null,
       googleAuth: true,
       profile: { diet: 'atkins', weight: null, height: null, age: null, gender: 'male', budget: 200, bodyFat: null, muscleMass: null, bmi: null, bmr: null }
     };
-    users.push(user);
-    save('users.json', users);
-    secLog('REGISTERED_GOOGLE', ip, { username, email });
+    user = newUser;
+    isNewUser = true;
+    return [...users, newUser];
+  }, []);
 
+  if (isNewUser) {
+    secLog('REGISTERED_GOOGLE', ip, { username: user.username, email });
     const subs = load('subscriptions.json') || [];
     subs.push({ userId: user.id, plan: 'trial', startDate: user.created, endDate: new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString().split('T')[0], amount: 0, status: 'trial' });
     save('subscriptions.json', subs);
@@ -1141,14 +1513,24 @@ app.post(`${BASE}/api/auth/google`, async (req, res) => {
     return res.status(403).json({ error: 'Account suspended' });
   }
 
-  const idx = users.findIndex(u => u.id === user.id);
-  users[idx].lastLogin = new Date().toISOString();
-  save('users.json', users);
+  // Bumping lastLogin re-reads current state inside its own transaction
+  // rather than reusing the `users` array captured before the block above
+  // — that array could be stale (missing the row just created above) and
+  // saving it back would silently wipe out the new user.
+  update('users.json', (current) => {
+    const users = current || [];
+    const idx = users.findIndex(u => u.id === user.id);
+    if (idx >= 0) users[idx] = { ...users[idx], lastLogin: new Date().toISOString() };
+    return users;
+  }, []);
   rlReset(ip, 'login');
   secLog('LOGIN_OK_GOOGLE', ip, { username: user.username });
 
   const tr = trial(user);
-  res.json({ token: mkToken(user), role: user.role, plan: user.plan, username: user.username, trial: tr, lang: user.lang || 'ar', emailVerified: true });
+  const accessToken = mkToken(user);
+  // Same RC1 HttpOnly-cookie fix as /auth above — see that route's comment.
+  setSessionCookie(req, res, accessToken, 28800);
+  res.json({ token: accessToken, refreshToken: mkRefreshToken(user.id), role: user.role, plan: user.plan, username: user.username, trial: tr, lang: user.lang || 'ar', emailVerified: true });
 });
 
 // Facebook Login — frontend gets a short-lived user access token via the
@@ -1185,10 +1567,15 @@ app.post(`${BASE}/api/auth/facebook`, async (req, res) => {
   }
 
   const email = fbUser.email.toLowerCase().trim();
-  const users = load('users.json') || [];
-  let user = users.find(u => u.email === email);
 
-  if (!user) {
+  // Find-or-create inside a real transaction — same duplicate-account race
+  // (and same fix) as /api/auth/google above.
+  let user = null, isNewUser = false;
+  update('users.json', (current) => {
+    const users = current || [];
+    const existing = users.find(u => u.email === email);
+    if (existing) { user = existing; return users; }
+
     // New signup via Facebook — same pattern as Google signup above: email
     // comes pre-verified by Facebook, no phone/weight/height/age available,
     // profile starts empty for the user to fill in later from the dashboard.
@@ -1198,7 +1585,7 @@ app.post(`${BASE}/api/auth/facebook`, async (req, res) => {
     let username = base, n = 1;
     while (users.find(u => u.username === username)) username = `${base}${++n}`;
 
-    user = {
+    const newUser = {
       id: 'u' + Date.now() + randToken(4),
       username, password: hashPwd(randToken(24)), // unusable random password — this account only ever signs in via Facebook
       email, phone: '',
@@ -1206,14 +1593,17 @@ app.post(`${BASE}/api/auth/facebook`, async (req, res) => {
       created: new Date().toISOString().split('T')[0],
       active: true, emailVerified: true,
       trialStart: new Date().toISOString().split('T')[0],
-      paid: false, lang: 'ar', loginAttempts: 0, lastLogin: null,
+      paid: false, lang: 'ar', loginAttempts: 0, lastLogin: null, avatarUrl: null,
       facebookAuth: true,
       profile: { diet: 'atkins', weight: null, height: null, age: null, gender: 'male', budget: 200, bodyFat: null, muscleMass: null, bmi: null, bmr: null }
     };
-    users.push(user);
-    save('users.json', users);
-    secLog('REGISTERED_FACEBOOK', ip, { username, email });
+    user = newUser;
+    isNewUser = true;
+    return [...users, newUser];
+  }, []);
 
+  if (isNewUser) {
+    secLog('REGISTERED_FACEBOOK', ip, { username: user.username, email });
     const subs = load('subscriptions.json') || [];
     subs.push({ userId: user.id, plan: 'trial', startDate: user.created, endDate: new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString().split('T')[0], amount: 0, status: 'trial' });
     save('subscriptions.json', subs);
@@ -1221,20 +1611,39 @@ app.post(`${BASE}/api/auth/facebook`, async (req, res) => {
     return res.status(403).json({ error: 'Account suspended' });
   }
 
-  const idx = users.findIndex(u => u.id === user.id);
-  users[idx].lastLogin = new Date().toISOString();
-  save('users.json', users);
+  // Same reasoning as /api/auth/google above — re-read current state rather
+  // than saving back a `users` snapshot that predates the block above.
+  update('users.json', (current) => {
+    const users = current || [];
+    const idx = users.findIndex(u => u.id === user.id);
+    if (idx >= 0) users[idx] = { ...users[idx], lastLogin: new Date().toISOString() };
+    return users;
+  }, []);
   rlReset(ip, 'login');
   secLog('LOGIN_OK_FACEBOOK', ip, { username: user.username });
 
   const tr = trial(user);
-  res.json({ token: mkToken(user), role: user.role, plan: user.plan, username: user.username, trial: tr, lang: user.lang || 'ar', emailVerified: true });
+  // Named dhSessionToken here, not accessToken — this route already uses
+  // `accessToken` for the incoming Facebook OAuth token (req.body), a
+  // completely different value; reusing the name would shadow/collide.
+  const dhSessionToken = mkToken(user);
+  // Same RC1 HttpOnly-cookie fix as /auth above — see that route's comment.
+  setSessionCookie(req, res, dhSessionToken, 28800);
+  res.json({ token: dhSessionToken, refreshToken: mkRefreshToken(user.id), role: user.role, plan: user.plan, username: user.username, trial: tr, lang: user.lang || 'ar', emailVerified: true });
 });
 
 app.get(`${BASE}/logout`, (req,res) => {
   secLog('LOGOUT', getIP(req));
-  res.setHeader('Set-Cookie','dh_token=;path=/;max-age=0;HttpOnly;SameSite=Strict');
+  clearSessionCookie(req, res);
   res.redirect(`${BASE}/login`);
+});
+
+// Mobile-friendly logout — no cookie to clear, so this just revokes the
+// refresh token (the access token expires on its own within SEC.SESSION_H).
+app.post(`${BASE}/api/auth/logout`, (req, res) => {
+  const { refreshToken } = req.body;
+  if (refreshToken) revokeRefreshToken(refreshToken);
+  res.json({ ok: true });
 });
 
 // REGISTER
@@ -1268,11 +1677,16 @@ app.post(`${BASE}/register`, async (req,res) => {
     created: new Date().toISOString().split('T')[0],
     active:true, emailVerified: false,
     trialStart: new Date().toISOString().split('T')[0],
-    paid:false, lang:'ar', loginAttempts:0, lastLogin:null,
-    profile:{ diet:diet||'atkins', weight:w, height:h, age:parseInt(age)||null, gender:gender||'male', budget:parseInt(budget)||200, bodyFat:parseFloat(bodyFat)||null, muscleMass:parseFloat(muscleMass)||null, bmi, bmr }
+    paid:false, lang:'ar', loginAttempts:0, lastLogin:null, avatarUrl:null,
+    profile:{ diet:diet||'atkins', weight:w, height:h, age:parseInt(age)||null, gender:gender||'male', budget:parseInt(budget)||200, bodyFat:parseFloat(bodyFat)||null, muscleMass:parseFloat(muscleMass)||null, bmi, bmr, measurementsUpdatedAt:new Date().toISOString() }
   };
   users.push(newUser);
   save('users.json', users);
+  if (w) {
+    const wh = load('weight_history.json') || {};
+    wh[newUser.id] = [{ date: newUser.created, weight: w }];
+    save('weight_history.json', wh);
+  }
   secLog('REGISTERED', ip, {username, email:cleanEmail});
   // Captures utm_* from the register body so every signup is attributed to a
   // channel — the raw material for per-channel CAC.
@@ -1301,13 +1715,81 @@ app.post(`${BASE}/register`, async (req,res) => {
 
 // USER API
 app.get(`${BASE}/api/me`, auth, (req,res) => { const {password,...safe}=req.userObj; res.json({...safe, trial:req.trial, betaMode:BETA_MODE}); });
+// Production hardening pass (independent audit, Part 3, F3.1): this route
+// previously copied weight/height/age/budget/bodyFat/muscleMass/diet/gender
+// from req.body onto the stored profile with zero type or bounds checking —
+// the allowlist restricted which *fields* could be set, not what *values*
+// they could hold. Bounds below reuse the exact same real numbers already
+// enforced elsewhere in this file (POST /api/health-profile/goals' own
+// targetWeight check; the 50-1000 budget clamp used by /api/meal-plan and
+// /api/meal-plan/swap), rather than inventing new ones — same real limits,
+// now enforced consistently at the point of write, not just at some points
+// of read.
+const PROFILE_VALID_DIETS = ['atkins','keto','lowcarb','highprotein','mediterranean','balanced','diabetic','women','women_40','men','men_40','kids'];
+const PROFILE_VALID_GENDERS = ['male','female'];
+function validateProfileField(key, value) {
+  switch (key) {
+    case 'weight': case 'bodyFat': case 'muscleMass': {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 400) return null;
+      return n;
+    }
+    case 'height': {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 50 || n > 260) return null;
+      return n;
+    }
+    case 'age': {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 10 || n > 120) return null;
+      return n;
+    }
+    case 'budget': {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return null;
+      return Math.min(Math.max(n, 50), 1000);
+    }
+    case 'diet':
+      return PROFILE_VALID_DIETS.includes(value) ? value : null;
+    case 'gender':
+      return PROFILE_VALID_GENDERS.includes(value) ? value : null;
+    case 'takesCreatine':
+      return typeof value === 'boolean' ? value : null;
+    default:
+      return value; // level/calorieMode/customCalorieTarget: accepted as-is — not read by any real calculation server-side, confirmed by grep before this change; not worth inventing enforcement for fields nothing enforces meaning on
+  }
+}
 app.post(`${BASE}/api/profile`, auth, (req,res) => {
   const users = load('users.json')||[];
   const idx = users.findIndex(u=>u.id===req.user.id);
   if (idx<0) return res.status(404).json({});
-  const ok = ['diet','budget','weight','height','age','gender','bodyFat','muscleMass','level'];
+  const ok = ['diet','budget','weight','height','age','gender','bodyFat','muscleMass','level','calorieMode','customCalorieTarget','takesCreatine','allergies','customAllergyText','medicalConditions'];
   const safe = {};
-  for (const k of ok) if (req.body[k]!==undefined) safe[k]=req.body[k];
+  for (const k of ok) {
+    if (req.body[k] === undefined) continue;
+    if (k === 'allergies' || k === 'customAllergyText' || k === 'medicalConditions') { safe[k] = req.body[k]; continue; }
+    const validated = validateProfileField(k, req.body[k]);
+    if (validated === null) return res.status(400).json({ error: `Invalid value for ${k}` });
+    safe[k] = validated;
+  }
+  if (safe.allergies !== undefined) {
+    safe.allergies = Array.isArray(safe.allergies) ? safe.allergies.filter(a => KNOWN_ALLERGENS.includes(a)) : [];
+  }
+  // Self-reported, not diagnosed by the app — used to gate genuinely unsafe
+  // combinations (a calorie deficit during pregnancy, an aggressive deficit
+  // for a minor, Keto/Atkins with no T1D warning) rather than to make any
+  // clinical claim itself. See KNOWN_MEDICAL_CONDITIONS.
+  if (safe.medicalConditions !== undefined) {
+    safe.medicalConditions = Array.isArray(safe.medicalConditions) ? safe.medicalConditions.filter(c => KNOWN_MEDICAL_CONDITIONS.includes(c)) : [];
+  }
+  // Free-text allergy the user typed under "Other" (e.g. "sesame", "kiwi") —
+  // not one of the 8 structured KNOWN_ALLERGENS categories, so it can't be
+  // tagged on FOOD_DB entries the same way. Matched by keyword against food
+  // names instead — see allergyKeywordsMatch() below. Capped at 200 chars,
+  // same sanitize() used for every other free-text profile field.
+  if (safe.customAllergyText !== undefined) {
+    safe.customAllergyText = typeof safe.customAllergyText === 'string' ? sanitize(safe.customAllergyText).slice(0, 200) : '';
+  }
   users[idx].profile = {...users[idx].profile, ...safe};
   // Recompute BMI/BMR whenever weight/height/age/gender change, using the
   // merged (existing + just-updated) profile — not just whatever subset of
@@ -1316,9 +1798,239 @@ app.post(`${BASE}/api/profile`, auth, (req,res) => {
   const {bmi, bmr} = calcBmiBmr(p.weight, p.height, p.age, p.gender);
   users[idx].profile.bmi = bmi;
   users[idx].profile.bmr = bmr;
+  // Tracks the last time the user actually logged fresh measurements — the
+  // daily "log your weight" reminder (reminders.js) uses this to skip anyone
+  // who already updated today, instead of nagging regardless of real activity.
+  if (['weight','height','bodyFat','muscleMass'].some(k => req.body[k]!==undefined)) {
+    users[idx].profile.measurementsUpdatedAt = new Date().toISOString();
+  }
   if (req.body.lang && ['ar','en'].includes(req.body.lang)) users[idx].lang=req.body.lang;
   save('users.json', users);
+
+  // Real weight history — previously only the current value was kept (each
+  // update overwrote the last), so there was no way to show a real trend
+  // ("▼0.4kg since last time") on the daily briefing. One entry per calendar
+  // day (last write wins if updated twice same day), kept 90 days like the
+  // other daily time series in this app (watch_data, nutrition_logs).
+  if (req.body.weight !== undefined && p.weight) {
+    const today = new Date().toISOString().split('T')[0];
+    const wh = load('weight_history.json') || {};
+    const list = (wh[req.user.id] || []).filter(e => e.date !== today);
+    list.push({ date: today, weight: p.weight });
+    wh[req.user.id] = list.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 90);
+    save('weight_history.json', wh);
+  }
+
   res.json({ok:true, bmi, bmr});
+});
+
+// ─── PROFILE PHOTO (2026-09-03) ─────────────────────────────────────────────
+// Same memoryStorage()+fileFilter shape as labUpload/foodPhotoUpload above,
+// reused rather than reinvented. Unlike those two, this file IS persisted —
+// resized/re-encoded through sharp() first (never trust a client-reported
+// crop/size for something about to be served back out over a public URL)
+// and written to AVATAR_DIR under a random filename.
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const ok = ['image/jpeg','image/png','image/webp','image/heic'].includes(file.mimetype);
+    cb(ok ? null : new Error('Unsupported file type — use JPG, PNG, WEBP, or HEIC'), ok);
+  }
+});
+
+// Deletes the user's current avatar file from disk, if any — shared by the
+// replace-on-reupload step below and by DELETE /api/profile/avatar. Safe to
+// call with no existing file (fs.existsSync guards it) or a malformed URL.
+function deleteAvatarFile(avatarUrl) {
+  if (!avatarUrl) return;
+  const filename = path.basename(avatarUrl);
+  const filePath = path.join(AVATAR_DIR, filename);
+  if (path.dirname(filePath) === AVATAR_DIR && fs.existsSync(filePath)) {
+    try { fs.unlinkSync(filePath); } catch (e) { console.error('[avatar] failed to delete old file:', e.message); }
+  }
+}
+
+app.post(`${BASE}/api/profile/avatar`, auth, avatarUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  let resized;
+  try {
+    // Fixed 512x512, always re-encoded to JPEG — regardless of what the
+    // client sent. fit:'cover' matches the app's own circular-avatar crop
+    // convention (center-cropped to a square) rather than letterboxing.
+    resized = await sharp(req.file.buffer).rotate().resize(512, 512, { fit: 'cover' }).jpeg({ quality: 85 }).toBuffer();
+  } catch (e) {
+    console.error('[avatar] sharp processing failed:', e.message);
+    return res.status(400).json({ error: 'Could not process this image — try a different photo' });
+  }
+
+  const filename = `${req.user.id}-${randToken(8)}.jpg`;
+  fs.writeFileSync(path.join(AVATAR_DIR, filename), resized);
+  const avatarUrl = `/uploads/avatars/${filename}`;
+
+  let previousAvatarUrl = null;
+  update('users.json', (all) => {
+    const idx = (all || []).findIndex(u => u.id === req.user.id);
+    if (idx >= 0) { previousAvatarUrl = all[idx].avatarUrl || null; all[idx].avatarUrl = avatarUrl; }
+    return all;
+  }, []);
+  deleteAvatarFile(previousAvatarUrl);
+
+  res.json({ ok: true, avatarUrl });
+}, handleUploadError);
+
+app.delete(`${BASE}/api/profile/avatar`, auth, (req, res) => {
+  let previousAvatarUrl = null;
+  update('users.json', (all) => {
+    const idx = (all || []).findIndex(u => u.id === req.user.id);
+    if (idx >= 0) { previousAvatarUrl = all[idx].avatarUrl || null; all[idx].avatarUrl = null; }
+    return all;
+  }, []);
+  deleteAvatarFile(previousAvatarUrl);
+  res.json({ ok: true });
+});
+
+// Real, long-documented backend gap closed 2026-08-14 (Goals & Health
+// Reports domain migration): weight_history.json has been written correctly
+// on every weight update since it was introduced (see the real-weight-
+// history comment above), but no route ever read it back as a series —
+// only the daily brief's own buildSnapshot() could see it, server-side,
+// for the single "trend since last entry" note. This is the smallest
+// possible read addition: no change to the storage model, no change to
+// what's written, purely additive. Same shape convention as the other real
+// time-series read route in this app (GET /api/watch/data): {data, days,
+// count}, newest-first (matches how weight_history.json is already sorted
+// when written), capped the same way (90 days is already weight_history's
+// own real storage cap, so `days` here can only ever narrow that window,
+// never widen it — no fabricated data is possible).
+app.get(`${BASE}/api/weight-history`, auth, (req, res) => {
+  const all = load('weight_history.json') || {};
+  const userHistory = all[req.user.id] || [];
+  const days = Math.min(Math.max(parseInt(req.query.days) || 90, 1), 90);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const filtered = userHistory.filter(e => e.date >= cutoffStr);
+  res.json({ data: filtered, days, count: filtered.length });
+});
+
+// ─── ACCOUNT MANAGEMENT (Platform Preferences, 2026-08-14) ────────────────────
+// Reuses the exact same checkPwd/hashPwd/validatePwd used by login and
+// registration — no parallel auth mechanism introduced.
+app.post(`${BASE}/api/account/change-password`, auth, (req, res) => {
+  const ip = getIP(req);
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Missing fields' });
+  const users = load('users.json') || [];
+  const idx = users.findIndex(u => u.id === req.user.id);
+  if (idx < 0) return res.status(404).json({ error: 'Not found' });
+  if (!checkPwd(currentPassword, users[idx].password)) {
+    secLog('PASSWORD_CHANGE_FAILED', ip, { userId: req.user.id });
+    return res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة · Current password is incorrect' });
+  }
+  const pErr = validatePwd(newPassword);
+  if (pErr) return res.status(400).json({ error: pErr });
+  users[idx].password = hashPwd(newPassword);
+  save('users.json', users);
+  // A password change is a real security boundary — every other signed-in
+  // session (any device) loses its refresh token, same as a suspected-
+  // compromise response. The session making this call still holds a live
+  // access token for the rest of its 8h window, but the client logs itself
+  // out immediately afterward anyway (see mobile/web implementation) so the
+  // new password takes effect everywhere in practice, not just on paper.
+  update('refresh_tokens.json', tokens => {
+    for (const [token, rec] of Object.entries(tokens)) if (rec.userId === req.user.id) delete tokens[token];
+    return tokens;
+  }, {});
+  secLog('PASSWORD_CHANGED', ip, { userId: req.user.id });
+  res.json({ ok: true });
+});
+
+// Production-safe account deletion. Verifies the password (same check as
+// login), then removes/scrubs everything this app actually owns for that
+// user. Deliberately NOT unsafe file deletion — every touched document goes
+// through the same load/update/save JSON-store interface every other route
+// in this file uses, one document at a time, each write atomic
+// (db.js's update() runs inside an IMMEDIATE transaction).
+//
+// What this route deletes outright (per-user keyed documents, entire key
+// removed): nutrition_logs, weight_history, watch_data, lab_results,
+// meal_overrides, ai_suggestions, geofence_zones, push_tokens.
+// What it filters out (array-based, matching entries removed):
+// pending_verifications, refresh_tokens (all of the user's — real session
+// invalidation, every device).
+// What it does NOT delete, and why: payment_orders.json and
+// security_log.json are retained — financial transaction records and the
+// security audit trail are standard exceptions to account-data deletion
+// (accounting/fraud-review requirements outlive the account itself), not an
+// oversight. ratings.json is left untouched because it has no reliable
+// userId linkage (submitted with a free-text, unverified email/name) —
+// filtering it by best-effort match risks deleting a stranger's review or
+// missing the real one; documented here rather than guessed at silently.
+// An active subscription is cancelled (status flipped, not deleted) so
+// billing stops without destroying the transaction history behind it.
+// The user record itself is soft-deleted: `active:false` (which the
+// existing `auth()` middleware already checks on every request — this is
+// the real, existing session-invalidation mechanism, not a new one),
+// password replaced with an unusable random hash, email/phone/profile
+// scrubbed, username replaced with a placeholder so it can never be reused
+// to log in again while the row still exists for any remaining foreign-
+// key-shaped references (e.g. a retained payment_orders entry's `userId`).
+app.post(`${BASE}/api/account/delete`, auth, (req, res) => {
+  const ip = getIP(req);
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Password required' });
+  const users = load('users.json') || [];
+  const idx = users.findIndex(u => u.id === req.user.id);
+  if (idx < 0) return res.status(404).json({ error: 'Not found' });
+  if (!checkPwd(password, users[idx].password)) {
+    secLog('ACCOUNT_DELETE_FAILED', ip, { userId: req.user.id });
+    return res.status(401).json({ error: 'كلمة المرور غير صحيحة · Incorrect password' });
+  }
+  const userId = req.user.id;
+  const originalUsername = users[idx].username;
+
+  // Real filesystem side effect (2026-09-03) — the loop below only clears
+  // JSON documents, so the avatar file needs its own explicit deletion.
+  deleteAvatarFile(users[idx].avatarUrl);
+
+  const PER_USER_KEYED_FILES = [
+    'nutrition_logs.json', 'weight_history.json', 'watch_data.json', 'lab_results.json',
+    'meal_overrides.json', 'ai_suggestions.json', 'geofence_zones.json', 'push_tokens.json',
+  ];
+  for (const file of PER_USER_KEYED_FILES) {
+    update(file, all => { delete all[userId]; return all; }, {});
+  }
+  update('pending_verifications.json', list => (list || []).filter(Boolean).filter(p => p.userId !== userId), []);
+  update('refresh_tokens.json', tokens => {
+    for (const [token, rec] of Object.entries(tokens)) if (rec.userId === userId) delete tokens[token];
+    return tokens;
+  }, {});
+  update('subscriptions.json', subs => {
+    subs.forEach(s => { if (s.userId === userId && s.status === 'active') { s.status = 'cancelled'; s.cancelledAt = new Date().toISOString(); s.cancelReason = 'account_deleted'; } });
+    return subs;
+  }, []);
+
+  update('users.json', all => {
+    const i = all.findIndex(u => u.id === userId);
+    if (i >= 0) {
+      all[i] = {
+        ...all[i],
+        username: `deleted_${userId}`,
+        password: hashPwd(randToken(24)),
+        email: '', phone: '', profile: {},
+        active: false,
+        avatarUrl: null,
+        deletedAt: new Date().toISOString(),
+      };
+    }
+    return all;
+  }, []);
+
+  secLog('ACCOUNT_DELETED', ip, { userId, username: originalUsername });
+  track('account_deleted', { userId });
+  res.json({ ok: true, deletedAt: new Date().toISOString() });
 });
 
 // ─── UNIFIED HEALTH PROFILE (the hub) ─────────────────────────────────────────
@@ -1356,6 +2068,57 @@ app.post(`${BASE}/api/health-profile/goals`, auth, (req,res) => {
   res.json({ ok: true, profile: buildHealthProfile(store, req.user.id) });
 });
 
+// ─── AI DAILY BRIEFING (Phase 1) ───────────────────────────────────────────
+// See daily_brief.js for what this deliberately does and doesn't cover.
+// Weather is optional (?lat=&lon=) and reuses the same cache/key as
+// /api/weather — omitted entirely rather than faked if not provided.
+app.get(`${BASE}/api/daily-brief`, auth, async (req, res) => {
+  let weather = null;
+  const flat = parseFloat(req.query.lat), flon = parseFloat(req.query.lon);
+  if (!isNaN(flat) && !isNaN(flon) && process.env.OPENWEATHER_KEY) {
+    const cacheKey = `${(flat*100|0)/100}_${(flon*100|0)/100}`;
+    const hit = weatherCache.get(cacheKey);
+    if (hit && Date.now() - hit.ts < 10 * 60 * 1000) {
+      weather = hit.data;
+    } else {
+      try {
+        const r = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${flat}&lon=${flon}&appid=${process.env.OPENWEATHER_KEY}&units=metric`);
+        if (r.ok) {
+          const w = await r.json();
+          weather = { temp: w.main.temp, humidity: w.main.humidity, description: w.weather?.[0]?.description || '', city: w.name };
+          weatherCache.set(cacheKey, { data: weather, ts: Date.now() });
+        }
+      } catch { /* weather is optional on this screen — omit on failure, don't fail the request */ }
+    }
+  }
+
+  try {
+    const lang = aiLanguage.resolveLanguage({ userLang: req.userObj.lang, appLang: req.query.lang });
+    const result = await buildDailyBrief(store, ai, coachSummary, buildHealthProfile, req.user.id, lang, weather);
+    if (!result) return res.status(404).json({ error: 'Profile not found' });
+    track('daily_brief_viewed', { userId: req.user.id });
+    res.json(result);
+  } catch (e) {
+    console.error('Daily brief error:', e.message);
+    res.status(500).json({ error: 'Failed to build daily brief' });
+  }
+});
+
+// Real 7-day hit-rate across meals/water/steps/sleep — reads the same
+// nutrition_logs.json / watch_data.json already used elsewhere, no new
+// tracking. See daily_brief.js's buildWeeklySummary for the exact
+// per-metric "day counts as a hit" rule.
+app.get(`${BASE}/api/weekly-summary`, auth, (req, res) => {
+  try {
+    const hp = buildHealthProfile(store, req.user.id);
+    if (!hp) return res.status(404).json({ error: 'Profile not found' });
+    res.json(buildWeeklySummary(store, req.user.id, hp));
+  } catch (e) {
+    console.error('Weekly summary error:', e.message);
+    res.status(500).json({ error: 'Failed to build weekly summary' });
+  }
+});
+
 // MEAL PLAN API
 // Shared by /api/meal-plan and /api/meal-plan/swap so a static-plan meal and
 // an AI-generated one get priced through the exact same logic.
@@ -1373,13 +2136,28 @@ function findFoodItem(name, nameEn, foodPrices) {
   return item;
 }
 
+// All stores tracked per ingredient in food_prices.json - kept in one place
+// so adding/removing a tracked store is a one-line change, not a hunt
+// through every price-comparison call site. carrefour, royal and talabat
+// were removed entirely (not just left unsupported): none of the three can
+// ever get an automated price update (carrefour and talabat have real
+// anti-bot protection; royal has no direct website at all), so their prices
+// would sit frozen forever while the page's "Last updated" banner implied
+// otherwise - worse than not listing them.
+const STORE_KEYS = ['metro', 'seoudi', 'gourmet', 'spinneys', 'hyperone'];
+
 function priceMeal(meal, foodPrices) {
   let total = 0;
   const ings = meal.ingredients.map(ing => {
     const item = findFoodItem(ing.item, ing.itemEn, foodPrices);
     let price = 0, store = '';
     if (item) {
-      const ps = [{s:'carrefour',p:item.carrefour},{s:'metro',p:item.metro},{s:'royal',p:item.royal},{s:'talabat',p:item.talabat}].filter(x=>x.p).sort((a,b)=>a.p-b.p);
+      // Previously hardcoded to only 4 of the 8 stores tracked in
+      // food_prices.json (carrefour/metro/royal/talabat) - seoudi, gourmet,
+      // spinneys and hyperone were tracked but never actually compared here,
+      // so their prices (including the ones kept fresh automatically by
+      // price_scraper.js) never reached the "cheapest store" a user sees.
+      const ps = STORE_KEYS.map(s => ({s, p:item[s]})).filter(x=>x.p).sort((a,b)=>a.p-b.p);
       if (ps.length) { price = Math.round((ps[0].p/1000)*ing.grams); store = ps[0].s; }
       total += price;
     }
@@ -1436,7 +2214,8 @@ const DIET_STYLE_LABELS = {
 async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices) {
   const label = MEAL_TYPE_LABELS[mealType] || MEAL_TYPE_LABELS.snack;
   const items = foodPrices?.items || [];
-  const ingredientCatalog = items.map(i => `${i.id} (${i.nameEn}/${i.name}, ~${i.carrefour} EGP/${i.unit}, category: ${i.category})`).join('\n');
+  const cheapestOf = (i) => Math.min(...STORE_KEYS.map(s => i[s]).filter(p => p > 0));
+  const ingredientCatalog = items.map(i => `${i.id} (${i.nameEn}/${i.name}, ~${cheapestOf(i)} EGP/${i.unit}, category: ${i.category})`).join('\n');
 
   const tierInstruction = {
     low: 'Use cheap, budget-friendly ingredients from the list (lower price-per-unit items).',
@@ -1453,15 +2232,28 @@ ${ingredientCatalog}
 Return ONLY valid JSON, no other text, in this exact shape:
 {"name":"Arabic meal name","nameEn":"English meal name","ingredients":[{"ingredientId":"...", "grams":0}],"cal":0,"protein":"0g","carbs":"0g","fat":"0g"}`;
 
-  const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01'},
-    body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 500, messages: [{role:'user', content: prompt}] }),
-  });
-  const aiData = await aiRes.json();
-  const raw = aiData.content?.[0]?.text || '{}';
-  const match = raw.match(/\{[\s\S]*\}/);
-  const parsed = match ? JSON.parse(match[0]) : null;
+  // Previously a hardcoded single-provider Anthropic fetch — the exact
+  // outage class ai.js's own header comment warns about ("Anthropic
+  // credits ran out, silently broke... until it was noticed") applied here
+  // too: meal-swap would 502 for every user the moment Anthropic alone was
+  // unavailable, even while the chatbot (already on ai.chat()) kept working
+  // via Gemini/Groq. Confirmed live during the Mobile Feature Parity
+  // Program: this route really did 502 in production for exactly this
+  // reason. Now goes through the same fallback chain as everywhere else.
+  // JSON.parse is also now wrapped — previously an unparseable AI reply
+  // would throw uncaught up into the route handler instead of being
+  // treated the same as "no valid alternative" (the caller already
+  // gracefully handles a null return here).
+  let parsed;
+  try {
+    const { text } = await ai.chat({ messages: [{ role: 'user', content: prompt }], maxTokens: 500 });
+    const raw = text || '{}';
+    const match = raw.match(/\{[\s\S]*\}/);
+    parsed = match ? JSON.parse(match[0]) : null;
+  } catch (e) {
+    console.error('[generateMealAlternative] error:', e.message);
+    return null;
+  }
   if (!parsed || !Array.isArray(parsed.ingredients) || !parsed.ingredients.length) return null;
 
   const ingredients = parsed.ingredients
@@ -1573,7 +2365,13 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
   res.json({ ok: true, meal: priced, swapsUsed: newSwapsUsed, swapsRemaining: MEAL_SWAP_LIMIT - newSwapsUsed });
 });
 
-app.get(`${BASE}/api/food-prices`, auth, (req,res)=>res.json(load('food_prices.json')));
+// `freshness` is additive - existing consumers (dashboard.html's price
+// table, the mobile app's cheapest-store math) only ever read the flat
+// {storeName: number} shape on each item and never look at this field, so
+// adding it here can't break anything already reading this endpoint. It's
+// keyed the same way price_scraper_freshness.json already is:
+// {[itemId]: {[storeName]: {lastCrawl, lastSuccess, status, confidence}}}.
+app.get(`${BASE}/api/food-prices`, auth, (req,res)=>res.json({ ...load('food_prices.json'), freshness: load('price_scraper_freshness.json') || {} }));
 app.get(`${BASE}/api/labs`, auth, (req,res) => {
   const diet = req.query.diet || 'atkins';
   const data = load('labs.json') || { lastUpdated:null, tests:[] };
@@ -1672,22 +2470,68 @@ app.post(`${BASE}/api/payment/initiate`,optionalAuth,(req,res)=>{
 // /api/admin/users/:id/markpaid already is, and must never share a route
 // with the self-service confirm endpoint.
 app.post(`${BASE}/api/admin/payment/manual-grant`,auth,adminOnly,(req,res)=>{
-  const {paymentRef,plan}=req.body;
-  const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
-  if(!pp[plan])return res.status(400).json({error:'Invalid plan'});
-  const users=load('users.json')||[];
-  const idx=users.findIndex(u=>u.id===req.user.id);
-  if(idx<0)return res.status(404).json({});
-  users[idx].paid=true;users[idx].plan=plan;
-  save('users.json',users);
-  const subs=load('subscriptions.json')||[];
-  subs.push({userId:req.user.id,plan,startDate:new Date().toISOString().split('T')[0],endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0],amount:pp[plan],status:'active',paymentRef:paymentRef||'MANUAL_'+Date.now()});
-  save('subscriptions.json',subs);
-  secLog('PAYMENT_CONFIRMED',getIP(req),{userId:req.user.id,plan});
+  const {userId,paymentRef,plan}=req.body;
+  if(!PLAN_PRICES[plan])return res.status(400).json({error:'Invalid plan'});
+  if(!userId)return res.status(400).json({error:'userId required'});
+  // Real bug fixed here: this previously read req.user.id (the calling
+  // admin's own id from their JWT) instead of a target user, so every call
+  // granted the admin themselves a paid plan rather than the intended
+  // customer. Confirmed zero real callers anywhere in admin.html or
+  // elsewhere in the codebase before this fix, so there was no existing
+  // integration to preserve. Also switched to the transactional update()
+  // helper, matching the adjacent webhook handler below (server.js:2229)
+  // which grants the exact same fields and was already correctly atomic —
+  // this route was the one inconsistent sibling.
+  const target = update('users.json', users => {
+    const u = (users||[]).find(u=>u.id===userId);
+    if (u) { u.paid=true; u.plan=plan; }
+    return users;
+  }, []).find(u=>u.id===userId);
+  if(!target)return res.status(404).json({error:'User not found'});
+  update('subscriptions.json', subs => {
+    (subs||[]).push({userId,plan,startDate:new Date().toISOString().split('T')[0],endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0],amount:PLAN_PRICES[plan],status:'active',paymentRef:paymentRef||'MANUAL_'+Date.now(),autoRenewing:false});
+    return subs;
+  }, []);
+  secLog('PAYMENT_CONFIRMED',getIP(req),{userId,grantedBy:req.user.id,plan});
   res.json({ok:true});
 });
 
 // Server-to-server webhook — the authoritative source of truth for payment.
+// Kashier's own signal for a refund/void event, as distinct from a fresh
+// SUCCESS/FAIL on a new charge. UNCONFIRMED against a real payload as of
+// this writing — Kashier's own docs site blocks automated fetches (403)
+// and this session's web-search budget was exhausted trying to verify it
+// the honest way. This checks every plausible field Kashier's dashboard
+// event names ("Transaction - Refund", "Transaction - Void") suggest,
+// case-insensitively, rather than betting on one guessed exact string —
+// but it has NOT been exercised against a real webhook delivery. Confirm
+// via the dashboard's own "Test Webhook" button (Developers > Integrations
+// > Webhooks) and check `docker logs diethub` for the real payload before
+// trusting this in production; tighten/correct this condition once confirmed.
+function isKashierReversal(data) {
+  const status = String(data.status || '').toUpperCase();
+  const eventType = String(data.event || data.type || '').toUpperCase();
+  return /REFUND|VOID|REVERS|CHARGEBACK/.test(status) || /REFUND|VOID|REVERS|CHARGEBACK/.test(eventType);
+}
+
+// Explicit, deliberate revocation — distinct from refreshUserPaidStatus()
+// (line ~179), which by design never auto-downgrades (that function backs
+// passive expiry across all sources, a separate, already-considered
+// product decision, untouched here). A refund/chargeback is an active
+// reversal, not passive expiry, and only ever fires for the specific user
+// on the specific order being reversed — so it downgrades immediately,
+// but only if the user has no OTHER active coverage (e.g. a still-valid
+// Apple IAP subscription shouldn't be revoked because an unrelated past
+// Kashier order got refunded).
+function revokeAccessIfNoOtherCoverage(userId) {
+  if (!userId) return;
+  update('users.json', users => {
+    const u = users.find(x => x.id === userId);
+    if (u && !hasActiveCoverage(userId)) { u.paid = false; }
+    return users;
+  }, []);
+}
+
 app.post(`${BASE}/api/payment/webhook`,(req,res)=>{
   if(!kashierConfigured())return res.status(503).json({error:'Payments not configured'});
   const data = req.body?.data || req.body || {};
@@ -1697,11 +2541,32 @@ app.post(`${BASE}/api/payment/webhook`,(req,res)=>{
     return res.status(400).json({error:'invalid signature'});
   }
   const orderId = data.merchantOrderId;
-  const success = String(data.status||'').toUpperCase()==='SUCCESS';
   const orders = load('payment_orders.json') || {};
   const order = orders[orderId];
   if(!order){ secLog('PAYMENT_WEBHOOK_NOORDER', getIP(req), { orderId }); return res.json({ok:true}); }
-  if(order.status==='paid') return res.json({ok:true}); // idempotent — already granted
+  // Stable across this order's whole lifecycle (initial charge, later
+  // refund/void) — unlike data.transactionId, which Kashier may assign a
+  // *different* id to for the reversal event itself, this is always
+  // reconstructable from the one thing every event on this order shares:
+  // our own merchantOrderId.
+  const externalRef = 'KASHIER_' + orderId;
+
+  // Reversal (refund/void/chargeback) on an order we'd already granted —
+  // the fix this whole change exists for. See isKashierReversal()'s own
+  // comment on why this branch is unverified against a real payload.
+  if (order.status === 'paid' && isKashierReversal(data)) {
+    reconcileIapSubscription({
+      platform: 'kashier', userId: order.userId, productId: order.plan, plan: order.plan,
+      expiresDate: null, status: 'revoked', externalRef, environment: KASHIER.mode, autoRenewing: false,
+    });
+    revokeAccessIfNoOtherCoverage(order.userId);
+    update('payment_orders.json', o => { if (o[orderId]) o[orderId].status = 'refunded'; return o; }, {});
+    secLog('PAYMENT_REVOKED', getIP(req), { orderId, userId: order.userId, plan: order.plan });
+    return res.json({ ok:true });
+  }
+  if(order.status==='paid') return res.json({ok:true}); // idempotent — already granted, not a reversal
+
+  const success = String(data.status||'').toUpperCase()==='SUCCESS';
   if(Number(data.amount)!==Number(order.amount)){
     secLog('PAYMENT_WEBHOOK_AMOUNT', getIP(req), { orderId, got:data.amount, expected:order.amount });
     return res.status(400).json({error:'amount mismatch'});
@@ -1714,16 +2579,19 @@ app.post(`${BASE}/api/payment/webhook`,(req,res)=>{
   update('payment_orders.json', o=>{ if(o[orderId]){ o[orderId].status='paid'; o[orderId].transactionId=data.transactionId; o[orderId].paidAt=new Date().toISOString(); } return o; }, {});
   // Resolve the user by stored id, or fall back to the email on the order.
   let uid = order.userId;
-  update('users.json', users=>{
-    let u = uid ? users.find(x=>x.id===uid) : null;
-    if(!u && order.email) u = users.find(x=>x.email===order.email);
-    if(u){ u.paid=true; u.plan=order.plan; uid=u.id; }
-    return users;
-  }, []);
-  update('subscriptions.json', subs=>{
-    subs.push({ userId:uid, plan:order.plan, startDate:new Date().toISOString().split('T')[0], endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0], amount:order.amount, status:'active', paymentRef:data.transactionId||('KASHIER_'+orderId) });
-    return subs;
-  }, []);
+  if (!uid && order.email) {
+    const users = load('users.json') || [];
+    uid = users.find(x => x.email === order.email)?.id;
+  }
+  // Same reconcileIapSubscription() choke point Apple/Google IAP already use
+  // (source:'kashier' fills the real, previously-documented gap of Kashier
+  // rows having no `source` field at all) — one shared function for every
+  // payment source, not three separate implementations.
+  reconcileIapSubscription({
+    platform: 'kashier', userId: uid, productId: order.plan, plan: order.plan,
+    expiresDate: new Date(Date.now() + 30*86400000).toISOString(), status: 'active',
+    externalRef, environment: KASHIER.mode, autoRenewing: false,
+  });
   if(uid) track('subscription_paid', { userId:uid, props:{ plan:order.plan, amount:order.amount } });
   secLog('PAYMENT_CONFIRMED', getIP(req), { orderId, userId:uid, plan:order.plan, transactionId:data.transactionId });
   res.json({ ok:true });
@@ -1738,6 +2606,249 @@ app.post(`${BASE}/api/payment/confirm`,auth,(req,res)=>{
   res.json({ ok:true, paid: !!req.userObj.paid, plan: req.userObj.plan, orderStatus });
 });
 
+// ─── SUBSCRIPTION OVERVIEW (read-only, Subscription & Billing domain, 2026-08-14) ──
+// The smallest possible read addition over data that already exists and is
+// already correctly written by the three payment paths above — no new
+// business logic, no new write path. Maps each real subscriptions.json row
+// (already real per-provider data: source/status/endDate/autoRenewing) into
+// one honest, provider-transparent shape, and reuses hasActiveCoverage()'s
+// own cross-provider selection rule to pick which row is "current" rather
+// than inventing a second rule that could disagree with it.
+function providerFromSource(source) {
+  if (source === 'ios') return 'apple';
+  if (source === 'android') return 'google';
+  return 'kashier'; // Kashier rows have no `source` field — the only real gap value
+}
+function toSubscriptionView(row, now) {
+  const provider = providerFromSource(row.source);
+  const remainingDays = row.endDate ? Math.max(0, Math.ceil((new Date(row.endDate).getTime() - now) / 86400000)) : null;
+  return {
+    plan: row.plan,
+    provider,
+    // Real, verified architecture asymmetry (readiness review §"Provider
+    // Transparency"): Apple/Google subscriptions are platform-managed
+    // auto-renewals; Kashier is a fixed-duration window with no re-charge
+    // mechanism anywhere in this codebase. Never implied as equivalent.
+    renewalType: provider === 'kashier' ? 'fixed_duration' : 'auto',
+    autoRenewing: row.autoRenewing ?? null, // null = unknown (older row predating this field, or a decode miss) — never guessed
+    status: row.status,
+    startDate: row.startDate,
+    endDate: row.endDate || null,
+    remainingDays,
+    amount: row.amount ?? null,
+    environment: row.environment || null, // sandbox/production — surfaced for staff/debug use, not hidden
+  };
+}
+app.get(`${BASE}/api/subscription`, auth, (req, res) => {
+  const allSubs = (load('subscriptions.json') || []).filter(s => s.userId === req.user.id);
+  const now = Date.now();
+  const coveringNow = allSubs.filter(s => ['active', 'grace_period', 'on_hold'].includes(s.status) && (!s.endDate || new Date(s.endDate).getTime() > now));
+  const currentRow = coveringNow.sort((a, b) => new Date(b.endDate || 0) - new Date(a.endDate || 0))[0] || null;
+  // Every new account gets one real, automatic status:'trial' row at
+  // registration (see /register and the Google/Facebook sign-in paths) — a
+  // genuine record, but not a billing event, so it's excluded from billing
+  // history here rather than presented as something the user was charged
+  // for. Trial state itself is already fully represented via req.trial.
+  const history = allSubs
+    .filter(s => s.status !== 'trial')
+    .sort((a, b) => new Date(b.startDate || 0) - new Date(a.startDate || 0))
+    .map(row => ({ ...toSubscriptionView(row, now), isCurrent: row === currentRow }));
+  res.json({
+    active: hasActiveCoverage(req.user.id),
+    current: currentRow ? toSubscriptionView(currentRow, now) : null,
+    history,
+    trial: req.trial,
+  });
+});
+
+// ─── PAYMENT (Native IAP — Apple/Google mobile subscriptions) ──────────────
+// Mobile-only path (see iap.js/SubscribeScreen.js in diethub-mobile). The
+// client is already authenticated, but its claimed productId/transactionId
+// is NOT trusted — the plan/tier actually granted always comes from Apple's
+// or Google's own verified response below, never from what the client sent,
+// so a tampered client can't claim a cheaper purchase unlocked a pricier tier.
+function appleStatusToInternal(status) {
+  // Apple Status enum: ACTIVE=1, EXPIRED=2, BILLING_RETRY=3, BILLING_GRACE_PERIOD=4, REVOKED=5
+  if (status === AppleSubStatus.ACTIVE) return 'active';
+  if (status === AppleSubStatus.BILLING_GRACE_PERIOD) return 'grace_period';
+  if (status === AppleSubStatus.BILLING_RETRY) return 'on_hold';
+  if (status === AppleSubStatus.REVOKED) return 'revoked';
+  return 'expired';
+}
+function googleStateToInternal(state) {
+  switch (state) {
+    case 'SUBSCRIPTION_STATE_ACTIVE': return 'active';
+    case 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD': return 'grace_period';
+    case 'SUBSCRIPTION_STATE_ON_HOLD': return 'on_hold';
+    case 'SUBSCRIPTION_STATE_CANCELED': return 'active'; // canceled ≠ expired — stays covered until lineItem.expiryTime
+    default: return 'expired'; // EXPIRED, PAUSED, PENDING, etc.
+  }
+}
+
+async function verifyAppleTransaction(transactionId) {
+  const client = getAppleClient(), verifier = getAppleVerifier();
+  const statusResponse = await client.getAllSubscriptionStatuses(transactionId);
+  for (const group of statusResponse.data || []) {
+    for (const item of group.lastTransactions || []) {
+      const decoded = await verifier.verifyAndDecodeTransaction(item.signedTransactionInfo);
+      if (decoded.transactionId === transactionId || decoded.originalTransactionId === transactionId) {
+        // Real, previously-discarded signal (Subscription & Billing domain,
+        // 2026-08-14): Apple's own subscription-status response carries a
+        // SEPARATE signed renewal-info payload alongside the transaction
+        // info, and it's the only place autoRenewStatus actually lives — the
+        // transaction payload itself has no such field. Decoded via the same
+        // already-integrated verifier, not a new capability, just reading a
+        // field this app already receives and previously ignored.
+        let autoRenewing = null;
+        if (item.signedRenewalInfo) {
+          try {
+            const renewal = await verifier.verifyAndDecodeRenewalInfo(item.signedRenewalInfo);
+            if (renewal.autoRenewStatus != null) autoRenewing = renewal.autoRenewStatus === 1;
+          } catch { /* renewal info is a nice-to-have; a decode failure here shouldn't fail the whole verification */ }
+        }
+        return {
+          productId: decoded.productId,
+          expiresDate: decoded.expiresDate,
+          externalRef: decoded.originalTransactionId,
+          status: appleStatusToInternal(item.status),
+          autoRenewing,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+async function verifyGooglePurchase(purchaseToken) {
+  const client = await getAndroidPublisherClient();
+  const { data } = await client.purchases.subscriptionsv2.get({ packageName: GOOGLE_PLAY_IAP.packageName, token: purchaseToken });
+  const item = (data.lineItems || [])[0];
+  if (!item) return null;
+  // Real, previously-discarded signal (Subscription & Billing domain,
+  // 2026-08-14): Google's own lineItem already carries autoRenewingPlan.
+  // autoRenewEnabled — this app fetched it from Google on every verify call
+  // and simply never read the field.
+  return {
+    productId: item.productId,
+    expiresDate: item.expiryTime,
+    externalRef: purchaseToken,
+    status: googleStateToInternal(data.subscriptionState),
+    autoRenewing: item.autoRenewingPlan?.autoRenewEnabled ?? null,
+  };
+}
+
+app.post(`${BASE}/api/payment/iap/verify`,auth,async(req,res)=>{
+  const { platform, transactionId, purchaseToken } = req.body || {};
+  try {
+    let result = null;
+    if (platform === 'ios') {
+      if (!appleIapConfigured()) return res.status(503).json({ error:'iOS payments not configured' });
+      if (!transactionId) return res.status(400).json({ error:'Missing transactionId' });
+      result = await verifyAppleTransaction(transactionId);
+    } else if (platform === 'android') {
+      if (!googlePlayConfigured()) return res.status(503).json({ error:'Android payments not configured' });
+      if (!purchaseToken) return res.status(400).json({ error:'Missing purchaseToken' });
+      result = await verifyGooglePurchase(purchaseToken);
+    } else {
+      return res.status(400).json({ error:'Invalid platform' });
+    }
+    if (!result) { secLog('IAP_VERIFY_NOMATCH', getIP(req), { userId:req.user.id, platform }); return res.status(400).json({ error:'Purchase not found' }); }
+    const plan = tierFromIapProductId(result.productId);
+    if (!plan) { secLog('IAP_VERIFY_UNKNOWNPRODUCT', getIP(req), { userId:req.user.id, productId:result.productId }); return res.status(400).json({ error:'Unknown product' }); }
+    reconcileIapSubscription({
+      platform, userId: req.user.id, productId: result.productId, plan,
+      expiresDate: result.expiresDate, status: result.status,
+      externalRef: result.externalRef, environment: APPLE_IAP.environment === AppleEnv.PRODUCTION ? 'production' : 'sandbox',
+      autoRenewing: result.autoRenewing,
+    });
+    if (result.status === 'active' || result.status === 'grace_period' || result.status === 'on_hold') {
+      track('subscription_paid', { userId:req.user.id, props:{ plan, platform } });
+    }
+    secLog('IAP_VERIFIED', getIP(req), { userId:req.user.id, platform, plan, status:result.status });
+    res.json({ ok:true, plan, paid: hasActiveCoverage(req.user.id) });
+  } catch (e) {
+    secLog('IAP_VERIFY_ERROR', getIP(req), { userId:req.user?.id, platform, error:e.message });
+    res.status(502).json({ error:'Could not verify purchase with the store, try again' });
+  }
+});
+
+// Server-to-server: App Store Server Notifications V2 (renewals/cancellations/
+// refunds after the initial purchase). Registered as the Production/Sandbox
+// URL in App Store Connect → App Information → App Store Server Notifications.
+// Per Apple's own guidance, the notification's own fields are a nudge to
+// re-check, not the source of truth — this re-fetches authoritative state via
+// the same verified subscription-status call the initial verify uses.
+app.post(`${BASE}/api/payment/apple/notify`,async(req,res)=>{
+  if (!appleIapConfigured()) return res.status(503).json({});
+  try {
+    const verifier = getAppleVerifier();
+    const decoded = await verifier.verifyAndDecodeNotification(req.body?.signedPayload);
+    const signedTransactionInfo = decoded.data?.signedTransactionInfo;
+    if (!signedTransactionInfo) return res.json({}); // e.g. TEST notification, nothing to reconcile
+    const tx = await verifier.verifyAndDecodeTransaction(signedTransactionInfo);
+    const plan = tierFromIapProductId(tx.productId);
+    // Resolve which user this originalTransactionId belongs to from our own
+    // records — Apple's notification doesn't carry our internal userId.
+    const subs = load('subscriptions.json') || [];
+    const existing = subs.find(s => s.source === 'ios' && s.externalRef === tx.originalTransactionId);
+    if (!plan || !existing) { secLog('APPLE_NOTIFY_NOMATCH', getIP(req), { notificationType:decoded.notificationType, originalTransactionId:tx.originalTransactionId }); return res.json({}); }
+    const isRevoked = decoded.notificationType === 'REFUND' || decoded.notificationType === 'REVOKE';
+    // Notification payloads for renewal-relevant events carry their own
+    // signedRenewalInfo alongside signedTransactionInfo — same real signal
+    // verifyAppleTransaction reads on the initial-verify path, just decoded
+    // here from the notification's own data instead of a fresh status call.
+    let autoRenewing = null;
+    if (decoded.data?.signedRenewalInfo) {
+      try {
+        const renewal = await verifier.verifyAndDecodeRenewalInfo(decoded.data.signedRenewalInfo);
+        if (renewal.autoRenewStatus != null) autoRenewing = renewal.autoRenewStatus === 1;
+      } catch { /* best-effort */ }
+    }
+    reconcileIapSubscription({
+      platform:'ios', userId: existing.userId, productId: tx.productId, plan,
+      expiresDate: tx.expiresDate, status: isRevoked ? 'revoked' : appleStatusToInternal(AppleSubStatus.ACTIVE),
+      externalRef: tx.originalTransactionId, environment: existing.environment,
+      autoRenewing,
+    });
+    secLog('APPLE_NOTIFY', getIP(req), { notificationType:decoded.notificationType, userId:existing.userId, plan });
+    res.json({});
+  } catch (e) {
+    secLog('APPLE_NOTIFY_ERROR', getIP(req), { error:e.message });
+    res.status(400).json({}); // bad signature/payload — Apple retries on non-2xx, which is what we want for transient failures, but a verification failure should not be retried into a loop; 400 is the documented safe response either way
+  }
+});
+
+// Server-to-server: Google Play Real-time Developer Notifications, delivered
+// as a Cloud Pub/Sub push (base64 JSON body). Same "don't trust the payload,
+// re-fetch" posture as the Apple handler above.
+app.post(`${BASE}/api/payment/google/notify`,async(req,res)=>{
+  if (!googlePlayConfigured()) return res.status(503).json({});
+  try {
+    const messageData = req.body?.message?.data;
+    if (!messageData) return res.json({});
+    const payload = JSON.parse(Buffer.from(messageData, 'base64').toString('utf8'));
+    const purchaseToken = payload?.subscriptionNotification?.purchaseToken;
+    if (!purchaseToken) return res.json({}); // e.g. a test/one-time-product notification, nothing to reconcile
+    const result = await verifyGooglePurchase(purchaseToken);
+    if (!result) return res.json({});
+    const plan = tierFromIapProductId(result.productId);
+    const subs = load('subscriptions.json') || [];
+    const existing = subs.find(s => s.source === 'android' && s.externalRef === purchaseToken);
+    if (!plan || !existing) { secLog('GOOGLE_NOTIFY_NOMATCH', getIP(req), { purchaseToken }); return res.json({}); }
+    reconcileIapSubscription({
+      platform:'android', userId: existing.userId, productId: result.productId, plan,
+      expiresDate: result.expiresDate, status: result.status,
+      externalRef: purchaseToken, environment: existing.environment,
+      autoRenewing: result.autoRenewing,
+    });
+    secLog('GOOGLE_NOTIFY', getIP(req), { userId:existing.userId, plan, status:result.status });
+    res.json({});
+  } catch (e) {
+    secLog('GOOGLE_NOTIFY_ERROR', getIP(req), { error:e.message });
+    res.status(400).json({});
+  }
+});
+
 // ADMIN
 app.get(`${BASE}/api/admin/users`,auth,adminOnly,(req,res)=>{
   const users=load('users.json')||[];
@@ -1749,10 +2860,16 @@ app.post(`${BASE}/api/admin/users`,auth,adminOnly,(req,res)=>{
   const {password,email,plan,role}=req.body;
   const uErr=validateUsr(username); if(uErr)return res.json({ok:false,error:uErr});
   const pErr=validatePwd(password); if(pErr)return res.json({ok:false,error:pErr});
+  // Hardening pass (independent audit, Part 3): role/plan previously took
+  // any string with no enum check — real fields, both admin-gated already,
+  // but a real data-integrity gap (e.g. a typo'd role value would silently
+  // fail every later `role === 'admin'` check rather than erroring here).
+  if (role !== undefined && !['user','admin'].includes(role)) return res.json({ok:false,error:'Invalid role'});
+  const pp=PLAN_PRICES; // was a re-declared literal copy — see server.js:71 for the one real source of truth
+  if (plan !== undefined && !pp[plan]) return res.json({ok:false,error:'Invalid plan'});
   const users=load('users.json')||[];
   if(users.find(u=>u.username===username))return res.json({ok:false,error:'User exists'});
-  const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
-  const nu={id:'u'+Date.now()+randToken(4),username,password:hashPwd(password),email:email||'',role:role||'user',plan:plan||'basic',created:new Date().toISOString().split('T')[0],active:true,emailVerified:true,trialStart:new Date().toISOString().split('T')[0],paid:!!pp[plan],lang:'ar',loginAttempts:0,profile:{}};
+  const nu={id:'u'+Date.now()+randToken(4),username,password:hashPwd(password),email:email||'',role:role||'user',plan:plan||'tier1',created:new Date().toISOString().split('T')[0],active:true,emailVerified:true,trialStart:new Date().toISOString().split('T')[0],paid:!!pp[plan],lang:'ar',loginAttempts:0,profile:{}};
   users.push(nu);save('users.json',users);
   if(pp[plan]){const subs=load('subscriptions.json')||[];subs.push({userId:nu.id,plan,startDate:nu.created,endDate:new Date(Date.now()+30*86400000).toISOString().split('T')[0],amount:pp[plan],status:'active',paymentRef:'ADMIN_'+Date.now()});save('subscriptions.json',subs);}
   res.json({ok:true});
@@ -1762,7 +2879,7 @@ app.post(`${BASE}/api/admin/users/:id/toggle`,auth,adminOnly,(req,res)=>{const u
 app.post(`${BASE}/api/admin/users/:id/markpaid`,auth,adminOnly,(req,res)=>{const users=load('users.json')||[];const u=users.find(u=>u.id===req.params.id);if(!u)return res.json({ok:false});u.paid=true;u.emailVerified=true;save('users.json',users);res.json({ok:true});});
 app.get(`${BASE}/api/admin/stats`,auth,adminOnly,(req,res)=>{
   const users=load('users.json')||[];const subs=load('subscriptions.json')||[];const ratings=load('ratings.json')||[];
-  const pp={basic:99,standard:179,premium:249,vip:349,elite:449};
+  const pp=PLAN_PRICES; // was a re-declared literal copy — see server.js:71 for the one real source of truth
   const mrr=subs.filter(s=>s.status==='active').reduce((s,sub)=>s+(pp[sub.plan]||0),0);
   const apr=ratings.filter(r=>r.approved);
   res.json({totalUsers:users.length,activeUsers:users.filter(u=>u.active).length,verifiedUsers:users.filter(u=>u.emailVerified).length,paidUsers:users.filter(u=>u.paid).length,trialUsers:users.filter(u=>!u.paid&&u.active).length,activeSubs:subs.filter(s=>s.status==='active').length,mrr,avgRating:apr.length?(apr.reduce((s,r)=>s+r.rating,0)/apr.length).toFixed(1):0,totalRatings:ratings.length,pendingRatings:ratings.filter(r=>!r.approved).length,planBreakdown:Object.keys(pp).map(p=>({plan:p,count:subs.filter(s=>s.plan===p&&s.status==='active').length}))});
@@ -1770,7 +2887,162 @@ app.get(`${BASE}/api/admin/stats`,auth,adminOnly,(req,res)=>{
 app.get(`${BASE}/api/admin/security-log`,auth,adminOnly,(req,res)=>res.json((load('security_log.json')||[]).slice(0,100)));
 app.get(`${BASE}/api/admin/ratings`,auth,adminOnly,(req,res)=>res.json(load('ratings.json')||[]));
 app.post(`${BASE}/api/admin/ratings/:id/approve`,auth,adminOnly,(req,res)=>{const ratings=load('ratings.json')||[];const r=ratings.find(r=>r.id===req.params.id);if(!r)return res.json({ok:false});r.approved=true;save('ratings.json',ratings);res.json({ok:true});});
-app.post(`${BASE}/api/admin/food-prices`,auth,adminOnly,(req,res)=>{const p=load('food_prices.json');p.items=req.body.items;p.lastUpdated=new Date().toISOString().split('T')[0];save('food_prices.json',p);res.json({ok:true,lastUpdated:p.lastUpdated});});
+// Hardening pass (independent audit, Part 3): previously assigned
+// req.body.items directly with zero shape/type checking, even though
+// admin-only. Real risk wasn't authorization (the route is correctly
+// gated) but data integrity: a malformed payload here silently corrupts
+// food_prices.json for every user viewing the price-comparison table.
+// Was a second, identically-valued STORE_KEYS_ADMIN constant — reuses the
+// one real STORE_KEYS declared at server.js:1923 instead (still matches
+// dashboard.html's own storeNames array, unchanged).
+function validateFoodPriceItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (typeof item.id !== 'string' || !item.id) return false;
+  if (typeof item.name !== 'string' || typeof item.nameEn !== 'string') return false;
+  if (typeof item.unit !== 'string' || typeof item.category !== 'string') return false;
+  for (const store of STORE_KEYS) {
+    if (item[store] !== undefined && (typeof item[store] !== 'number' || item[store] < 0 || item[store] > 100000)) return false;
+  }
+  return true;
+}
+app.post(`${BASE}/api/admin/food-prices`,auth,adminOnly,(req,res)=>{
+  if (!Array.isArray(req.body.items) || !req.body.items.every(validateFoodPriceItem)) {
+    return res.status(400).json({ ok:false, error:'Invalid items — each requires string id/name/nameEn/unit/category and non-negative numeric store prices' });
+  }
+  const p=load('food_prices.json');p.items=req.body.items;p.lastUpdated=new Date().toISOString().split('T')[0];save('food_prices.json',p);res.json({ok:true,lastUpdated:p.lastUpdated});
+});
+
+// price_scraper.js (scripts/) queues any match it scores 75-89% confidence
+// on, rather than either silently rejecting it or auto-publishing an
+// uncertain price. These three endpoints are the human side of that: list
+// what's pending, and approve/reject each one. Approving both applies the
+// price AND pins the exact product (same SKU/URL the scraper found) - so it
+// becomes next week's deterministic re-fetch instead of a repeat guess,
+// which is the whole point of a review queue: each approval should make the
+// system need fewer of them over time, not the same number forever.
+app.get(`${BASE}/api/admin/price-review-queue`,auth,adminOnly,(req,res)=>{
+  const queue = load('price_scraper_review_queue.json') || {};
+  res.json({ items: Object.entries(queue).map(([key, v]) => ({ key, ...v })) });
+});
+// Approve/reject happen here (server.js, the always-on process) but
+// price_scraper.js (a separate weekly cron script) is what later reads back
+// pin/coverage stats - both need to land in the same event log for the
+// stability-phase metrics ("80% of approvals are fish") to mean anything.
+// Purely observational: doesn't change what approve/reject actually do.
+const REVIEW_EVENTS_MAX = 500;
+function logHumanReviewEvent(action, entry, key) {
+  update('human_review_events.json', events => {
+    events.push({ ts: new Date().toISOString(), action, key, itemId: entry.itemId, storeName: entry.storeName, price: entry.price, confidence: entry.confidence });
+    while (events.length > REVIEW_EVENTS_MAX) events.shift();
+    return events;
+  }, []);
+}
+app.post(`${BASE}/api/admin/price-review-queue/:key/approve`,auth,adminOnly,(req,res)=>{
+  const key = req.params.key;
+  const queue = load('price_scraper_review_queue.json') || {};
+  const entry = queue[key];
+  if (!entry) return res.status(404).json({error:'Not found in queue'});
+  update('food_prices.json', p => {
+    const item = (p.items||[]).find(i => i.id === entry.itemId);
+    if (item) item[entry.storeName] = entry.price;
+    p.lastUpdated = new Date().toISOString().split('T')[0];
+    return p;
+  }, {items:[]});
+  if (entry.pin && entry.size) {
+    update('price_scraper_pins.json', pins => {
+      pins[key] = { pin: entry.pin, size: entry.size, name: entry.name, confidence: entry.confidence, pinnedAt: new Date().toISOString(), approvedBy: req.user.id };
+      return pins;
+    }, {});
+  }
+  logHumanReviewEvent('approved', entry, key);
+  delete queue[key];
+  save('price_scraper_review_queue.json', queue);
+  res.json({ok:true});
+});
+app.post(`${BASE}/api/admin/price-review-queue/:key/reject`,auth,adminOnly,(req,res)=>{
+  const key = req.params.key;
+  const queue = load('price_scraper_review_queue.json') || {};
+  const entry = queue[key];
+  if (!entry) return res.status(404).json({error:'Not found in queue'});
+  logHumanReviewEvent('rejected', entry, key);
+  delete queue[key];
+  save('price_scraper_review_queue.json', queue);
+  res.json({ok:true});
+});
+// Phase 1+2 observability (2026-08-12): store health, per-item breakdown,
+// confidence-reason categories, run-quality trend, freshness snapshot - all
+// read-only summaries of what price_scraper.js already recorded. Computed
+// here (not by requiring scripts/price_scraper.js directly) because that
+// script lives in a directory this container doesn't have mounted - the
+// live container only bind-mounts individual files, and scripts/price_scraper.js
+// runs as its own separate weekly process, not inside this container. Mirrors
+// computeStoreHealth()'s logic there field-for-field so the numbers agree;
+// if that function's logic changes, update this copy too.
+// Deliberately does not change any matching/scraping behavior - see
+// feedback_price_scraper_stability_phase memory for why that distinction
+// matters right now.
+app.get(`${BASE}/api/admin/price-scraper/health`,auth,adminOnly,(req,res)=>{
+  const history = load('price_scraper_history.json') || [];
+  if (!history.length) return res.json({ available: false });
+
+  const storeStats = {};
+  for (const s of STORE_KEYS) storeStats[s] = { total: 0 };
+  const itemStats = {};
+  let confidenceScores = [];
+  const pinTotals = { created: 0, reused: 0, broken: 0, repaired: 0 };
+  let goldenPassed = 0, goldenFailed = 0;
+  const reasonCategoryTotals = {};
+  const runTrend = [];
+
+  for (const run of history) {
+    for (const [itemId, stats] of Object.entries(run.items || {})) {
+      itemStats[itemId] = itemStats[itemId] || { total: 0 };
+      if (stats.category) itemStats[itemId].category = stats.category;
+      for (const [storeName, r] of Object.entries(stats)) {
+        if (storeName === 'category' || !storeStats[storeName]) continue;
+        storeStats[storeName].total++;
+        storeStats[storeName][r.status] = (storeStats[storeName][r.status] || 0) + 1;
+        itemStats[itemId].total++;
+        itemStats[itemId][r.status] = (itemStats[itemId][r.status] || 0) + 1;
+        for (const reason of (r.reasons || [])) {
+          reasonCategoryTotals[reason.category] = reasonCategoryTotals[reason.category] || { PASS: 0, WARNING: 0 };
+          reasonCategoryTotals[reason.category][reason.severity] = (reasonCategoryTotals[reason.category][reason.severity] || 0) + 1;
+        }
+      }
+    }
+    confidenceScores = confidenceScores.concat(run.confidenceScores || []);
+    for (const k of Object.keys(pinTotals)) pinTotals[k] += (run.pinEvents?.[k] || []).length;
+    if (run.golden) { if (run.golden.passed) goldenPassed++; else goldenFailed++; }
+    if (run.summary) runTrend.push({ ts: run.ts, coveragePct: run.summary.coveragePct, avgConfidence: run.summary.avgConfidence, qualityScore: run.summary.qualityScore, qualityGrade: run.summary.qualityGrade });
+  }
+
+  const avgConfidence = confidenceScores.length
+    ? Math.round((confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length) * 10) / 10
+    : null;
+
+  const freshness = load('price_scraper_freshness.json') || {};
+  const now = Date.now();
+  let fresh = 0, recent = 0, aging = 0, expired = 0, neverUpdated = 0, totalTracked = 0;
+  for (const stores of Object.values(freshness)) {
+    for (const f of Object.values(stores)) {
+      totalTracked++;
+      if (!f.lastSuccess) { neverUpdated++; continue; }
+      const ageDays = (now - new Date(f.lastSuccess).getTime()) / 86400000;
+      if (ageDays < 1) fresh++;
+      else if (ageDays <= 7) recent++;
+      else if (ageDays <= 30) aging++;
+      else expired++;
+    }
+  }
+
+  res.json({
+    available: true, runsAnalyzed: history.length,
+    storeStats, itemStats, avgConfidence, pinTotals,
+    golden: { passed: goldenPassed, failed: goldenFailed },
+    reasonCategoryTotals, runTrend,
+    freshness: { fresh, recent, aging, expired, neverUpdated, totalTracked },
+  });
+});
 app.get(`${BASE}/api/admin/subscriptions`,auth,adminOnly,(req,res)=>res.json(load('subscriptions.json')||[]));
 // Acquisition funnel, conversion, CAC-by-source inputs and daily series.
 app.get(`${BASE}/api/admin/analytics`,auth,adminOnly,(req,res)=>{
@@ -1789,7 +3061,8 @@ app.get(`${BASE}/api/admin/backup`,auth,adminOnly,(req,res)=>{
     res.download(tmp, `diethub_backup_${new Date().toISOString().split('T')[0]}.db`, () => fs.unlink(tmp, ()=>{}));
   } catch(e) {
     fs.unlink(tmp, ()=>{});
-    res.status(500).json({ error: 'Backup failed: ' + e.message });
+    console.error('[admin/backup] error:', e.message);
+    res.status(500).json({ error: 'Backup failed' });
   }
 });
 app.get(`${BASE}/api/admin/export`,auth,adminOnly,(req,res)=>{
@@ -1805,8 +3078,146 @@ app.get(`${BASE}/health`,(req,res)=>res.json({status:'ok',version:'3.0-secure'})
 // Public (no-auth) — lets login.html know whether to render the Google
 // button at all, rather than showing one that's guaranteed to fail.
 app.get(`${BASE}/api/config`,(req,res)=>res.json({googleClientId: GOOGLE_CLIENT_ID || null, facebookAppId: FACEBOOK_APP_ID || null}));
-app.get(`${BASE}/forgot-password`, (req,res) => res.sendFile(path.join(__dirname,'public','forgot_password.html')));
-app.get(`${BASE}/reset-password`, (req,res) => res.sendFile(path.join(__dirname,'public','reset_password.html')));
+
+// ─── HERO BANNERS ───────────────────────────────────────────────────────────
+// One real content source consumed by both the website and the mobile app —
+// "landing" placement is the public pre-signup pages (login/register),
+// "app" placement is shown to already-registered users. Every banner here
+// describes something actually shipped and live, not a roadmap promise —
+// same "no fake claims" discipline as the rest of the app. Admin CRUD below
+// means new banners (e.g. for a future paid ad campaign landing variant)
+// don't need a code deploy — just an admin API call.
+function defaultBanners() {
+  // Two designed image sets sharing one feature list: "outside" (landing,
+  // pre-signup) is a short general teaser; "inside" (app, post-signup) is a
+  // more detailed benefits card. Same /assets/banners/*.png used on web and
+  // mobile. Arabic-only artwork for now — English UI falls back to the old
+  // text-only rendering (see renderHeroBanner/renderAppBanner).
+  return [
+    {
+      id: 'hero_ai_briefing', placement: ['landing'], active: false, priority: 1, icon: '🌞',
+      image: '/assets/banners/out_ai_briefing.png',
+      image_en: '/assets/banners/out_ai_briefing_en.png',
+      title_ar: 'ابدأ يومك بملخص صحي ذكي', title_en: 'Start your day with a smart health briefing',
+      subtitle_ar: 'نظرة واحدة على سعراتك، بروتينك، مائك، ونشاطك — بدون تخمين', subtitle_en: 'One glance at your calories, protein, water, and activity — no guessing',
+      cta_ar: 'جرّب الآن مجاناً', cta_en: 'Try it free', ctaAction: 'register',
+    },
+    {
+      id: 'hero_wellness_score', placement: ['landing'], active: false, priority: 2, icon: '🎯',
+      image: '/assets/banners/out_wellness_score.png',
+      image_en: '/assets/banners/out_wellness_score_en.png',
+      title_ar: 'مؤشر صحي واحد، من بياناتك الحقيقية', title_en: 'One wellness score, built from your real data',
+      subtitle_ar: 'نوم، نشاط، تغذية، وترطيب — محسوبة برقم واضح كل يوم', subtitle_en: 'Sleep, activity, nutrition, and hydration — one clear number every day',
+      cta_ar: 'اكتشف مؤشرك', cta_en: 'See your score', ctaAction: 'register',
+    },
+    {
+      id: 'hero_wearables', placement: ['landing'], active: false, priority: 3, icon: '⌚',
+      image: '/assets/banners/out_wearables.png',
+      image_en: '/assets/banners/out_wearables_en.png',
+      title_ar: 'اربط ساعتك الذكية', title_en: 'Connect your smartwatch',
+      subtitle_ar: 'متوافق مع أشهر الساعات الذكية وأجهزة اللياقة — بياناتك الحقيقية تدخل توصياتك', subtitle_en: 'Apple Watch, Garmin, Fitbit, and 10 more — real data feeds your real recommendations',
+      cta_ar: 'اربط جهازك', cta_en: 'Connect your device', ctaAction: 'dashboard',
+    },
+    {
+      id: 'hero_savings', placement: ['landing'], active: false, priority: 4, icon: '💰',
+      image: '/assets/banners/out_savings.png',
+      image_en: '/assets/banners/out_savings_en.png',
+      title_ar: 'وفّر فلوسك في التسوق', title_en: 'Save money on your groceries',
+      subtitle_ar: 'مقارنة أسعار حقيقية بين 8 متاجر مصرية كل يوم', subtitle_en: 'Real price comparison across 8 Egyptian stores, every day',
+      cta_ar: 'شوف التوفير', cta_en: 'See today\'s savings', ctaAction: 'register',
+    },
+    {
+      id: 'hero_ai_coach', placement: ['landing'], active: false, priority: 5, icon: '🤖',
+      image: '/assets/banners/out_ai_coach.png',
+      image_en: '/assets/banners/out_ai_coach_en.png',
+      title_ar: 'مساعدك الغذائي الذكي', title_en: 'Your AI nutrition coach',
+      subtitle_ar: 'يعرف أهدافك الحقيقية ويبني لك خطط وجبات ونشاط عند الطلب', subtitle_en: 'Knows your real goals — builds you meal and activity plans on request',
+      cta_ar: 'تحدث معه', cta_en: 'Start chatting', ctaAction: 'dashboard',
+    },
+    {
+      id: 'app_ai_briefing', placement: ['app'], active: false, priority: 1, icon: '🌞',
+      image: '/assets/banners/in_ai_briefing.png',
+      image_en: '/assets/banners/in_ai_briefing_en.png',
+      title_ar: 'ملخصك الصحي اليومي', title_en: 'Your daily health briefing',
+      subtitle_ar: 'يتحدث تلقائياً كل صباح من بياناتك الفعلية — السعرات، البروتين، الماء، والنشاط في نظرة واحدة', subtitle_en: 'Auto-updates every morning from your real data — calories, protein, water, and activity in one glance',
+      cta_ar: 'شوف ملخص اليوم', cta_en: 'See today\'s briefing', ctaAction: null,
+    },
+    {
+      id: 'app_wellness_score', placement: ['app'], active: false, priority: 2, icon: '🎯',
+      image: '/assets/banners/in_wellness_score.png',
+      image_en: '/assets/banners/in_wellness_score_en.png',
+      title_ar: 'مؤشرك الصحي المتكامل', title_en: 'Your all-in-one wellness score',
+      subtitle_ar: 'يجمع النوم والنشاط والتغذية والترطيب في رقم واحد، يتحدث يومياً', subtitle_en: 'Sleep, activity, nutrition, and hydration combined into one number, updated daily',
+      cta_ar: 'شوف مؤشرك', cta_en: 'See your score', ctaAction: null,
+    },
+    {
+      id: 'app_wearables', placement: ['app'], active: false, priority: 3, icon: '⌚',
+      image: '/assets/banners/in_wearables.png',
+      image_en: '/assets/banners/in_wearables_en.png',
+      title_ar: 'ساعتك الذكية، متصلة بالكامل', title_en: 'Your smartwatch, fully connected',
+      subtitle_ar: 'يدعم أشهر الساعات الذكية وأجهزة اللياقة — مزامنة تلقائية للخطوات والنبض والنوم', subtitle_en: 'Supports the top smartwatches and fitness trackers — auto-sync for steps, heart rate, and sleep',
+      cta_ar: 'اربط جهازك', cta_en: 'Connect your device', ctaAction: 'dashboard',
+    },
+    {
+      id: 'app_savings', placement: ['app'], active: false, priority: 4, icon: '💰',
+      image: '/assets/banners/in_savings.png',
+      image_en: '/assets/banners/in_savings_en.png',
+      title_ar: 'وفّر في كل خطة وجبات', title_en: 'Save on every meal plan',
+      subtitle_ar: 'أسعار حقيقية من 8 متاجر مصرية، محدّثة يومياً — خطة وجباتك مبنية فعلياً على ميزانيتك', subtitle_en: 'Real prices from 8 Egyptian stores, updated daily — your meal plan is actually built around your budget',
+      cta_ar: 'شوف الأسعار', cta_en: 'See prices', ctaAction: null,
+    },
+    {
+      id: 'app_ai_coach', placement: ['app'], active: false, priority: 5, icon: '🤖',
+      image: '/assets/banners/in_ai_coach.png',
+      image_en: '/assets/banners/in_ai_coach_en.png',
+      title_ar: 'مدربك الغذائي بالذكاء الاصطناعي', title_en: 'Your AI nutrition coach',
+      subtitle_ar: 'يعرف هدفك ونظامك الغذائي فعلياً، ويبني خطة وجبات أو نشاط كاملة عند الطلب', subtitle_en: 'Actually knows your goal and diet type — builds a full meal or activity plan on request',
+      cta_ar: 'تحدث معه', cta_en: 'Start chatting', ctaAction: null,
+    },
+  ];
+}
+app.get(`${BASE}/api/banners`, (req, res) => {
+  const placement = req.query.placement;
+  let banners = load('banners.json');
+  if (!banners) { banners = defaultBanners(); save('banners.json', banners); }
+  let result = banners.filter(b => b.active);
+  if (placement) result = result.filter(b => b.placement.includes(placement));
+  result.sort((a, b) => a.priority - b.priority);
+  res.json(result);
+});
+app.get(`${BASE}/api/admin/banners`, auth, adminOnly, (req, res) => {
+  let banners = load('banners.json');
+  if (!banners) { banners = defaultBanners(); save('banners.json', banners); }
+  res.json(banners);
+});
+app.post(`${BASE}/api/admin/banners`, auth, adminOnly, (req, res) => {
+  const b = req.body;
+  if (!b?.id || !b?.title_ar) return res.status(400).json({ error: 'id and title_ar required' });
+  update('banners.json', all => {
+    const list = all || defaultBanners();
+    const idx = list.findIndex(x => x.id === b.id);
+    const record = { placement: ['landing', 'app'], active: true, priority: 99, icon: '✨', ctaAction: null, ...b };
+    if (idx >= 0) list[idx] = record; else list.push(record);
+    return list;
+  }, null);
+  res.json({ ok: true });
+});
+app.post(`${BASE}/api/admin/banners/:id/toggle`, auth, adminOnly, (req, res) => {
+  update('banners.json', all => {
+    const list = all || defaultBanners();
+    const b = list.find(x => x.id === req.params.id);
+    if (b) b.active = !b.active;
+    return list;
+  }, null);
+  res.json({ ok: true });
+});
+app.delete(`${BASE}/api/admin/banners/:id`, auth, adminOnly, (req, res) => {
+  update('banners.json', all => (all || defaultBanners()).filter(x => x.id !== req.params.id), null);
+  res.json({ ok: true });
+});
+// RC1 Web Pilot Promotion (2026-08-14) — see /login's comment above.
+app.get(`${BASE}/forgot-password`, (req,res) => res.sendFile(path.join(__dirname,'public','forgot-password-pilot.html')));
+app.get(`${BASE}/reset-password`, (req,res) => res.sendFile(path.join(__dirname,'public','reset-password-pilot.html')));
 app.post(`${BASE}/api/forgot-password`, async (req,res) => {
   const ip = getIP(req);
   const r = rateLimit(ip, 'forgot', 3, 15 * 60 * 1000);
@@ -1847,40 +3258,191 @@ app.post(`${BASE}/api/reset-password`, (req,res) => {
 });
 
 // ─── CHATBOT (VIP + ELITE ONLY) ───────────────────────────────────────────────
+// ─── AI SUGGESTIONS (chat-generated plans) ─────────────────────────────────
+// Real, bounded validation before ANYTHING the AI writes gets saved to the
+// database — same non-negotiable principle already applied to supplement
+// label text (never AI-authored, always deterministic): an AI reply must
+// never silently become something that LOOKS like verified app data. Saved
+// suggestions stay in their own store, always tagged source:'ai_suggestion',
+// and the UI must show that label — this validator is the one gate that
+// decides whether something is even eligible to be offered for saving.
+function validatePlanJSON(type, obj) {
+  if (!obj || typeof obj !== 'object' || typeof obj.title !== 'string' || !obj.title.trim()) return null;
+  if (!Array.isArray(obj.days) || obj.days.length < 1 || obj.days.length > 7) return null;
+  const days = [];
+  for (const day of obj.days) {
+    if (!day || typeof day.day !== 'string' || !day.day.trim()) return null;
+    if (type === 'meals') {
+      if (!Array.isArray(day.meals) || day.meals.length < 1 || day.meals.length > 6) return null;
+      const meals = [];
+      for (const m of day.meals) {
+        if (!m || typeof m.type !== 'string' || typeof m.name !== 'string') return null;
+        const cal = Number(m.cal), protein = Number(m.protein), carbs = Number(m.carbs), fat = Number(m.fat);
+        if (![cal, protein, carbs, fat].every(Number.isFinite)) return null;
+        if (cal < 0 || cal > 3000 || protein < 0 || protein > 500 || carbs < 0 || carbs > 500 || fat < 0 || fat > 500) return null;
+        meals.push({ type: m.type.trim(), name: m.name.trim(), cal, protein, carbs, fat });
+      }
+      days.push({ day: day.day.trim(), meals });
+    } else {
+      if (typeof day.activity !== 'string' || !day.activity.trim()) return null;
+      const estCalBurn = day.estCalBurn != null ? Number(day.estCalBurn) : null;
+      if (estCalBurn != null && (!Number.isFinite(estCalBurn) || estCalBurn < 0 || estCalBurn > 2000)) return null;
+      days.push({ day: day.day.trim(), activity: day.activity.trim(), estCalBurn });
+    }
+  }
+  return { title: obj.title.trim(), days };
+}
+
 app.post(`${BASE}/api/chatbot`, auth, async (req, res) => {
   const u = req.userObj;
-  if (!BETA_MODE && !['vip','elite'].includes(u.plan) && u.role !== 'admin') {
-    return res.status(403).json({ error: 'هذه الميزة متاحة لأعضاء VIP و Elite فقط' });
+  // Language now resolves per-request instead of being permanently baked
+  // into one hardcoded Arabic prompt — see ai_language.js for the fallback
+  // chain (stored user preference -> client-sent app language -> English).
+  const lang = aiLanguage.resolveLanguage({ userLang: u.lang, appLang: req.body.lang });
+  const S = aiLanguage.strings(lang);
+  if (!BETA_MODE && !hasActiveCoverage(u.id) && u.role !== 'admin') {
+    return res.status(403).json({ error: S.paidGate });
   }
-  const { messages, generateQuestions } = req.body;
+  // The raw client-supplied messages array was previously forwarded
+  // verbatim into ai.js's chat() call, which itself splices it directly
+  // after the real system prompt (ai.js:93,108,113,132) with no role check
+  // — a client could send {role:'system', content:'...'} inside its own
+  // "conversation history" and have it land as a second, later system-role
+  // turn in the real provider request, which several providers treat as
+  // overriding/supplementing earlier instructions. Filtering to only the
+  // two roles a real conversation ever legitimately contains closes that
+  // without touching ai.js itself (every other caller of chat() sends
+  // already-trusted, server-constructed messages, so the fix belongs at
+  // this one client-facing entry point, not in the shared module).
+  const { generateQuestions, generatePlan } = req.body;
+  const messages = Array.isArray(req.body.messages)
+    ? req.body.messages
+        .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .slice(-30) // generous real conversation length; also bounds prompt size
+    : [];
   // Coach now reads the full unified health profile (labs + wearables + targets
   // + risk flags), not just the thin demographic fields — this is what turns it
   // from a generic chatbot into a coach that knows the user's actual state.
   // Also fixes the earlier bug where a standalone dietMap here mapped
   // demographic-plan codes (women_40, men_40, diabetic, kids, ...) inconsistently;
-  // diet naming now lives in one place, health.js's DIET_AR (see below).
+  // diet naming now lives in one place, health.js's DIET_AR/DIET_EN (see below).
   const hp = buildHealthProfile(store, u.id);
-  const summary = coachSummary(hp);
+  const summary = coachSummary(hp, lang);
+  const isAr = lang === 'ar';
 
-  const systemPrompt = `أنت "دايت بوت"، مساعد متابعة صحي وغذائي ذكي داخل تطبيق DietHub. تتحدث بالعربية دائماً بأسلوب ودود ومشجع وموجز.
+  // generatePlan mode: JSON-only output (same "strict JSON, no prose" pattern
+  // already used for lab-result analysis), validated with validatePlanJSON()
+  // above before it's ever allowed to touch the database. Falls through to
+  // the normal conversational reply if the AI's output doesn't validate —
+  // the user still gets a helpful answer, it just doesn't get saved.
+  if (generatePlan === 'meals' || generatePlan === 'activity') {
+    const lastUserMsg = [...(messages || [])].reverse().find(m => m.role === 'user')?.content || '';
+    // JSON field KEYS (title/days/day/meals/type/name/cal/...) stay fixed —
+    // validatePlanJSON() has no language-specific checks. Only the example
+    // placeholder/enum VALUES shown to the model change per language, so
+    // the generated plan's own content (day names, meal-type labels) comes
+    // back in the resolved language, per the localization requirement.
+    const schema = generatePlan === 'meals'
+      ? (isAr
+          ? `{"title":"...", "days":[{"day":"اسم اليوم","meals":[{"type":"إفطار|غداء|عشاء|سناك","name":"...","cal":0,"protein":0,"carbs":0,"fat":0}]}]}`
+          : `{"title":"...", "days":[{"day":"day name","meals":[{"type":"breakfast|lunch|dinner|snack","name":"...","cal":0,"protein":0,"carbs":0,"fat":0}]}]}`)
+      : (isAr
+          ? `{"title":"...", "days":[{"day":"اسم اليوم","activity":"وصف النشاط","estCalBurn":0}]}`
+          : `{"title":"...", "days":[{"day":"day name","activity":"activity description","estCalBurn":0}]}`);
+    const planPrompt = isAr
+      ? `أنت مساعد غذائي في DietHub. الملف الصحي للمستخدم:\n${summary}\n\nطلب المستخدم: "${lastUserMsg}"\n\nابنِ ${generatePlan === 'meals' ? 'خطة وجبات أسبوعية (حتى 7 أيام)' : 'خطة نشاط أسبوعية (حتى 7 أيام)'} حقيقية تناسب أهدافه وأرقامه الفعلية. أرجع فقط JSON صالح بدون أي نص إضافي أو علامات كود، بالشكل التالي بالضبط:\n${schema}`
+      : `You are DietHub's nutrition assistant. The user's health profile:\n${summary}\n\nUser's request: "${lastUserMsg}"\n\nBuild a real ${generatePlan === 'meals' ? 'weekly meal plan (up to 7 days)' : 'weekly activity plan (up to 7 days)'} suited to their real goals and numbers. Return ONLY valid JSON, no extra text or code fences, in exactly this shape:\n${schema}`;
+    try {
+      // A full 7-day structured plan is a lot of JSON for a model to get
+      // perfectly right every time — verified live that the exact same
+      // prompt can produce valid JSON on one call and a malformed one (e.g.
+      // one stray extra closing brace) on the next, from the same provider.
+      // Retrying is the standard, safe way to handle that kind of
+      // probabilistic formatting slip — validation still gates every
+      // attempt equally, so a retry can never lower the bar for what's
+      // allowed to be saved, it just gives a fair shot at a clean result.
+      let validated = null;
+      for (let attempt = 0; attempt < 2 && !validated; attempt++) {
+        const { text } = await ai.chat({ messages: [{ role: 'user', content: planPrompt }], maxTokens: 1800 });
+        try {
+          const parsed = JSON.parse((text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
+          validated = validatePlanJSON(generatePlan, parsed);
+        } catch { /* malformed JSON — fall through to retry or final failure below */ }
+      }
+      if (!validated) {
+        return res.json({ reply: S.planParseFailed, savedSuggestion: null });
+      }
+      const suggestion = {
+        id: 'sg' + Date.now() + randToken(3), type: generatePlan, source: 'ai_suggestion',
+        title: validated.title, content: validated, createdAt: new Date().toISOString(),
+      };
+      update('ai_suggestions.json', all => {
+        if (!all[u.id]) all[u.id] = [];
+        all[u.id].unshift(suggestion);
+        all[u.id] = all[u.id].slice(0, 20);
+        return all;
+      }, {});
+      // Confirmation text is deterministic, not AI-authored — same reasoning
+      // as the label itself: what the user is told just happened should
+      // never be something the AI could get wrong or embellish.
+      const dayCount = validated.days.length;
+      res.json({
+        reply: S.planSaved(validated.title, dayCount),
+        savedSuggestion: { id: suggestion.id, type: suggestion.type, title: suggestion.title },
+      });
+    } catch (e) {
+      console.error('AI plan generation failed:', e.message);
+      res.json({ reply: S.planGenError, savedSuggestion: null });
+    }
+    return;
+  }
 
-الملف الصحي الكامل للمستخدم (استخدمه لتخصيص كل رد):
-${summary}
-
-إرشادات مهمة:
+  // Product Instructions and Safety Instructions kept verbatim in meaning —
+  // the English text is a direct translation, not a redesign of what the
+  // assistant is told to do. What changed is WHERE language lives: it used
+  // to be one clause inside the identity line ("تتحدث بالعربية دائماً" —
+  // "always speaks Arabic"), permanently true regardless of the requester.
+  // Now it's ai_language.js's own composed layer, resolved per-request.
+  const productInstructions = isAr
+    ? `أنت "دايت بوت"، مساعد متابعة صحي وغذائي ذكي داخل تطبيق DietHub. تتحدث بأسلوب ودود ومشجع وموجز.`
+    : `You are "Diet Bot," an intelligent health and nutrition coaching assistant inside the DietHub app. You speak in a friendly, encouraging, and concise style.`;
+  const safetyInstructions = isAr
+    ? `إرشادات مهمة:
+- استخدم الملف الصحي أدناه لتخصيص كل رد.
 - استخدم أرقام المستخدم الحقيقية (السعرات، البروتين، الماء، الوزن، بيانات الساعة) في نصائحك بدلاً من النصائح العامة.
 - إن وُجدت "تنبيهات مهمة" فعالِجها أولاً بلطف ودون تخويف.
 - أنت لست بديلاً عن الطبيب. إذا ظهرت مؤشرات خطيرة (تحاليل حرجة مثلاً) انصح المستخدم بمراجعة طبيبه.
 - ابقَ ضمن نطاق الغذاء والصحة واللياقة، وأعد المستخدم بلطف للموضوع إن خرج عنه.
-${generateQuestions ? 'مهمتك الآن: اطرح 3 أسئلة متابعة قصيرة ومخصصة بناءً على ملفه الصحي وتنبيهاته الحالية ووقت اليوم. أرسل الأسئلة فقط كقائمة مرقمة بدون مقدمة.' : 'أجب على رسالة المستخدم بإيجاز وادعمه في رحلته الصحية.'}`;
+${generateQuestions ? 'مهمتك الآن: اطرح 3 أسئلة متابعة قصيرة ومخصصة بناءً على ملفه الصحي وتنبيهاته الحالية ووقت اليوم. أرسل الأسئلة فقط كقائمة مرقمة بدون مقدمة.' : 'أجب على رسالة المستخدم بإيجاز وادعمه في رحلته الصحية.'}`
+    : `Important guidelines:
+- Use the health profile below to personalize every reply.
+- Use the user's real numbers (calories, protein, water, weight, wearable data) in your advice instead of generic tips.
+- If "important alerts" exist, address them first, gently and without alarming the user.
+- You are not a substitute for a doctor. If serious indicators appear (e.g. critical lab results), advise the user to see their doctor.
+- Stay within the scope of nutrition, health, and fitness, and gently guide the user back if they go off-topic.
+${generateQuestions ? 'Your task now: ask 3 short, personalized follow-up questions based on their health profile, current alerts, and time of day. Send only the questions as a numbered list, with no preamble.' : "Answer the user's message concisely and support them in their health journey."}`;
+
+  const systemPrompt = aiLanguage.buildSystemPrompt({ productInstructions, safetyInstructions, lang, userContext: summary });
 
   try {
     const { text } = await ai.chat({ system: systemPrompt, messages, maxTokens: 500 });
-    res.json({ reply: text || 'عذراً، لم أفهم. حاول مجدداً.' });
+    res.json({ reply: text || S.emptyReply });
   } catch(e) {
     console.error('Chatbot error:', e.message);
-    res.status(500).json({ error: 'خطأ في المساعد الذكي: ' + e.message });
+    res.status(500).json({ error: S.chatbotError });
   }
+});
+
+app.get(`${BASE}/api/ai-suggestions`, auth, (req, res) => {
+  const all = load('ai_suggestions.json') || {};
+  res.json(all[req.user.id] || []);
+});
+app.delete(`${BASE}/api/ai-suggestions/:id`, auth, (req, res) => {
+  update('ai_suggestions.json', all => {
+    if (all[req.user.id]) all[req.user.id] = all[req.user.id].filter(s => s.id !== req.params.id);
+    return all;
+  }, {});
+  res.json({ ok: true });
 });
 
 
@@ -1906,6 +3468,37 @@ app.post(`${BASE}/api/nutrition-log`, auth, (req,res) => {
   res.json({ok:true});
 });
 
+// Atomic single-item delete — added 2026-08-14, Nutrition domain migration.
+// Previously the only way to delete one custom-logged item was client-side:
+// GET the day's log, filter out the target index, POST the whole day back
+// (diethub-mobile/api.js's deleteNutritionLogCustomItem). Same real race
+// shape already found and fixed once this project (the quick-water
+// increment bug, Home Dashboard domain): two concurrent edits to the same
+// day (e.g. a delete racing a photo-log save) could read the same "before"
+// state and one change would silently overwrite the other. This does the
+// read-modify-write in one synchronous handler (no `await` between the
+// read and the write below), removing the client-side race window entirely
+// rather than trying to guard around it.
+app.delete(`${BASE}/api/nutrition-log/:date/custom/:index`, auth, (req, res) => {
+  const { date } = req.params;
+  const index = parseInt(req.params.index, 10);
+  if (!date || isNaN(index) || index < 0) return res.status(400).json({ error: 'Valid date and index required' });
+
+  const logs = load('nutrition_logs.json') || {};
+  const userLogs = logs[req.user.id] || [];
+  const dayIdx = userLogs.findIndex(l => l.date === date);
+  if (dayIdx < 0) return res.status(404).json({ error: 'Log entry not found' });
+
+  const day = userLogs[dayIdx];
+  if (!Array.isArray(day.custom) || index >= day.custom.length) {
+    return res.status(404).json({ error: 'Item not found' });
+  }
+  day.custom = day.custom.filter((_, i) => i !== index);
+  day.savedAt = new Date().toISOString();
+  save('nutrition_logs.json', logs);
+  res.json({ ok: true, custom: day.custom });
+});
+
 // Local, zero-cost nutrition database (per 100g) covering common Egyptian/Gulf
 // staples plus general basics - no external API calls, no usage cost, works
 // offline. Deliberately not exhaustive; anything not found here falls back to
@@ -1917,23 +3510,30 @@ const FOOD_DB = [
   { ar:'لحم بقري', en:'beef, lean', aliases:['لحمة بقري','لحم بتلو'], cal:250, protein:26, carbs:0, fat:15 },
   { ar:'لحمة مفرومة', en:'ground beef, cooked', aliases:['لحم مفروم'], cal:254, protein:25, carbs:0, fat:17 },
   { ar:'لحم ضاني', en:'lamb', aliases:['لحمة ضاني','لحم غنم'], cal:294, protein:25, carbs:0, fat:21 },
-  { ar:'سمك بلطي', en:'tilapia fish', aliases:['بلطي','سمك مشوي'], cal:128, protein:26, carbs:0, fat:2.7 },
-  { ar:'تونة', en:'tuna, canned in water', aliases:['تونه'], cal:116, protein:26, carbs:0, fat:1 },
-  { ar:'جمبري', en:'shrimp', aliases:['روبيان'], cal:99, protein:24, carbs:0.2, fat:0.3 },
-  { ar:'بيض مسلوق', en:'boiled egg', aliases:['بيضة مسلوقة'], cal:155, protein:13, carbs:1.1, fat:11 },
-  { ar:'بياض بيض', en:'egg white', aliases:[], cal:52, protein:11, carbs:0.7, fat:0.2 },
+  { ar:'سمك بلطي', en:'tilapia fish', aliases:['بلطي','سمك مشوي'], cal:128, protein:26, carbs:0, fat:2.7, allergens:['fish'] },
+  { ar:'تونة', en:'tuna, canned in water', aliases:['تونه'], cal:116, protein:26, carbs:0, fat:1, allergens:['fish'] },
+  { ar:'جمبري', en:'shrimp', aliases:['روبيان'], cal:99, protein:24, carbs:0.2, fat:0.3, allergens:['crustaceans'] },
+  { ar:'بيض مسلوق', en:'boiled egg', aliases:['بيضة مسلوقة'], cal:155, protein:13, carbs:1.1, fat:11, allergens:['eggs'] },
+  { ar:'بياض بيض', en:'egg white', aliases:[], cal:52, protein:11, carbs:0.7, fat:0.2, allergens:['eggs'] },
   { ar:'أرز أبيض', en:'white rice, cooked', aliases:['رز أبيض','ارز ابيض'], cal:130, protein:2.7, carbs:28, fat:0.3 },
   { ar:'أرز بني', en:'brown rice, cooked', aliases:['رز بني'], cal:111, protein:2.6, carbs:23, fat:0.9 },
-  { ar:'عيش بلدي', en:'baladi bread', aliases:['عيش شامي','خبز بلدي'], cal:265, protein:9, carbs:53, fat:1.5 },
-  { ar:'عيش فينو', en:'white bread', aliases:['خبز أبيض','توست'], cal:289, protein:9, carbs:55, fat:3.2 },
-  { ar:'مكرونة', en:'pasta, cooked', aliases:['معكرونة'], cal:131, protein:5, carbs:25, fat:1.1 },
+  { ar:'عيش بلدي', en:'baladi bread', aliases:['عيش شامي','خبز بلدي'], cal:265, protein:9, carbs:53, fat:1.5, allergens:['gluten'] },
+  { ar:'عيش فينو', en:'white bread', aliases:['خبز أبيض','توست'], cal:289, protein:9, carbs:55, fat:3.2, allergens:['gluten'] },
+  { ar:'مكرونة', en:'pasta, cooked', aliases:['معكرونة'], cal:131, protein:5, carbs:25, fat:1.1, allergens:['gluten'] },
   { ar:'بطاطس مسلوقة', en:'boiled potato', aliases:['بطاطا مسلوقة'], cal:87, protein:1.9, carbs:20, fat:0.1 },
   { ar:'بطاطس محمرة', en:'fried potato', aliases:['بطاطس مقلية'], cal:312, protein:3.4, carbs:41, fat:15 },
   { ar:'بطاطا', en:'sweet potato', aliases:['بطاطا حلوة'], cal:86, protein:1.6, carbs:20, fat:0.1 },
   { ar:'شوفان', en:'oats, dry', aliases:[], cal:389, protein:17, carbs:66, fat:7 },
   { ar:'فول مدمس', en:'foul medames', aliases:['فول'], cal:110, protein:7.6, carbs:18, fat:0.6 },
-  { ar:'حمص', en:'hummus', aliases:[], cal:166, protein:8, carbs:14, fat:9.6 },
-  { ar:'شوربة عدس', en:'lentil soup', aliases:['عدس'], cal:116, protein:9, carbs:20, fat:0.4 },
+  // Real hummus contains tahini (sesame paste) as a core recipe ingredient —
+  // was missing the sesame tag entirely (audit finding).
+  { ar:'حمص', en:'hummus', aliases:[], cal:166, protein:8, carbs:14, fat:9.6, allergens:['sesame'] },
+  // Was labeled "lentil soup" but its values were actually plain cooked
+  // lentils (matches USDA cooked-lentil reference almost exactly) — a real
+  // prepared soup (with broth/oil/vegetables) reads differently per 100g.
+  // Split into two honest, distinct entries instead of one mislabeled one.
+  { ar:'عدس مطبوخ', en:'cooked lentils', aliases:['عدس'], cal:116, protein:9, carbs:20, fat:0.4 },
+  { ar:'شوربة عدس', en:'lentil soup (prepared)', aliases:[], cal:70, protein:4.5, carbs:11, fat:1.5 },
   { ar:'طعمية', en:'falafel', aliases:['فلافل'], cal:333, protein:13, carbs:32, fat:18 },
   { ar:'طماطم', en:'tomato', aliases:['طماطة'], cal:18, protein:0.9, carbs:3.9, fat:0.2 },
   { ar:'خيار', en:'cucumber', aliases:[], cal:15, protein:0.7, carbs:3.6, fat:0.1 },
@@ -1948,20 +3548,74 @@ const FOOD_DB = [
   { ar:'مانجو', en:'mango', aliases:[], cal:60, protein:0.8, carbs:15, fat:0.4 },
   { ar:'بطيخ', en:'watermelon', aliases:[], cal:30, protein:0.6, carbs:8, fat:0.2 },
   { ar:'تمر', en:'dates', aliases:[], cal:277, protein:1.8, carbs:75, fat:0.2 },
-  { ar:'زبادي', en:'plain yogurt', aliases:['لبن زبادي'], cal:61, protein:3.5, carbs:4.7, fat:3.3 },
-  { ar:'زبادي يوناني', en:'greek yogurt', aliases:[], cal:59, protein:10, carbs:3.6, fat:0.4 },
-  { ar:'لبن', en:'whole milk', aliases:['حليب'], cal:61, protein:3.2, carbs:4.8, fat:3.3 },
-  { ar:'جبنة فيتا', en:'feta cheese', aliases:[], cal:264, protein:14, carbs:4, fat:21 },
-  { ar:'جبنة قريش', en:'cottage cheese', aliases:['جبنه قريش'], cal:98, protein:11, carbs:3.4, fat:4.3 },
-  { ar:'جبنة بيضاء', en:'white cheese', aliases:[], cal:300, protein:18, carbs:3, fat:24 },
-  { ar:'لوز', en:'almonds', aliases:[], cal:579, protein:21, carbs:22, fat:50 },
-  { ar:'فول سوداني', en:'peanuts', aliases:['سوداني'], cal:567, protein:26, carbs:16, fat:49 },
+  { ar:'زبادي', en:'plain yogurt', aliases:['لبن زبادي'], cal:61, protein:3.5, carbs:4.7, fat:3.3, allergens:['milk'] },
+  { ar:'زبادي يوناني', en:'greek yogurt', aliases:[], cal:59, protein:10, carbs:3.6, fat:0.4, allergens:['milk'] },
+  { ar:'لبن', en:'whole milk', aliases:['حليب'], cal:61, protein:3.2, carbs:4.8, fat:3.3, allergens:['milk'] },
+  { ar:'جبنة فيتا', en:'feta cheese', aliases:[], cal:264, protein:14, carbs:4, fat:21, allergens:['milk'] },
+  { ar:'جبنة قريش', en:'cottage cheese', aliases:['جبنه قريش','جبن قريش'], cal:98, protein:11, carbs:3.4, fat:4.3, allergens:['milk'] },
+  { ar:'جبنة بيضاء', en:'white cheese', aliases:[], cal:300, protein:18, carbs:3, fat:24, allergens:['milk'] },
+  { ar:'لوز', en:'almonds', aliases:[], cal:579, protein:21, carbs:22, fat:50, allergens:['nuts'] },
+  { ar:'فول سوداني', en:'peanuts', aliases:['سوداني'], cal:567, protein:26, carbs:16, fat:49, allergens:['peanuts'] },
   { ar:'زيت زيتون', en:'olive oil', aliases:[], cal:884, protein:0, carbs:0, fat:100 },
   { ar:'أفوكادو', en:'avocado', aliases:['افوكادو'], cal:160, protein:2, carbs:8.5, fat:14.7 },
   { ar:'كشري', en:'koshari', aliases:[], cal:180, protein:5, carbs:30, fat:4 },
   { ar:'كفتة مشوية', en:'grilled kofta', aliases:['كفتة'], cal:220, protein:18, carbs:2, fat:15 },
   { ar:'شاورما فراخ', en:'chicken shawarma', aliases:['شاورما دجاج'], cal:200, protein:18, carbs:10, fat:10 },
-  { ar:'فتة', en:'fattah', aliases:[], cal:200, protein:10, carbs:22, fat:8 },
+  { ar:'فتة', en:'fattah', aliases:[], cal:200, protein:10, carbs:22, fat:8, allergens:['gluten'] },
+  // koshari's pasta and fattah's bread base were both untagged despite both
+  // dishes structurally containing wheat — real gluten-safety gap found by
+  // cross-referencing meal-plan ingredients against this database.
+  { ar:'كشري', en:'koshari', aliases:[], cal:180, protein:5, carbs:30, fat:4, allergens:['gluten'] },
+
+  // ── Added during the ingredient-database audit: real meal-plan
+  // ingredients that had ZERO matching entry here at all (found by cross-
+  // referencing every ingredient actually used across all 9 diets against
+  // this database's own matching logic — 31 of 69 unique ingredients had no
+  // match before this pass). Values are standard reference-composition
+  // figures (USDA FoodData Central equivalents), not estimates.
+  { ar:'بيض أحمر', en:'whole egg', aliases:['بيضة'], cal:143, protein:12.6, carbs:0.7, fat:9.5, allergens:['eggs'] },
+  { ar:'صدر فراخ طازج', en:'raw chicken breast', aliases:['صدر دجاج طازج'], cal:120, protein:22.5, carbs:0, fat:2.6 },
+  { ar:'خضار مشكلة', en:'mixed vegetables', aliases:[], cal:35, protein:1.8, carbs:6.5, fat:0.3 },
+  // "Mixed nuts" is inherently ambiguous about exact composition — tagged
+  // with BOTH nuts and peanuts since a generic blend commonly contains
+  // both; the safety-conservative choice when the exact mix is unknown.
+  { ar:'مكسرات مشكلة', en:'mixed nuts', aliases:[], cal:607, protein:20, carbs:21, fat:54, allergens:['nuts','peanuts'] },
+  { ar:'لحمة كندوز', en:'veal/lean beef cut', aliases:['كندوز'], cal:250, protein:26, carbs:0, fat:15 },
+  { ar:'عيش أسمر', en:'whole wheat bread', aliases:['خبز أسمر'], cal:247, protein:13, carbs:41, fat:3.4, allergens:['gluten'] },
+  { ar:'سلمون', en:'salmon', aliases:[], cal:206, protein:22, carbs:0, fat:12, allergens:['fish'] },
+  { ar:'مايونيز', en:'mayonnaise', aliases:[], cal:680, protein:1, carbs:0.6, fat:75, allergens:['eggs'] },
+  { ar:'زبدة', en:'butter', aliases:[], cal:717, protein:0.85, carbs:0.1, fat:81, allergens:['milk'] },
+  { ar:'كريمة طبخ', en:'cooking/heavy cream', aliases:['كريمة'], cal:340, protein:2.1, carbs:2.8, fat:36, allergens:['milk'] },
+  { ar:'جبنة شيدر', en:'cheddar cheese', aliases:[], cal:403, protein:25, carbs:1.3, fat:33, allergens:['milk'] },
+  { ar:'جبنة كريمي', en:'cream cheese', aliases:[], cal:342, protein:6, carbs:4, fat:34, allergens:['milk'] },
+  { ar:'جبنة رومي', en:'romano-style hard cheese', aliases:[], cal:387, protein:32, carbs:3.6, fat:27, allergens:['milk'] },
+  { ar:'مكسرات برازيلية', en:'brazil nuts', aliases:[], cal:656, protein:14.3, carbs:12.3, fat:66.4, allergens:['nuts'] },
+  { ar:'زيت جوز الهند', en:'coconut oil', aliases:[], cal:862, protein:0, carbs:0, fat:100 },
+  { ar:'جوز الهند مبشور', en:'shredded coconut, unsweetened', aliases:[], cal:660, protein:6.9, carbs:23.7, fat:64.5 },
+  { ar:'كريمة جوز الهند', en:'coconut cream', aliases:[], cal:330, protein:3.6, carbs:6.7, fat:34.7 },
+  { ar:'لحم مقدد بقري', en:'beef bacon', aliases:[], cal:541, protein:37, carbs:1.4, fat:42 },
+  { ar:'لحم ريب آي', en:'ribeye steak', aliases:[], cal:291, protein:24, carbs:0, fat:21.2 },
+  { ar:'فلفل أخضر', en:'green bell pepper', aliases:[], cal:20, protein:0.86, carbs:4.6, fat:0.17 },
+  { ar:'عسل نحل', en:'honey', aliases:['عسل'], cal:304, protein:0.3, carbs:82.4, fat:0 },
+  // Tahini (sesame paste) is the core ingredient making this a sesame
+  // allergen — not tree nuts, not peanuts.
+  { ar:'طحينة', en:'tahini', aliases:[], cal:595, protein:17, carbs:21, fat:54, allergens:['sesame'] },
+  { ar:'توت مشكل', en:'mixed berries', aliases:[], cal:43, protein:0.8, carbs:10, fat:0.3 },
+  { ar:'كسكسي', en:'couscous, cooked', aliases:[], cal:112, protein:3.8, carbs:23.2, fat:0.16, allergens:['gluten'] },
+  // Za'atar traditionally includes toasted sesame seeds as a core
+  // ingredient alongside thyme/sumac — lower confidence than a single-food
+  // entry since it's a blended spice mix with real recipe variation, but
+  // the sesame content itself is a well-established, near-universal part
+  // of the blend, not a guess.
+  { ar:'زعتر', en:"za'atar spice blend", aliases:[], cal:380, protein:10, carbs:40, fat:20, allergens:['sesame'] },
+  { ar:'قرفة', en:'cinnamon, ground', aliases:[], cal:247, protein:4, carbs:80.6, fat:1.24 },
+  { ar:'جزر', en:'carrot', aliases:[], cal:41, protein:0.93, carbs:9.6, fat:0.24 },
+  { ar:'كبدة بقري', en:'beef liver, cooked', aliases:[], cal:175, protein:26.5, carbs:3.9, fat:4.9 },
+  // Most mainstream commercial corn flakes contain barley malt extract, a
+  // real gluten source despite being corn-based — tagged conservatively.
+  // Gluten-free corn flake variants exist but aren't the majority product.
+  { ar:'كورن فليكس', en:'corn flakes', aliases:[], cal:357, protein:7.5, carbs:84, fat:0.4, allergens:['gluten'] },
+  { ar:'بروكلي', en:'broccoli', aliases:[], cal:34, protein:2.8, carbs:6.6, fat:0.37 },
 ];
 
 function normalizeFoodQuery(s) {
@@ -1986,6 +3640,32 @@ function findFoodMatch(query) {
   return best;
 }
 
+// Real, single implementation of allergen matching — previously only
+// existed inline in the photo-logging route (POST /api/nutrition-log/photo),
+// so the manual/quick-add path (POST /api/nutrition-lookup, the more
+// commonly used one) never surfaced a warning even for a food whose
+// FOOD_DB entry carries the exact same real allergens data. Extracted here,
+// used by both routes, so the logic can never diverge between them again.
+// Free-text "Other" allergies (not one of the 8 structured KNOWN_ALLERGENS)
+// have no per-food tag to match against, so this checks by keyword against
+// the food's own name instead — real but inherently best-effort: it catches
+// "shrimp" naming a food called "shrimp," not an untagged ingredient inside
+// a dish with an unrelated name. Split on common separators so someone can
+// type more than one thing ("sesame, kiwi" / "سمسم، كيوي") in one field.
+function allergyKeywordsMatch(nameAr, nameEn, customAllergyText) {
+  if (!customAllergyText) return false;
+  const keywords = customAllergyText.split(/[,،/\n]+/).map(k => k.trim().toLowerCase()).filter(k => k.length >= 2);
+  if (!keywords.length) return false;
+  const haystack = `${nameAr || ''} ${nameEn || ''}`.toLowerCase();
+  return keywords.some(k => haystack.includes(k));
+}
+
+function computeAllergenWarning(itemAllergens, userAllergies, itemNameAr, itemNameEn, customAllergyText) {
+  const matches = (userAllergies && userAllergies.length) ? (itemAllergens || []).filter(a => userAllergies.includes(a)) : [];
+  if (allergyKeywordsMatch(itemNameAr, itemNameEn, customAllergyText)) matches.push(customAllergyText.trim());
+  return matches;
+}
+
 // Estimates calories/protein/carbs/fat for a named food at a given weight, so
 // "Add Custom Food" only needs a name + grams instead of the user having to
 // already know the macro breakdown themselves. Looked up from FOOD_DB above -
@@ -2005,6 +3685,14 @@ app.post(`${BASE}/api/nutrition-lookup`, auth, async (req, res) => {
   }
 
   const scale = weightGrams / 100;
+  // Real production safety fix, 2026-08-14: this route previously never
+  // checked allergens at all, even though FOOD_DB already carries them for
+  // real and the photo-logging route already used them — a user with a
+  // real allergy got zero warning on the manual/quick-add path, which is
+  // the more commonly used one. Same shared helper the photo route now
+  // also uses, so the two paths can't silently diverge again.
+  const userAllergies = req.userObj.profile?.allergies || [];
+  const customAllergyText = req.userObj.profile?.customAllergyText || '';
   res.json({
     name: foodName,
     weightGrams,
@@ -2012,6 +3700,7 @@ app.post(`${BASE}/api/nutrition-lookup`, auth, async (req, res) => {
     protein: Math.round(match.protein * scale),
     carbs: Math.round(match.carbs * scale),
     fat: Math.round(match.fat * scale),
+    allergenWarning: computeAllergenWarning(match.allergens, userAllergies, match.ar, match.en, customAllergyText),
   });
 });
 
@@ -2022,8 +3711,8 @@ app.post(`${BASE}/api/nutrition-lookup`, auth, async (req, res) => {
 const LAB_TEST_IDS = ['glucose','hba1c','cholesterol','ldl','hdl','triglycerides','creatinine','tsh','hemoglobin','vitd'];
 
 app.get(`${BASE}/api/lab-results`, auth, (req,res) => {
-  if (!BETA_MODE && !['vip','elite'].includes(req.userObj.plan) && req.userObj.role !== 'admin')
-    return res.status(403).json({error:'VIP/Elite only'});
+  if (!BETA_MODE && !hasActiveCoverage(req.userObj.id) && req.userObj.role !== 'admin')
+    return res.status(403).json({error:'Paid plan required'});
   const results = load('lab_results.json') || {};
   res.json(results[req.user.id] || []);
 });
@@ -2121,23 +3810,37 @@ app.get(`${BASE}/api/lab-results/recommendations`, auth, (req,res) => {
   });
 });
 
-// Shared by manual entry AND photo-upload extraction — was previously
-// inlined only in the manual-entry POST handler.
+// Shared by manual entry AND photo-upload extraction. This function's own
+// comment previously claimed exactly that, but it wasn't actually true —
+// the manual-entry route below had its own second, inline copy of this
+// same prompt (using ai.chat(), not this function's raw Anthropic fetch),
+// so the two entry points silently drifted onto two different reliability
+// levels. Consolidated here for real: this is now the one place the prompt
+// exists, and it goes through ai.js's multi-provider fallback chain rather
+// than a hardcoded single-provider fetch — closing the exact outage class
+// ai.js's own header comment documents ("Anthropic credits ran out,
+// silently broke the chatbot... until it was noticed") for both callers,
+// not just the one that happened to already use ai.chat().
+//
+// `results` is user-supplied (manual entry) or AI-vision-extracted (photo
+// upload) and was previously interpolated into the prompt completely raw —
+// a manual-entry user could put arbitrary text in any result value with no
+// restriction on shape/keys before this point. String values are now run
+// through the same sanitize() used everywhere else in this file (HTML-
+// escapes safe content, returns null for a recognized injection pattern);
+// numbers pass through unchanged, so real analysis quality is unaffected.
 async function analyzeLabResults(results, diet) {
-  const prompt = `You are a medical nutrition AI assistant. Analyze these lab results for a patient on a ${diet} diet:\n${JSON.stringify(results)}\n\nProvide a brief analysis in Arabic and English covering:\n1. Which values are normal/abnormal\n2. What dietary changes could help\n3. Overall health trend\n\nReturn JSON: {"analysis_ar":"...","analysis_en":"...","status":"good|warning|critical","recommendations_ar":["..."],"recommendations_en":["..."]}`;
-  const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01'},
-    // 800 was too low — a full bilingual (AR+EN) analysis with recommendation
-    // lists routinely hit stop_reason:"max_tokens" and got cut off mid-JSON,
-    // which is a genuine truncation no amount of parsing robustness can fix.
-    body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2000,messages:[{role:'user',content:prompt}]})
-  });
-  const aiData = await aiRes.json();
-  // Claude sometimes wraps JSON in a ```json fence despite the prompt asking
-  // for raw JSON — strip it the same robust way the vision-extraction step
-  // already does, rather than a naive JSON.parse that breaks on the fence.
-  const raw = aiData.content?.[0]?.text || '{}';
+  const safeResults = Object.fromEntries(
+    Object.entries(results || {}).map(([k, v]) => [k, typeof v === 'string' ? sanitize(v) : v])
+  );
+  const prompt = `You are a medical nutrition AI assistant. Analyze these lab results for a patient on a ${diet} diet:\n${JSON.stringify(safeResults)}\n\nProvide a brief analysis in Arabic and English covering:\n1. Which values are normal/abnormal\n2. What dietary changes could help\n3. Overall health trend\n\nReturn ONLY valid JSON (no markdown, no code fences): {"analysis_ar":"...","analysis_en":"...","status":"good|warning|critical","recommendations_ar":["..."],"recommendations_en":["..."]}`;
+  // 800 was too low — a full bilingual (AR+EN) analysis with recommendation
+  // lists routinely hit stop_reason:"max_tokens" and got cut off mid-JSON,
+  // which is a genuine truncation no amount of parsing robustness can fix.
+  const { text } = await ai.chat({ messages: [{ role: 'user', content: prompt }], maxTokens: 2000 });
+  // Free models sometimes wrap JSON in ```; strip fences before parsing,
+  // same robust handling the vision-extraction step already uses.
+  const raw = (text || '{}').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
   const match = raw.match(/\{[\s\S]*\}/);
   return JSON.parse(match ? match[0] : raw);
 }
@@ -2169,8 +3872,8 @@ function updateLabEntryAnalysis(userId, date, analysis) {
 }
 
 app.post(`${BASE}/api/lab-results`, auth, async (req,res) => {
-  if (!BETA_MODE && !['vip','elite'].includes(req.userObj.plan) && req.userObj.role !== 'admin')
-    return res.status(403).json({error:'VIP/Elite only'});
+  if (!BETA_MODE && !hasActiveCoverage(req.userObj.id) && req.userObj.role !== 'admin')
+    return res.status(403).json({error:'Paid plan required'});
   const { date, results } = req.body;
   if (!date || !results) return res.status(400).json({error:'Date and results required'});
   // Manual entry already keys by the known testId vocabulary with numeric
@@ -2194,12 +3897,7 @@ app.post(`${BASE}/api/lab-results`, auth, async (req,res) => {
   try {
     const u = req.userObj;
     const diet = u.profile?.diet || 'balanced';
-    const prompt = `You are a medical nutrition AI assistant. Analyze these lab results for a patient on a ${diet} diet:\n${JSON.stringify(results)}\n\nProvide a brief analysis in Arabic and English covering:\n1. Which values are normal/abnormal\n2. What dietary changes could help\n3. Overall health trend\n\nReturn ONLY valid JSON (no markdown, no code fences): {"analysis_ar":"...","analysis_en":"...","status":"good|warning|critical","recommendations_ar":["..."],"recommendations_en":["..."]}`;
-    // 800 was too low here too (see analyzeLabResults above) - full bilingual
-    // analysis with recommendation lists gets cut off mid-JSON at that budget.
-    const { text } = await ai.chat({ messages: [{ role:'user', content: prompt }], maxTokens: 2000 });
-    // Free models sometimes wrap JSON in ```; strip fences before parsing.
-    const analysis = JSON.parse((text || '{}').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim());
+    const analysis = await analyzeLabResults(results, diet);
     // Re-read under a transaction so the analysis merges onto the latest state
     // instead of clobbering anything written during the await above.
     update('lab_results.json', all => {
@@ -2210,53 +3908,73 @@ app.post(`${BASE}/api/lab-results`, auth, async (req,res) => {
       return all;
     }, {});
     res.json({ok:true, analysis});
-  } catch(e) {
+  } catch {
     res.json({ok:true, analysis:null});
   }
 });
 
 // ─── LAB RESULTS: PHOTO/PDF UPLOAD WITH AUTO-EXTRACTION ───────────────────────
-// User uploads a photo/scan of a real lab report; Claude's vision reads the
+// User uploads a photo/scan of a real lab report; AI vision reads the
 // values directly rather than requiring manual typing, then feeds into the
 // exact same analysis pipeline as manual entry above.
+// Accepts up to 6 files (multi-page reports — was single-file-only, a real
+// reported bug since most real lab reports span 2+ pages), sent as one
+// ai.chatVision() call with one image per page, so the model reads them as
+// one document rather than requiring N separate uploads/round-trips.
+// Was a direct Anthropic call (paid, no free tier) until 2026-08-30 — moved
+// onto ai.js's free-provider vision chain (see ai.js's own comment) after
+// that dependency caused a real outage: Anthropic ran out of credit and
+// every upload failed with a message blaming the photo, not the API call.
+// Real bug fix (2026-09-03): a rejected fileFilter (bad mimetype) or an
+// over-limit file previously had no error-handling middleware anywhere in
+// this file, so Express's own default handler caught it and returned a raw
+// HTML page with a full stack trace (file paths, dependency versions) to
+// the client — a real information-disclosure gap, not just a rough UX
+// edge. Shared by every multer route as their trailing 4-arg (error)
+// handler — Express recognizes the 4-arg signature and routes a
+// fileFilter/limits error here instead of into the normal 3-arg handler.
+function handleUploadError(err, req, res, _next) {
+  res.status(400).json({ error: err.message || 'Upload failed' });
+}
+
 const labUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
   fileFilter: (req, file, cb) => {
     const ok = ['image/jpeg','image/png','image/webp','image/heic','application/pdf'].includes(file.mimetype);
     cb(ok ? null : new Error('Unsupported file type — use JPG, PNG, WEBP, HEIC, or PDF'), ok);
   }
 });
 
-app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.single('file'), async (req,res) => {
-  if (!BETA_MODE && !['vip','elite'].includes(req.userObj.plan) && req.userObj.role !== 'admin')
-    return res.status(403).json({error:'VIP/Elite only'});
-  if (!req.file) return res.status(400).json({error:'No file uploaded'});
-  if (req.file.mimetype === 'application/pdf')
+app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.array('files', 6), async (req,res) => {
+  if (!BETA_MODE && !hasActiveCoverage(req.userObj.id) && req.userObj.role !== 'admin')
+    return res.status(403).json({error:'Paid plan required'});
+  if (!req.files || req.files.length === 0) return res.status(400).json({error:'No file uploaded'});
+  if (req.files.some(f => f.mimetype === 'application/pdf'))
     return res.status(400).json({error:'PDF غير مدعوم حالياً، من فضلك صور التحليل بالكاميرا أو ارفع صورة · PDF not supported yet — please upload a photo of the report instead'});
 
   const date = req.body.date || new Date().toISOString().split('T')[0];
 
   try {
-    const b64 = req.file.buffer.toString('base64');
-    const extractPrompt = `This image is a medical lab report (blood test results), possibly in Arabic or English. Extract every test name and its value with unit. If a reference/normal range is printed, include it.\n\nAlso classify each test against this known list, if it matches one: glucose (blood glucose/fasting sugar), hba1c, cholesterol (total cholesterol), ldl, hdl, triglycerides, creatinine, tsh, hemoglobin, vitd (vitamin D). Use the matching id as "testId", or null if it doesn't match any of these. Also give the value as a plain number in "numericValue" (e.g. 185, not "185 mg/dL") when it's a single numeric result - use null for non-numeric results.\n\nReturn ONLY valid JSON, no other text, in this exact shape:\n{"tests": [{"name":"...", "value": "...", "unit": "...", "range": "...", "testId": "..." or null, "numericValue": 0 or null}]}\n\nIf the image is not a lab report or no values are readable, return {"tests": []}.`;
-    const extractRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01'},
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: req.file.mimetype, data: b64 } },
-            { type: 'text', text: extractPrompt }
-          ]
-        }]
-      })
-    });
-    const extractData = await extractRes.json();
-    const rawText = extractData.content?.[0]?.text || '{}';
+    const images = req.files.map(f => ({ mimeType: f.mimetype, base64: f.buffer.toString('base64') }));
+    const extractPrompt = `${req.files.length > 1 ? `These images are ${req.files.length} pages of the same medical lab report` : 'This image is a medical lab report'} (blood test results), possibly in Arabic or English. Extract every test name and its value with unit${req.files.length > 1 ? ' across all pages' : ''}. If a reference/normal range is printed, include it.\n\nAlso classify each test against this known list, if it matches one: glucose (blood glucose/fasting sugar), hba1c, cholesterol (total cholesterol), ldl, hdl, triglycerides, creatinine, tsh, hemoglobin, vitd (vitamin D). Use the matching id as "testId", or null if it doesn't match any of these. Also give the value as a plain number in "numericValue" (e.g. 185, not "185 mg/dL") when it's a single numeric result - use null for non-numeric results.\n\nReturn ONLY valid JSON, no other text, in this exact shape:\n{"tests": [{"name":"...", "value": "...", "unit": "...", "range": "...", "testId": "..." or null, "numericValue": 0 or null}]}\n\nIf the image is not a lab report or no values are readable, return {"tests": []}.`;
+
+    // ai.chatVision() already tries every configured free provider in order
+    // and only throws once ALL of them fail — that's the "API call itself
+    // failed" case (was previously a real reported bug: a failed Anthropic
+    // call fell straight through to the "tests.length === 0" branch below
+    // and told the user their PHOTO was unclear, with nothing logged to
+    // reveal the real cause). Genuinely zero readable tests in a real
+    // response is handled separately below, after a successful call.
+    let rawText;
+    try {
+      const result = await ai.chatVision({ prompt: extractPrompt, images, maxTokens: 1500 });
+      rawText = result.text;
+    } catch (e) {
+      console.error('[lab-upload] all vision providers failed:', e.message);
+      return res.status(502).json({ ok:false, error: 'خدمة القراءة التلقائية غير متاحة مؤقتاً، برجاء إدخال النتائج يدوياً أو المحاولة مرة أخرى بعد قليل · Automatic reading is temporarily unavailable — please enter your results manually or try again shortly' });
+    }
+
     const match = rawText.match(/\{[\s\S]*\}/);
     const extracted = match ? JSON.parse(match[0]) : { tests: [] };
 
@@ -2294,8 +4012,119 @@ app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.single('file'), async
     console.error('[lab-upload] error:', e.message);
     res.status(500).json({ error: 'حصل خطأ أثناء تحليل الصورة · Error processing the image' });
   }
+}, handleUploadError);
+
+// ─── NUTRITION LOG: PHOTO UPLOAD WITH AI FOOD IDENTIFICATION ──────────────────
+// User photographs a plate; Claude's vision identifies each visible food item
+// and a rough portion size (not calories — the model is asked for names/
+// portions only). Each item is then resolved against FOOD_DB/findFoodMatch
+// first (free, deterministic, matches manual "Add Custom Food" exactly); only
+// items with no local match fall back to the AI's own calorie estimate, since
+// unlike manual entry there's no "type it in yourself" fallback for a photo.
+// Was a direct Anthropic call until 2026-08-30 (same reasoning that used to
+// justify it — food photos are called far more often per user per day than
+// the rare lab photo — turned out backwards: high-frequency traffic on a
+// paid-only dependency is exactly the case most likely to hit a credit
+// limit, not a reason to prefer one). Now uses ai.chatVision() (the item-ID
+// call, which needs the image) and plain ai.chat() (the calorie-estimate
+// follow-up, which is text-only and gets Groq back in its fallback chain
+// since that rung doesn't need vision support) — see ai.js's own comment
+// for exactly which free providers/models back each.
+const foodPhotoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const ok = ['image/jpeg','image/png','image/webp','image/heic'].includes(file.mimetype);
+    cb(ok ? null : new Error('Unsupported file type — use JPG, PNG, WEBP, or HEIC'), ok);
+  }
 });
 
+app.post(`${BASE}/api/nutrition-log/photo`, auth, foodPhotoUpload.single('file'), async (req,res) => {
+  if (!req.file) return res.status(400).json({error:'No file uploaded'});
+  const date = req.body.date || new Date().toISOString().split('T')[0];
+
+  try {
+    const b64 = req.file.buffer.toString('base64');
+    const idPrompt = `This image shows a plate or serving of food, possibly Egyptian/Middle Eastern cuisine. Identify every distinct food item visible and estimate its portion weight in grams.\n\nReturn ONLY valid JSON, no other text, in this exact shape:\n{"items": [{"name": "...", "weightGrams": 0}]}\n\nName each item simply (e.g. "grilled chicken breast", "white rice", "green salad") in English. If nothing edible is visible, return {"items": []}.`;
+
+    // See the lab-photo route above for why this checks for a total-failure
+    // exception separately from "the model looked and found nothing" below.
+    let rawText;
+    try {
+      const result = await ai.chatVision({ prompt: idPrompt, images: [{ mimeType: req.file.mimetype, base64: b64 }], maxTokens: 800 });
+      rawText = result.text;
+    } catch (e) {
+      console.error('[nutrition-photo] all vision providers failed:', e.message);
+      return res.status(502).json({ ok:false, error: 'خدمة التعرف على الطعام غير متاحة مؤقتاً، برجاء إدخال الوجبة يدوياً أو المحاولة مرة أخرى بعد قليل · Food recognition is temporarily unavailable — please add the meal manually or try again shortly' });
+    }
+
+    const match = rawText.match(/\{[\s\S]*\}/);
+    const identified = match ? JSON.parse(match[0]) : { items: [] };
+
+    if (!identified.items || identified.items.length === 0) {
+      return res.json({ ok:false, error: 'لم نتمكن من التعرف على طعام واضح في الصورة، جرب صورة أوضح · Could not identify clear food items in the photo, try a clearer picture' });
+    }
+
+    // Items with no FOOD_DB match need their own calorie estimate — ask for
+    // all of them in one follow-up call rather than one round-trip per item.
+    const unmatched = [];
+    const items = identified.items.filter(it => it.name).map(it => {
+      const dbMatch = findFoodMatch(it.name);
+      const grams = Math.max(1, Math.min(5000, parseFloat(it.weightGrams) || 100));
+      if (dbMatch) {
+        const scale = grams / 100;
+        return { name: it.name, weightGrams: grams, cal: Math.round(dbMatch.cal*scale), protein: Math.round(dbMatch.protein*scale), carbs: Math.round(dbMatch.carbs*scale), fat: Math.round(dbMatch.fat*scale), allergens: dbMatch.allergens || [], source: 'db' };
+      }
+      unmatched.push({ name: it.name, weightGrams: grams });
+      return null;
+    });
+
+    if (unmatched.length) {
+      const estPrompt = `For each food item below, estimate calories, protein, carbs, and fat in grams, for the given weight. Return ONLY valid JSON: {"items": [{"name": "...", "cal": 0, "protein": 0, "carbs": 0, "fat": 0}]}\n\nItems: ${JSON.stringify(unmatched)}`;
+      // Text-only (no image) — the plain free-provider chain above, not
+      // chatVision(), which also brings Groq back into play for this
+      // specific call since it doesn't need vision support.
+      let estText = '{}';
+      try {
+        const est = await ai.chat({ messages: [{ role: 'user', content: estPrompt }], maxTokens: 800 });
+        estText = est.text;
+      } catch (e) {
+        // Best-effort — if every provider fails here, unmatched items just
+        // keep their zeroed-out defaults below rather than failing the
+        // whole upload (the items WITH a FOOD_DB match already saved fine).
+        console.error('[nutrition-photo] calorie-estimate providers failed:', e.message);
+      }
+      const estMatch = estText.match(/\{[\s\S]*\}/);
+      const estimated = estMatch ? JSON.parse(estMatch[0]) : { items: [] };
+      let ui = 0;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i] !== null) continue;
+        const est = estimated.items?.[ui] || {};
+        const src = unmatched[ui];
+        items[i] = { name: src.name, weightGrams: src.weightGrams, cal: Math.round(est.cal)||0, protein: Math.round(est.protein)||0, carbs: Math.round(est.carbs)||0, fat: Math.round(est.fat)||0, allergens: [], source: 'ai_estimate' };
+        ui++;
+      }
+    }
+
+    // Flag allergens against the logged-in user's saved profile.allergies —
+    // via computeAllergenWarning(), the same shared helper the manual/
+    // quick-add lookup route now also uses (see /api/nutrition-lookup),
+    // so this logic can't silently diverge between the two paths again.
+    const userAllergies = req.userObj.profile?.allergies || [];
+    const customAllergyText = req.userObj.profile?.customAllergyText || '';
+    // it.name is a single identified-food string (no separate ar/en split
+    // for AI-vision items) — passed as both args since the keyword matcher
+    // just concatenates them into one search string anyway.
+    const withWarnings = items.map(it => ({ ...it, allergenWarning: computeAllergenWarning(it.allergens, userAllergies, it.name, it.name, customAllergyText) }));
+    const totalCal = withWarnings.reduce((s,it)=>s+it.cal, 0);
+
+    secLog('NUTRITION_PHOTO_UPLOAD', getIP(req), { userId: req.user.id, itemCount: withWarnings.length });
+    res.json({ ok:true, date, items: withWarnings, totalCal });
+  } catch (e) {
+    console.error('[nutrition-photo] error:', e.message);
+    res.status(500).json({ error: 'حصل خطأ أثناء تحليل الصورة · Error processing the image' });
+  }
+}, handleUploadError);
 
 // ─── ADMIN IMPERSONATION ──────────────────────────────────────────────────────
 
@@ -2304,11 +4133,59 @@ app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.single('file'), async
 // Unified schema: { userId, date, source, steps, heartRate, caloriesBurned, sleep, spO2, stress, water }
 
 app.post(`${BASE}/api/watch/sync`, auth, (req, res) => {
-  const { source, date, steps, heartRate, caloriesBurned, sleep, spO2, stress, water } = req.body;
+  const {
+    source, date, steps, heartRate, caloriesBurned, sleep, spO2, stress, water,
+    // Connected Health Platform Phase 1 additions — fields the Apple Health
+    // / Health Connect plugins can supply that no existing source did.
+    // Purely additive: all optional, existing callers sending none of these
+    // are completely unaffected (boundedNum(undefined,...) -> null, same as
+    // it already behaves for the pre-existing fields today).
+    weight, bloodPressureSystolic, bloodPressureDiastolic, bloodGlucose,
+    temperature, bodyFat, hrv, recovery, workouts,
+  } = req.body;
   if (!source || !date) return res.status(400).json({ error: 'source and date required' });
 
-  const allowed = ['apple_watch','wear_os','galaxy_watch','garmin','fitbit','oura','whoop','polar','strava','suunto','ultrahuman','honor_watch','manual'];
+  // apple_health / health_connect added for the Connected Health Platform's
+  // on-device provider plugins (see /root/diethub-mobile/connectedHealth/).
+  // Kept as a flat array rather than merged into OW_PROVIDERS/
+  // MANUAL_WATCH_SOURCES above — those two are Open-Wearables-specific and
+  // manual-entry-specific respectively; on-device SDK sources are a third,
+  // distinct category and don't belong in either existing list. The 3
+  // medical_device:* ids are the Bluetooth medical-device providers
+  // (connectedHealth/providers/MedicalDeviceProvider.js) — real, direct BLE
+  // connections, distinct from apple_health/health_connect's phone-OS-
+  // aggregator passthrough.
+  const ON_DEVICE_MIDDLEWARE_SOURCES = ['apple_health', 'health_connect'];
+  const allowed = ['apple_watch','wear_os','galaxy_watch','garmin','fitbit','oura','whoop','polar','strava','suunto','ultrahuman','honor_watch','manual', ...ON_DEVICE_MIDDLEWARE_SOURCES, ...MEDICAL_DEVICE_SOURCES];
   if (!allowed.includes(source)) return res.status(400).json({ error: 'Invalid source' });
+
+  // Device-tier gate (2026-09-02, refined 2026-09-02) — three real
+  // categories, not one blanket check:
+  //   - Manual entry (typed-in numbers, MANUAL_WATCH_SOURCES) is not a
+  //     device integration at all and is never gated — tier1 users can
+  //     still log their own steps/heart rate by hand.
+  //   - Phone-health-app middleware (apple_health/health_connect — the
+  //     wearable syncs to the user's OWN phone health app, which Health
+  //     Pace then reads) needs tier2+. Samsung Health has no viable
+  //     third-party API of its own (its SDK is partner-gated, and the two
+  //     community npm wrappers are unmaintained/unverifiable) — Samsung
+  //     Health has synced into Health Connect since ~2022 (One UI 5), so
+  //     health_connect already covers it on modern devices; no separate
+  //     samsung_health source exists here on purpose, not an oversight.
+  //   - Direct-to-vendor-cloud OAuth (OW_PROVIDERS: Garmin/Fitbit/Oura/
+  //     Whoop/Polar/Strava/Suunto/Ultrahuman) and the Bluetooth medical
+  //     devices both need tier3 specifically — tier2 only gets the
+  //     middleware path, not a direct integration.
+  // All of this ignores BETA_MODE on purpose (see hasDeviceTier()).
+  if (ON_DEVICE_MIDDLEWARE_SOURCES.includes(source) && !hasDeviceTier(req.userObj, 'tier2')) {
+    return res.status(403).json({ error: 'Connected device sync requires the Active plan or higher' });
+  }
+  if (OW_PROVIDERS.includes(source) && !hasDeviceTier(req.userObj, 'tier3')) {
+    return res.status(403).json({ error: 'Direct wearable-brand syncing requires the Complete plan' });
+  }
+  if (MEDICAL_DEVICE_SOURCES.includes(source) && !hasDeviceTier(req.userObj, 'tier3')) {
+    return res.status(403).json({ error: 'Blood pressure, glucose, and scale monitoring require the Complete plan' });
+  }
 
   const all = load('watch_data.json') || {};
   if (!all[req.user.id]) all[req.user.id] = [];
@@ -2317,18 +4194,51 @@ app.post(`${BASE}/api/watch/sync`, auth, (req, res) => {
   const key = `${date}_${source}`;
   const existing = all[req.user.id].findIndex(d => `${d.date}_${d.source}` === key);
 
+  // Hardening pass (independent audit, Part 3): previously accepted any
+  // parseable number with no bounds — a negative or absurd value (a
+  // mistyped or malicious client) would silently persist and surface on
+  // the dashboard/daily-brief with no server-side sanity check. Bounds are
+  // generous, real physiological/device ranges, not tight product limits.
+  const boundedNum = (v, parser, min, max) => {
+    const n = parser(v);
+    return Number.isFinite(n) && n >= min && n <= max ? n : null;
+  };
+  // Workouts: a small array of already-normalized session objects (see
+  // connectedHealth/normalizer.js buildSample's 'workout' shape), not
+  // free-form — validated defensively since it's the one non-scalar field
+  // here and arrives straight from a third-party SDK payload.
+  const safeWorkouts = Array.isArray(workouts)
+    ? workouts
+        .filter(w => w && typeof w.activityType === 'string' && Number.isFinite(w.durationMin))
+        .slice(0, 20)
+        .map(w => ({
+          activityType: sanitize(w.activityType).slice(0, 40),
+          durationMin: Math.min(Math.max(Math.round(w.durationMin), 0), 1440),
+          caloriesBurned: Number.isFinite(w.caloriesBurned) ? Math.min(Math.max(Math.round(w.caloriesBurned), 0), 10000) : null,
+          distanceKm: Number.isFinite(w.distanceKm) ? Math.min(Math.max(w.distanceKm, 0), 500) : null,
+        }))
+    : undefined;
   const entry = {
     date,
     source,
-    steps:           parseInt(steps)           || null,
-    heartRate:       parseInt(heartRate)        || null,
-    caloriesBurned:  parseInt(caloriesBurned)   || null,
-    sleep:           parseFloat(sleep)          || null,
-    spO2:            parseFloat(spO2)           || null,
-    stress:          parseInt(stress)           || null,
-    water:           parseFloat(water)          || null,
+    steps:           boundedNum(steps, parseInt, 0, 200000),
+    heartRate:       boundedNum(heartRate, parseInt, 20, 250),
+    caloriesBurned:  boundedNum(caloriesBurned, parseInt, 0, 20000),
+    sleep:           boundedNum(sleep, parseFloat, 0, 24),
+    spO2:            boundedNum(spO2, parseFloat, 0, 100),
+    stress:          boundedNum(stress, parseInt, 0, 100),
+    water:           boundedNum(water, parseFloat, 0, 50),
+    weight:                   boundedNum(weight, parseFloat, 20, 400),
+    bloodPressureSystolic:    boundedNum(bloodPressureSystolic, parseInt, 60, 250),
+    bloodPressureDiastolic:   boundedNum(bloodPressureDiastolic, parseInt, 30, 150),
+    bloodGlucose:             boundedNum(bloodGlucose, parseFloat, 20, 600),
+    temperature:              boundedNum(temperature, parseFloat, 30, 45),
+    bodyFat:                  boundedNum(bodyFat, parseFloat, 2, 70),
+    hrv:                      boundedNum(hrv, parseFloat, 0, 300),
+    recovery:                 boundedNum(recovery, parseInt, 0, 100),
     syncedAt: new Date().toISOString()
   };
+  if (safeWorkouts !== undefined) entry.workouts = safeWorkouts;
 
   if (existing >= 0) all[req.user.id][existing] = entry;
   else all[req.user.id].push(entry);
@@ -2343,10 +4253,43 @@ app.post(`${BASE}/api/watch/sync`, auth, (req, res) => {
   res.json({ ok: true, entry });
 });
 
+// Atomic water-quantity increment — added for the Home Dashboard migration
+// to close a real, verified race condition: every "quick-add water" client
+// (BriefScreen.js, TodayScreen.js, dashboard-pilot.html) previously did a
+// separate GET /api/watch/data read, computed newTotal = current + amount
+// client-side, then POSTed it via /api/watch/sync — two rapid taps could
+// both read the same "before" value and one increment would be lost. This
+// endpoint does the read-modify-write in one synchronous handler (Node is
+// single-threaded; no `await` between the read and the write below, so two
+// concurrent requests can't interleave), removing the client-side gap
+// entirely rather than trying to debounce around it.
+app.post(`${BASE}/api/watch/sync/water-increment`, auth, (req, res) => {
+  const { date, amount, source } = req.body;
+  const amt = parseFloat(amount);
+  if (!date || !amt || amt <= 0) return res.status(400).json({ error: 'date and a positive amount required' });
+  const src = source || 'manual';
+
+  const all = load('watch_data.json') || {};
+  if (!all[req.user.id]) all[req.user.id] = [];
+
+  const key = `${date}_${src}`;
+  const idx = all[req.user.id].findIndex(d => `${d.date}_${d.source}` === key);
+  const current = idx >= 0 ? (all[req.user.id][idx].water || 0) : 0;
+  const newTotal = +(current + amt).toFixed(2);
+
+  if (idx >= 0) all[req.user.id][idx].water = newTotal;
+  else all[req.user.id].push({ date, source: src, steps: null, heartRate: null, caloriesBurned: null, sleep: null, spO2: null, stress: null, water: newTotal, syncedAt: new Date().toISOString() });
+
+  all[req.user.id] = all[req.user.id].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 90);
+  save('watch_data.json', all);
+  secLog('WATCH_WATER_INCREMENT', getIP(req), { userId: req.user.id, date, amount: amt });
+  res.json({ ok: true, water: newTotal });
+});
+
 app.get(`${BASE}/api/watch/data`, auth, (req, res) => {
   const all = load('watch_data.json') || {};
   const userdata = all[req.user.id] || [];
-  const days = Math.min(parseInt(req.query.days) || 7, 90);
+  const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 90);
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
   const cutoffStr = cutoff.toISOString().split('T')[0];
@@ -2364,6 +4307,61 @@ const OW_BASE_URL = process.env.OPEN_WEARABLES_URL || 'https://wearables.talabat
 const OW_API_KEY = process.env.OPEN_WEARABLES_API_KEY || '';
 const OW_WEBHOOK_SECRET = process.env.OPEN_WEARABLES_WEBHOOK_SECRET || '';
 const OW_PROVIDERS = ['garmin', 'fitbit', 'oura', 'whoop', 'polar', 'strava', 'suunto', 'ultrahuman'];
+
+// Display metadata for the real OAuth-connectable providers above, plus the
+// real manual-entry-only sources (no OAuth, entered by hand via
+// POST /api/watch/sync — 'manual' and the specific device names below).
+// Single source of truth, added 2026-08-14 (Wearables domain migration) to
+// close a real, verified duplication: this exact id/icon/name set was
+// already hardcoded independently in dashboard.html's WATCH_PROVIDERS/
+// MANUAL_ONLY_PROVIDERS constants — a second, mobile-side hardcoded copy
+// would have made a real duplication a third one. OW_PROVIDERS above (the
+// bare id list used for connect/validate logic) is unchanged and still the
+// source of truth for which ids are valid; this only adds display metadata
+// for the same ids, it doesn't change which providers are supported.
+const WATCH_PROVIDER_META = {
+  garmin: { icon: '🔵', name: 'Garmin' },
+  fitbit: { icon: '💚', name: 'Fitbit' },
+  oura: { icon: '💍', name: 'Oura' },
+  whoop: { icon: '🖤', name: 'Whoop' },
+  polar: { icon: '⚪', name: 'Polar' },
+  strava: { icon: '🟠', name: 'Strava' },
+  suunto: { icon: '🧭', name: 'Suunto' },
+  ultrahuman: { icon: '🔷', name: 'Ultrahuman' },
+};
+const MANUAL_WATCH_SOURCES = {
+  apple_watch: { icon: '⌚', name: 'Apple Watch' },
+  wear_os: { icon: '⌚', name: 'Wear OS' },
+  galaxy_watch: { icon: '⌚', name: 'Galaxy Watch' },
+  honor_watch: { icon: '⌚', name: 'Honor Watch' },
+  manual: { icon: '✍️', name: 'Manual Entry' },
+};
+// Connected Health Platform Phase 1 — on-device SDK sources, distinct from
+// both OW_PROVIDERS (server-side OAuth) and MANUAL_WATCH_SOURCES (typed
+// entry, no real connection at all). The mobile ConnectedHealthManager
+// decides platform availability (Apple Health iOS-only, Health Connect
+// Android-only) client-side via Platform.OS — this list is unfiltered by
+// platform on purpose, same "server describes what exists, client decides
+// what applies" split already used for connectable/manual above.
+const ON_DEVICE_SOURCES = {
+  apple_health: { icon: '🍎', name: 'Apple Health', platform: 'ios' },
+  health_connect: { icon: '🤖', name: 'Health Connect', platform: 'android' },
+};
+
+// Real, data-driven provider list — the client no longer needs its own
+// hardcoded copy of ids/icons/names to build a connect UI from.
+// Read-only descriptive metadata (which providers/manual labels/on-device
+// sources exist) — not gated, since it grants no access by itself. The real
+// gates live where a connection is actually initiated or data actually
+// written: /api/watch/connect/:provider (tier3, OAuth) and /api/watch/sync
+// (per-source, see its own gate comment above).
+app.get(`${BASE}/api/watch/providers`, auth, (req, res) => {
+  res.json({
+    connectable: OW_PROVIDERS.map(id => ({ id, ...WATCH_PROVIDER_META[id] })),
+    manual: Object.entries(MANUAL_WATCH_SOURCES).map(([id, meta]) => ({ id, ...meta })),
+    onDevice: Object.entries(ON_DEVICE_SOURCES).map(([id, meta]) => ({ id, ...meta })),
+  });
+});
 
 async function getOrCreateOpenWearablesUserId(user) {
   if (user.openWearablesUserId) return user.openWearablesUserId;
@@ -2385,6 +4383,12 @@ async function getOrCreateOpenWearablesUserId(user) {
 // Redirects the browser straight into the provider's OAuth page - the dashboard
 // connect button just links here, no client-side API key exposure needed.
 app.get(`${BASE}/api/watch/connect/:provider`, auth, async (req, res) => {
+  // Direct-to-vendor-cloud OAuth (see /api/watch/sync's gate comment) needs
+  // tier3 specifically — tier2 only covers the phone-health-app middleware
+  // path (Apple Health/Health Connect), not a direct vendor connection.
+  if (!hasDeviceTier(req.userObj, 'tier3')) {
+    return res.status(403).json({ error: 'Direct wearable-brand syncing requires the Complete plan' });
+  }
   const provider = req.params.provider;
   if (!OW_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Unsupported provider' });
   if (!OW_API_KEY) return res.status(503).json({ error: 'Wearable integration not configured yet' });
@@ -2404,6 +4408,11 @@ app.get(`${BASE}/api/watch/connect/:provider`, auth, async (req, res) => {
 });
 
 app.get(`${BASE}/api/watch/connections`, auth, async (req, res) => {
+  // Same tier3 reasoning as /api/watch/connect/:provider above — this is
+  // Open Wearables (direct OAuth) connection status specifically.
+  if (!hasDeviceTier(req.userObj, 'tier3')) {
+    return res.status(403).json({ error: 'Direct wearable-brand syncing requires the Complete plan' });
+  }
   if (!req.userObj.openWearablesUserId || !OW_API_KEY) return res.json({ connections: [] });
   try {
     const r = await fetch(`${OW_BASE_URL}/api/v1/users/${req.userObj.openWearablesUserId}/connections`, {
@@ -2411,9 +4420,34 @@ app.get(`${BASE}/api/watch/connections`, auth, async (req, res) => {
     });
     if (!r.ok) return res.json({ connections: [] });
     res.json({ connections: await r.json() });
-  } catch (e) {
+  } catch {
     res.json({ connections: [] });
   }
+});
+
+// ─── PUSH NOTIFICATIONS ───────────────────────────────────────────────────────
+// Device tokens are what a mobile client gets from Firebase Cloud Messaging
+// (or the browser's push API for web) and gives to us so we know where to
+// send a notification. Actual sending lives in push.js / reminders.js — this
+// is just the real, per-user store of "which devices should this user's
+// notifications go to."
+app.post(`${BASE}/api/push/register`, auth, (req, res) => {
+  const { token, platform } = req.body;
+  if (!token) return res.status(400).json({ error: 'Missing token' });
+  const pushTokens = load('push_tokens.json') || {};
+  const devices = (pushTokens[req.user.id] || []).filter(d => d.token !== token);
+  devices.push({ token, platform: platform || 'unknown', registeredAt: new Date().toISOString() });
+  pushTokens[req.user.id] = devices;
+  save('push_tokens.json', pushTokens);
+  res.json({ ok: true });
+});
+app.post(`${BASE}/api/push/unregister`, auth, (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Missing token' });
+  const pushTokens = load('push_tokens.json') || {};
+  pushTokens[req.user.id] = (pushTokens[req.user.id] || []).filter(d => d.token !== token);
+  save('push_tokens.json', pushTokens);
+  res.json({ ok: true });
 });
 
 // Maps a batch of timeseries samples (already grouped by local date) into the
@@ -2431,6 +4465,14 @@ function upsertWatchMetric(userId, date, source, patch) {
     all[userId].push({
       date, source, steps: null, heartRate: null, caloriesBurned: null,
       sleep: null, spO2: null, stress: null, water: null,
+      // Kept in sync with POST /api/watch/sync's field set (Connected
+      // Health Platform Phase 1) so a fresh row looks identical regardless
+      // of which ingestion path (this webhook, or a client POST) created
+      // it first — no OW webhook event maps to these today, but a future
+      // one (e.g. a weight-scale integration) shouldn't have to remember
+      // to add itself here too.
+      weight: null, bloodPressureSystolic: null, bloodPressureDiastolic: null,
+      bloodGlucose: null, temperature: null, bodyFat: null, hrv: null, recovery: null,
       ...patch, syncedAt: new Date().toISOString(),
     });
   }
@@ -2478,7 +4520,7 @@ app.post(`${BASE}/api/watch/webhook`, async (req, res) => {
   try {
     const wh = new Webhook(OW_WEBHOOK_SECRET);
     event = wh.verify(req.rawBody, req.headers);
-  } catch (e) {
+  } catch {
     return res.status(400).json({ error: 'Invalid signature' });
   }
 
@@ -2546,13 +4588,31 @@ app.post(`${BASE}/api/admin/impersonate/:userId`, auth, adminOnly, (req, res) =>
   const users = load('users.json') || [];
   const u = users.find(u => u.id === req.params.userId);
   if (!u) return res.status(404).json({ error: 'User not found' });
-  const token = mkToken({ ...u, _impersonated: true });
+  // Vertical-escalation block (independent audit, Part 6/A01): impersonating
+  // another admin previously had no restriction, and — because the old
+  // token-minting call silently dropped its own "_impersonated" marker —
+  // would have produced a real, full-lifetime admin session indistinguishable
+  // from a genuine one. Blocked outright; there is no legitimate support
+  // workflow that requires one admin to act as another admin's identity.
+  if (u.role === 'admin') {
+    secLog('ADMIN_IMPERSONATE_BLOCKED', getIP(req), { adminId: req.user.id, targetUser: u.username, reason: 'target is admin' });
+    return res.status(403).json({ error: 'Cannot impersonate another admin account' });
+  }
+  const token = mkToken(u, req.user.id);
   secLog('ADMIN_IMPERSONATE', getIP(req), { adminId: req.user.id, targetUser: u.username });
   res.json({ ok: true, token, username: u.username, plan: u.plan });
 });
 
 // ─── WEATHER & HYDRATION ─────────────────────────────────────────────────────
 const weatherCache = new Map();
+// Both real readers (server.js:1871, 4337) already treat an entry as stale
+// past 10 minutes and never read it again — but neither ever deleted it, so
+// the map grew by one entry per distinct ~1km grid cell ever queried, for
+// the life of the process, unbounded. Same cleanup shape already
+// established for the rate-limiter Map (rl, see the setInterval a few
+// hundred lines above) — evicting anything already past the same 10-minute
+// staleness window the readers use, on the same kind of periodic sweep.
+setInterval(() => { const now = Date.now(); for (const [k, v] of weatherCache) if (now - v.ts > 10 * 60 * 1000) weatherCache.delete(k); }, 10 * 60 * 1000);
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -2568,26 +4628,31 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
 // heat at the same temperature; humid cold calls for more warming soups than
 // dry cold. Each pool has 5 candidates so the daily rotation below actually
 // varies which 3 show up, instead of the same fixed set forever.
+// Each entry is {text, allergens} — allergens tagged from the dish's own
+// real ingredients (e.g. yogurt/cheese → milk, shrimp → crustaceans) so
+// buildWeatherRecs() can filter a user's allergies out before picking,
+// the same real enforcement FOOD_DB already gets for logged food.
+const f = (text, allergens = []) => ({ text, allergens });
 const FOOD_POOLS = {
   veryHot: {
-    high: ['سلطة خيار وبطيخ مثلجة · Chilled cucumber & watermelon salad', 'زبادي بارد · Cold yogurt', 'خس وخضار نيئة · Raw lettuce & greens', 'شمام مثلج · Chilled cantaloupe', 'سلطة جرجير بالليمون · Arugula salad with lemon'],
-    mid:  ['سلطة دجاج خفيفة · Light chicken salad', 'خيار وطماطم مبردة · Cold cucumber & tomato', 'جبن قريش · Fresh cheese', 'سلطة تونة خفيفة · Light tuna salad', 'زبادي يوناني بالخيار · Greek yogurt with cucumber'],
-    low:  ['بطيخ وشمام · Watermelon & cantaloupe', 'خيار بالنعناع · Cucumber with mint', 'سلطة فواكه مائية · Water-rich fruit salad', 'عصير برتقال طازج · Fresh orange juice side', 'سلطة خيار وزبادي · Cucumber & yogurt salad'],
+    high: [f('سلطة خيار وبطيخ مثلجة · Chilled cucumber & watermelon salad'), f('زبادي بارد · Cold yogurt', ['milk']), f('خس وخضار نيئة · Raw lettuce & greens'), f('شمام مثلج · Chilled cantaloupe'), f('سلطة جرجير بالليمون · Arugula salad with lemon')],
+    mid:  [f('سلطة دجاج خفيفة · Light chicken salad'), f('خيار وطماطم مبردة · Cold cucumber & tomato'), f('جبن قريش · Fresh cheese', ['milk']), f('سلطة تونة خفيفة · Light tuna salad', ['fish']), f('زبادي يوناني بالخيار · Greek yogurt with cucumber', ['milk'])],
+    low:  [f('بطيخ وشمام · Watermelon & cantaloupe'), f('خيار بالنعناع · Cucumber with mint'), f('سلطة فواكه مائية · Water-rich fruit salad'), f('عصير برتقال طازج · Fresh orange juice side'), f('سلطة خيار وزبادي · Cucumber & yogurt salad', ['milk'])],
   },
   hot: {
-    high: ['سمك مشوي خفيف · Light grilled fish', 'سلطة خضار طازجة · Fresh vegetable salad', 'زبادي يوناني · Greek yogurt', 'صدر فراخ بالليمون · Lemon chicken breast', 'سلطة كينوا بالخضار · Quinoa vegetable salad'],
-    mid:  ['صدر فراخ مشوي · Grilled chicken', 'سمك خفيف · Light fish', 'سلطة خضروات · Vegetable salad', 'جمبري مشوي · Grilled shrimp', 'ديك رومي خفيف · Light turkey'],
-    low:  ['صدر فراخ مشوي مع خيار · Grilled chicken with cucumber', 'عصير طماطم · Tomato juice side', 'سلطة خضار · Vegetable salad', 'شوربة خضار باردة · Chilled vegetable soup', 'سلطة فتوش · Fattoush salad'],
+    high: [f('سمك مشوي خفيف · Light grilled fish', ['fish']), f('سلطة خضار طازجة · Fresh vegetable salad'), f('زبادي يوناني · Greek yogurt', ['milk']), f('صدر فراخ بالليمون · Lemon chicken breast'), f('سلطة كينوا بالخضار · Quinoa vegetable salad')],
+    mid:  [f('صدر فراخ مشوي · Grilled chicken'), f('سمك خفيف · Light fish', ['fish']), f('سلطة خضروات · Vegetable salad'), f('جمبري مشوي · Grilled shrimp', ['crustaceans']), f('ديك رومي خفيف · Light turkey')],
+    low:  [f('صدر فراخ مشوي مع خيار · Grilled chicken with cucumber'), f('عصير طماطم · Tomato juice side'), f('سلطة خضار · Vegetable salad'), f('شوربة خضار باردة · Chilled vegetable soup'), f('سلطة فتوش · Fattoush salad', ['gluten'])],
   },
   mild: {
-    high: ['بروتين متوسط مطبوخ · Moderately cooked protein', 'شوربة خفيفة · Light soup', 'خضار سوتيه · Sautéed vegetables', 'سمك مطهو بالبخار · Steamed fish', 'أرز بالخضار · Rice with vegetables'],
-    mid:  ['بروتين متوسط · Moderate protein', 'خضار مطبوخة · Cooked vegetables', 'أرز بني بالخضار · Brown rice with vegetables', 'دجاج بالفرن · Baked chicken', 'سلطة دافئة · Warm salad'],
-    low:  ['بروتين متوسط · Moderate protein', 'خضار مطبوخة بصلصة · Cooked vegetables with sauce', 'فواكه طازجة · Fresh fruit', 'شوربة خضار · Vegetable soup', 'سمك بالليمون · Fish with lemon'],
+    high: [f('بروتين متوسط مطبوخ · Moderately cooked protein'), f('شوربة خفيفة · Light soup'), f('خضار سوتيه · Sautéed vegetables'), f('سمك مطهو بالبخار · Steamed fish', ['fish']), f('أرز بالخضار · Rice with vegetables')],
+    mid:  [f('بروتين متوسط · Moderate protein'), f('خضار مطبوخة · Cooked vegetables'), f('أرز بني بالخضار · Brown rice with vegetables'), f('دجاج بالفرن · Baked chicken'), f('سلطة دافئة · Warm salad')],
+    low:  [f('بروتين متوسط · Moderate protein'), f('خضار مطبوخة بصلصة · Cooked vegetables with sauce'), f('فواكه طازجة · Fresh fruit'), f('شوربة خضار · Vegetable soup'), f('سمك بالليمون · Fish with lemon', ['fish'])],
   },
   cold: {
-    high: ['شوربة عدس دافئة · Warm lentil soup', 'لحم مطبوخ ببطء · Slow-cooked beef', 'خضار جذرية مشوية · Roasted root vegetables', 'شوربة خضار كريمية · Creamy vegetable soup', 'يخنة دجاج · Chicken stew'],
-    mid:  ['شوربة دجاج · Chicken soup', 'لحم دافئ · Warm beef', 'خضار مشوية · Roasted vegetables', 'يخنة لحم · Beef stew', 'حساء عدس · Lentil soup'],
-    low:  ['شوربة دجاج بالليمون · Chicken soup with lemon', 'لحم دافئ · Warm beef', 'خضار مشوية مع زيت زيتون · Roasted vegetables with olive oil', 'شوربة خضار دافئة · Warm vegetable soup', 'دجاج محمر بالثوم · Garlic roasted chicken'],
+    high: [f('شوربة عدس دافئة · Warm lentil soup'), f('لحم مطبوخ ببطء · Slow-cooked beef'), f('خضار جذرية مشوية · Roasted root vegetables'), f('شوربة خضار كريمية · Creamy vegetable soup', ['milk']), f('يخنة دجاج · Chicken stew')],
+    mid:  [f('شوربة دجاج · Chicken soup'), f('لحم دافئ · Warm beef'), f('خضار مشوية · Roasted vegetables'), f('يخنة لحم · Beef stew'), f('حساء عدس · Lentil soup')],
+    low:  [f('شوربة دجاج بالليمون · Chicken soup with lemon'), f('لحم دافئ · Warm beef'), f('خضار مشوية مع زيت زيتون · Roasted vegetables with olive oil'), f('شوربة خضار دافئة · Warm vegetable soup'), f('دجاج محمر بالثوم · Garlic roasted chicken')],
   },
 };
 
@@ -2600,16 +4665,31 @@ function humidityBand(humidity) {
 // Picks `count` distinct items from a pool, rotating the starting offset by
 // day-of-year so the same temp+humidity combo shows different foods day to
 // day instead of the exact same fixed list forever.
-function pickRotating(pool, count) {
+// Filters allergen matches out of the pool BEFORE picking (never rotates one
+// back in once removed), then returns plain display strings — same shape
+// callers already expect, so nothing downstream needs to change.
+function pickRotating(pool, count, userAllergies, customAllergyText) {
+  const safe = pool.filter(item => {
+    if (userAllergies?.length && item.allergens.some(a => userAllergies.includes(a))) return false;
+    const [ar, en] = item.text.split(' · ');
+    if (allergyKeywordsMatch(ar, en, customAllergyText)) return false;
+    return true;
+  });
+  if (!safe.length) return [];
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
-  const n = pool.length;
+  const n = safe.length;
   const picks = [];
-  for (let i = 0; i < count; i++) picks.push(pool[(dayOfYear + i) % n]);
+  for (let i = 0; i < Math.min(count, n); i++) picks.push(safe[(dayOfYear + i) % n].text);
   return picks;
 }
 
-function buildWeatherRecs(temp, humidity) {
-  let hydrationL, alert = null, foods = [], drinks = [];
+function buildWeatherRecs(temp, humidity, userAllergies = [], customAllergyText = '') {
+  // Lint pass (Phase 5): `foods` was pre-initialized to [] here but the
+  // if/else-if/else-if/else chain below is exhaustive over every real
+  // temp value, so it's always reassigned before the return — the initial
+  // [] was dead weight, never the value actually returned. Removed; zero
+  // behavior change (confirmed by re-reading every branch).
+  let hydrationL, alert = null, foods, drinks = [];
 
   if      (temp >= 40) { hydrationL = 4.5; alert = 'خطر جفاف شديد — اشرب ماء الآن! · Severe dehydration risk — drink NOW!'; }
   else if (temp >= 35) { hydrationL = 3.5; alert = 'طقس حار جداً — اشرب كل 20 دقيقة · Very hot — drink every 20 min'; }
@@ -2622,16 +4702,16 @@ function buildWeatherRecs(temp, humidity) {
 
   const hBand = humidityBand(humidity);
   if (temp >= 35) {
-    foods = pickRotating(FOOD_POOLS.veryHot[hBand], 3);
+    foods = pickRotating(FOOD_POOLS.veryHot[hBand], 3, userAllergies, customAllergyText);
     drinks.push('ماء بارد · Cold water', 'عصير بطيخ · Watermelon juice');
   } else if (temp >= 25) {
-    foods = pickRotating(FOOD_POOLS.hot[hBand], 3);
+    foods = pickRotating(FOOD_POOLS.hot[hBand], 3, userAllergies, customAllergyText);
     drinks.push('ماء · Water', 'ماء جوز هند · Coconut water');
   } else if (temp >= 15) {
-    foods = pickRotating(FOOD_POOLS.mild[hBand], 3);
+    foods = pickRotating(FOOD_POOLS.mild[hBand], 3, userAllergies, customAllergyText);
     drinks.push('ماء دافئ · Warm water', 'شاي أخضر · Green tea');
   } else {
-    foods = pickRotating(FOOD_POOLS.cold[hBand], 3);
+    foods = pickRotating(FOOD_POOLS.cold[hBand], 3, userAllergies, customAllergyText);
     drinks.push('شوربة · Soup', 'شاي أعشاب · Herbal tea');
   }
 
@@ -2714,8 +4794,8 @@ function buildLabAdvisories(labFlags) {
 // general-wellness suggestions, not diagnostic claims - consistent with this
 // app's existing "consult your doctor" tone elsewhere. Degrades gracefully
 // with no watch/lab data.
-function buildEcoRecommendations(temp, humidity, indoorOutdoor, watchEntry, labFlags) {
-  const base = buildWeatherRecs(temp, humidity);
+function buildEcoRecommendations(temp, humidity, indoorOutdoor, watchEntry, labFlags, userAllergies, customAllergyText) {
+  const base = buildWeatherRecs(temp, humidity, userAllergies, customAllergyText);
   const supplements = [];
   labFlags = labFlags || {};
 
@@ -2842,7 +4922,7 @@ app.get(`${BASE}/api/weather`, auth, async (req, res) => {
 
   res.json({
     ...weather,
-    recommendations: buildEcoRecommendations(weather.temp, weather.humidity, indoorOutdoor, watchEntry, labFlags),
+    recommendations: buildEcoRecommendations(weather.temp, weather.humidity, indoorOutdoor, watchEntry, labFlags, req.userObj.profile?.allergies, req.userObj.profile?.customAllergyText),
     updatedAt: new Date().toISOString(),
   });
 });
@@ -2898,7 +4978,194 @@ app.post(`${BASE}/api/location/check`, auth, (req, res) => {
   res.json({ activeZone, activityNote: activeZone ? (notes[activeZone.type] || null) : null });
 });
 
+// ─── NEARBY FITNESS FACILITIES ──────────────────────────────────────────────
+// Activity Plan's "Nearest Running Track / Swimming Pool / Cycling Track"
+// buttons (2026-09-01). Tries OpenStreetMap's free Overpass API first,
+// across several independent public mirrors — live-tested before this was
+// written: real running-track data exists for Cairo, but the public
+// endpoints do genuinely 502/504 under load, so a single mirror with no
+// fallback would be a real reliability problem, not a hypothetical one.
+// Google Places (Text Search, not Nearby Search — neither "running track"
+// nor "swimming pool" is a real Google place `type`, so a keyword text
+// search is the only way to match these categories at all) is the explicit
+// last resort, and ONLY runs if every Overpass mirror comes back empty —
+// same "configured providers" gating as ai.js's chatVision(): if
+// GOOGLE_PLACES_API_KEY isn't set, that branch is skipped entirely, no
+// crash, chain just ends at "none found nearby."
+const OVERPASS_MIRRORS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+];
+const NEARBY_FACILITY_QUERY = {
+  running_track: (r, lat, lon) => `[out:json][timeout:10];(way["leisure"="track"]["sport"~"running"](around:${r},${lat},${lon});node["leisure"="track"]["sport"~"running"](around:${r},${lat},${lon}););out center 5;`,
+  swimming_pool: (r, lat, lon) => `[out:json][timeout:10];(way["leisure"="swimming_pool"](around:${r},${lat},${lon});node["leisure"="swimming_pool"](around:${r},${lat},${lon}););out center 5;`,
+  cycling_track: (r, lat, lon) => `[out:json][timeout:10];(way["leisure"="track"]["sport"~"cycling"](around:${r},${lat},${lon});node["leisure"="track"]["sport"~"cycling"](around:${r},${lat},${lon});way["highway"="cycleway"](around:${r},${lat},${lon}););out center 5;`,
+};
+const GOOGLE_PLACES_QUERY = {
+  running_track: 'running track',
+  swimming_pool: 'public swimming pool',
+  cycling_track: 'cycling track',
+};
+const FACILITY_LABEL = {
+  running_track: { ar: 'مضمار جري', en: 'Running Track' },
+  swimming_pool: { ar: 'حمام سباحة', en: 'Swimming Pool' },
+  cycling_track: { ar: 'مضمار دراجات', en: 'Cycling Track' },
+};
+
+async function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Tries every mirror in order, returns the first successful (even if empty)
+// result set — a mirror returning "0 elements" is a real answer (nothing
+// tagged nearby), not a failure, so it does NOT fall through to the next
+// mirror; only a network error / bad status / bad JSON does.
+async function queryOverpassMirrors(type, lat, lon) {
+  const buildQuery = NEARBY_FACILITY_QUERY[type];
+  for (const radius of [8000, 20000]) {
+    const query = buildQuery(radius, lat, lon);
+    for (const mirror of OVERPASS_MIRRORS) {
+      try {
+        // Explicit Content-Type + a real User-Agent are required — live-
+        // tested and confirmed: without them, overpass-api.de returns 406
+        // and overpass.openstreetmap.fr returns 403 (Node's fetch defaults
+        // differ from curl's, which is what the initial live test used).
+        const r = await fetchWithTimeout(mirror, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'HealthPaceApp/1.0 (contact: info@talabatito.com)' },
+          body: `data=${encodeURIComponent(query)}`,
+        }, 12000);
+        if (!r.ok) throw new Error(`${mirror} responded ${r.status}`);
+        const data = await r.json();
+        const elements = data.elements || [];
+        if (elements.length > 0) return elements;
+      } catch (e) {
+        console.error(`[nearby-facility] Overpass mirror failed (${mirror}):`, e.message);
+      }
+    }
+    // Every mirror returned genuinely zero results at this radius — worth
+    // one retry at a wider radius before giving up, since a real running
+    // track 9km away is a better answer than "none found" at 8km.
+  }
+  return [];
+}
+
+function nearestFromOverpass(elements, lat, lon) {
+  let best = null;
+  for (const el of elements) {
+    const elLat = el.lat ?? el.center?.lat;
+    const elLon = el.lon ?? el.center?.lon;
+    if (elLat == null || elLon == null) continue;
+    const distanceKm = haversineMeters(lat, lon, elLat, elLon) / 1000;
+    if (!best || distanceKm < best.distanceKm) {
+      best = { name: el.tags?.name || null, lat: elLat, lon: elLon, distanceKm };
+    }
+  }
+  return best;
+}
+
+async function queryGooglePlaces(type, lat, lon) {
+  if (!process.env.GOOGLE_PLACES_API_KEY) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(GOOGLE_PLACES_QUERY[type])}&location=${lat},${lon}&radius=20000&key=${process.env.GOOGLE_PLACES_API_KEY}`;
+    const r = await fetchWithTimeout(url, {}, 10000);
+    if (!r.ok) throw new Error(`Google Places responded ${r.status}`);
+    const data = await r.json();
+    if (data.status !== 'OK' || !(data.results || []).length) return null;
+    let best = null;
+    for (const place of data.results) {
+      const pLat = place.geometry?.location?.lat, pLon = place.geometry?.location?.lng;
+      if (pLat == null || pLon == null) continue;
+      const distanceKm = haversineMeters(lat, lon, pLat, pLon) / 1000;
+      if (!best || distanceKm < best.distanceKm) {
+        best = { name: place.name || null, lat: pLat, lon: pLon, distanceKm };
+      }
+    }
+    return best;
+  } catch (e) {
+    console.error('[nearby-facility] Google Places fallback failed:', e.message);
+    return null;
+  }
+}
+
+app.get(`${BASE}/api/nearby-facility`, auth, async (req, res) => {
+  const type = req.query.type;
+  const lat = parseFloat(req.query.lat), lon = parseFloat(req.query.lon);
+  if (!NEARBY_FACILITY_QUERY[type]) return res.status(400).json({ error: 'Invalid facility type' });
+  if (isNaN(lat) || isNaN(lon)) return res.status(400).json({ error: 'Invalid coordinates' });
+
+  let best = null;
+  let source = null;
+  try {
+    const elements = await queryOverpassMirrors(type, lat, lon);
+    best = nearestFromOverpass(elements, lat, lon);
+    if (best) source = 'openstreetmap';
+  } catch (e) {
+    console.error('[nearby-facility] Overpass chain error:', e.message);
+  }
+
+  if (!best) {
+    best = await queryGooglePlaces(type, lat, lon);
+    if (best) source = 'google';
+  }
+
+  if (!best) {
+    return res.json({ ok: false, error: 'لم نجد أماكن قريبة حالياً، حاول مرة أخرى لاحقاً · No nearby locations found right now, try again later' });
+  }
+
+  secLog('NEARBY_FACILITY', getIP(req), { userId: req.user.id, type, source });
+  res.json({
+    ok: true,
+    source,
+    // `name` is a real place name when OSM/Google had one tagged, or null —
+    // `genericLabel` is always present so the client never has to guess
+    // between a string and a bilingual object in the same field.
+    name: best.name || null,
+    genericLabel: FACILITY_LABEL[type],
+    distanceKm: Math.round(best.distanceKm * 10) / 10,
+    lat: best.lat,
+    lon: best.lon,
+    mapsUrl: `https://www.google.com/maps/search/?api=1&query=${best.lat},${best.lon}`,
+  });
+});
+
 app.use(`${BASE}/*path`,(req,res)=>res.status(404).json({error:'Not found'}));
 
 initData();
-app.listen(3200,()=>console.log('DietHub v3 SECURE on port 3200'));
+
+// Production hardening pass, Phase 4 (independent audit, DevOps F8.1 — zero
+// automated tests existed anywhere): tests need to import the real Express
+// `app` and drive it with supertest, without binding a real port (which
+// would collide with whatever's already listening on 3200, and doesn't
+// scale to parallel test runs). Everything above this point is completely
+// unchanged; only the final `.listen()` call is now conditional. Running
+// the file directly (`node server.js`, exactly as docker-compose already
+// does) still starts the real server exactly as before — this is a no-op
+// for every existing deployment path.
+if (require.main === module) {
+  app.listen(3200, () => console.log('DietHub v3 SECURE on port 3200'));
+}
+// Curated internal-function exports for real unit testing (Phase 4) — every
+// name here is an existing, unmodified function already defined above;
+// exporting them is additive and changes no behavior for the real running
+// app, which only ever uses `module.exports` as `app` (require.main check
+// above). Deliberately NOT exporting everything — only the real
+// security/business-logic-critical functions worth testing in true
+// isolation, per the hardening prompt's own "prioritize risk, not
+// percentage" instruction.
+module.exports = Object.assign(app, {
+  _testables: {
+    hashPwd, checkPwd, mkToken, checkToken,
+    sanitize, validateUsr, validatePwd,
+    validateProfileField,
+    kashierVerify, kashierHash, kashierConfigured,
+    hasActiveCoverage, calcBmiBmr,
+  },
+});
