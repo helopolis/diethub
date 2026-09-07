@@ -32,6 +32,152 @@ const upsertStmt = db.prepare(`INSERT INTO documents (key, value, updated_at)
   VALUES (@key, @value, @updated_at)
   ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`);
 
+// ─── LAB REFERENCE DATA ─────────────────────────────────────────────────────
+// Real relational tables, not the key→JSON document store above — reference
+// data is lookup-heavy and naturally relational (a test has many reference
+// ranges, one per population), the same reasoning that put `events` in a
+// real table instead of a JSON blob.
+//
+// LOINC is the canonical test identifier (lab_tests.loinc_code), per the
+// founder's own architecture call: reference ranges live in a *separate*,
+// versioned table (lab_reference_ranges) keyed by population (age/sex/
+// pregnancy/etc.), not baked into the test row — so adding a pediatric or
+// pregnancy range later is a new row, not a schema change. Shaped to map
+// cleanly onto a FHIR Observation: loinc_code -> Observation.code.coding,
+// each reference_ranges row -> one Observation.referenceRange entry.
+//
+// IMPORTANT — verification status: seedLabTests() below (see server.js's
+// pre-existing LAB_FLAG_RULES) populates this with the app's own long-
+// standing threshold numbers, migrated as-is into this better structure —
+// it does NOT invent new medical values. Every seeded range has `verified =
+// 0` and `source_url = NULL` until someone actually checks it against a
+// real cited source (MedlinePlus / Mayo Clinic Labs / LOINC's own registry
+// were the plan, blocked this session on the web-search quota — see the
+// founder conversation this schema came out of). Treat `verified = 0` rows
+// as "inherited from the old hardcoded rule, not yet independently
+// confirmed" — not as validated clinical content.
+db.exec(`CREATE TABLE IF NOT EXISTS lab_tests (
+  test_id      TEXT PRIMARY KEY,
+  loinc_code   TEXT UNIQUE,
+  name         TEXT NOT NULL,
+  name_ar      TEXT NOT NULL,
+  category     TEXT NOT NULL,
+  specimen     TEXT,
+  units        TEXT NOT NULL,
+  si_units     TEXT,
+  fasting_required INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS lab_reference_ranges (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_id       TEXT NOT NULL REFERENCES lab_tests(test_id),
+  population    TEXT NOT NULL, -- 'adult_general' | 'adult_male' | 'adult_female' | 'pregnancy' | 'pediatric' | 'elderly'
+  range_low     REAL,
+  range_high    REAL,
+  critical_low  REAL,
+  critical_high REAL,
+  unit          TEXT NOT NULL,
+  verified      INTEGER NOT NULL DEFAULT 0, -- 0 until checked against source_url
+  source_name   TEXT,
+  source_url    TEXT,
+  version_date  TEXT NOT NULL,
+  notes         TEXT,
+  created_at    TEXT NOT NULL
+)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_ranges_test_id ON lab_reference_ranges(test_id)`);
+
+const upsertLabTestStmt = db.prepare(`INSERT INTO lab_tests
+    (test_id,loinc_code,name,name_ar,category,specimen,units,si_units,fasting_required,created_at,updated_at)
+  VALUES (@test_id,@loinc_code,@name,@name_ar,@category,@specimen,@units,@si_units,@fasting_required,@now,@now)
+  ON CONFLICT(test_id) DO NOTHING`);
+
+const insRangeStmt = db.prepare(`INSERT INTO lab_reference_ranges
+    (test_id,population,range_low,range_high,critical_low,critical_high,unit,verified,source_name,source_url,version_date,notes,created_at)
+  VALUES (@test_id,@population,@range_low,@range_high,@critical_low,@critical_high,@unit,@verified,@source_name,@source_url,@version_date,@notes,@now)`);
+
+function getLabTest(testId) {
+  return db.prepare('SELECT * FROM lab_tests WHERE test_id = ?').get(testId) || null;
+}
+function listLabTests() {
+  return db.prepare('SELECT * FROM lab_tests ORDER BY category, name').all();
+}
+function getReferenceRanges(testId) {
+  return db.prepare('SELECT * FROM lab_reference_ranges WHERE test_id = ? ORDER BY population').all(testId);
+}
+// Only inserts a test's ranges the first time it's seeded (checked via the
+// test_id upsert's own no-op-on-conflict) — safe to call on every boot
+// without duplicating rows on restart, same discipline as migrateFromJson.
+function seedLabTest(test, ranges) {
+  const now = new Date().toISOString();
+  const result = upsertLabTestStmt.run({ ...test, now });
+  if (result.changes > 0) {
+    for (const r of ranges) insRangeStmt.run({ ...r, test_id: test.test_id, now });
+  }
+}
+
+// Migrates the app's own pre-existing numbers — server.js's LAB_FLAG_RULES
+// thresholds and public/dashboard.html's labTests names/units — into the
+// structure above. Deliberately NOT new medical content: every value here
+// already lived in this codebase (in two separate places, actually — this
+// also consolidates them into one). `verified: 0` and `source_url: null`
+// on every row because neither original location ever cited an external
+// source; that verification pass is a real follow-up, not done here.
+function seedLabReferenceData() {
+  const range = (over) => ({
+    population: 'adult_general', range_low: null, range_high: null,
+    critical_low: null, critical_high: null, verified: 0,
+    source_name: 'Health Pace internal (pre-existing app threshold, not yet independently verified)',
+    source_url: null, version_date: new Date().toISOString().slice(0, 10), notes: null,
+    ...over,
+  });
+  seedLabTest(
+    { test_id: 'glucose', loinc_code: null, name: 'Blood Glucose', name_ar: 'سكر الدم (Glucose)', category: 'Diabetes', specimen: null, units: 'mg/dL', si_units: null, fasting_required: 1 },
+    [range({ range_low: 70, range_high: 100, unit: 'mg/dL' })]
+  );
+  seedLabTest(
+    { test_id: 'hba1c', loinc_code: null, name: 'HbA1c', name_ar: 'HbA1c', category: 'Diabetes', specimen: null, units: '%', si_units: null, fasting_required: 0 },
+    [range({ range_high: 5.7, unit: '%' })]
+  );
+  seedLabTest(
+    { test_id: 'cholesterol', loinc_code: null, name: 'Total Cholesterol', name_ar: 'الكوليسترول الكلي', category: 'Lipid Profile', specimen: null, units: 'mg/dL', si_units: null, fasting_required: 0 },
+    [range({ range_high: 200, unit: 'mg/dL' })]
+  );
+  seedLabTest(
+    { test_id: 'ldl', loinc_code: null, name: 'LDL Cholesterol', name_ar: 'LDL (الكوليسترول الضار)', category: 'Lipid Profile', specimen: null, units: 'mg/dL', si_units: null, fasting_required: 0 },
+    [range({ range_high: 100, unit: 'mg/dL' })]
+  );
+  seedLabTest(
+    { test_id: 'hdl', loinc_code: null, name: 'HDL Cholesterol', name_ar: 'HDL (الكوليسترول النافع)', category: 'Lipid Profile', specimen: null, units: 'mg/dL', si_units: null, fasting_required: 0 },
+    [range({ range_low: 40, unit: 'mg/dL' })]
+  );
+  seedLabTest(
+    { test_id: 'triglycerides', loinc_code: null, name: 'Triglycerides', name_ar: 'الدهون الثلاثية', category: 'Lipid Profile', specimen: null, units: 'mg/dL', si_units: null, fasting_required: 0 },
+    [range({ range_high: 150, unit: 'mg/dL' })]
+  );
+  seedLabTest(
+    { test_id: 'hemoglobin', loinc_code: null, name: 'Hemoglobin', name_ar: 'هيموغلوبين', category: 'Complete Blood Count', specimen: null, units: 'g/dL', si_units: null, fasting_required: 0 },
+    // Known real gap, carried over honestly rather than silently fixed:
+    // dashboard.html's own display already labeled this "M:13.5-17.5"
+    // (male-specific), but LAB_FLAG_RULES applies 13.5 as a single
+    // blanket low-threshold regardless of sex — a healthy woman around
+    // 13.0-13.5 g/dL would be incorrectly flagged low. Needs a real
+    // adult_female row once someone sources the correct range; not
+    // invented here.
+    [range({ range_low: 13.5, unit: 'g/dL', notes: 'Applied as a sex-blind threshold in current app logic; dashboard.html labels this male-specific (M:13.5-17.5). No adult_female row yet — real gap, not yet sourced.' })]
+  );
+  seedLabTest(
+    { test_id: 'vitd', loinc_code: null, name: 'Vitamin D', name_ar: 'فيتامين D', category: 'Vitamins', specimen: null, units: 'ng/mL', si_units: null, fasting_required: 0 },
+    [range({ range_low: 30, unit: 'ng/mL' })]
+  );
+  seedLabTest(
+    { test_id: 'tsh', loinc_code: null, name: 'TSH', name_ar: 'TSH (الغدة الدرقية)', category: 'Thyroid', specimen: null, units: 'mIU/L', si_units: null, fasting_required: 0 },
+    [range({ range_low: 0.4, range_high: 4.0, unit: 'mIU/L' })]
+  );
+}
+seedLabReferenceData();
+
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
 // events are high-volume and append-heavy — exactly the access pattern the
@@ -180,4 +326,5 @@ function backup(dest) {
 }
 
 module.exports = { db, load, save, update, migrateFromJson, backup,
-  logEvent, recentEvents, analytics, DB_PATH, DATA_DIR };
+  logEvent, recentEvents, analytics, DB_PATH, DATA_DIR,
+  seedLabTest, getLabTest, listLabTests, getReferenceRanges };
