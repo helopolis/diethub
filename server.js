@@ -3846,6 +3846,44 @@ const DIET_SUPPLEMENTS = {
 };
 DIET_SUPPLEMENTS.kids.push({ icon:'⚕️', name:'Always consult a pediatrician first', nameAr:'استشر طبيب الأطفال دائماً أولاً', why:'Children\'s supplement needs vary widely by age - a pediatrician should confirm dosage', whyAr:'احتياجات الأطفال من المكملات تختلف كثيراً حسب العمر — يجب أن يؤكد طبيب الأطفال الجرعة', price:'', priceAr:'', link:'#' });
 
+// Real gap this closes: 'diet' above is a single mutually-exclusive choice
+// that conflates two different things — a diet MECHANISM (atkins/keto/
+// mediterranean) and a DEMOGRAPHIC anchor (women/women_40/men/men_40/kids/
+// diabetic). Someone who picked a mechanism diet got zero age/sex
+// consideration at all: a 22-year-old and 45-year-old both on Atkins saw
+// byte-identical lists, even though the user's real age and gender are
+// already collected (buildHealthProfile's demographics) and already used
+// elsewhere (BMI, calorie targets) — just never consulted here.
+//
+// Demographic-anchored choices are deliberately NOT layered further: a
+// user who already picked "Women 40+" as their diet IS that demographic
+// already, so adding it again would just duplicate entries, not add
+// information.
+const DIET_MECHANISM_KEYS = ['atkins', 'keto', 'mediterranean'];
+
+// >=40 threshold reuses this file's own existing women_40/men_40 naming
+// above — not a new cutoff invented here, just applied to a case that was
+// missing it.
+function demographicDietKey(age, gender) {
+  if (gender === 'female') return age != null && age >= 40 ? 'women_40' : 'women';
+  if (gender === 'male') return age != null && age >= 40 ? 'men_40' : 'men';
+  return null; // gender not set — no demographic list to infer, base list only
+}
+
+// Dedupes by `name` — several items (Omega-3 especially) legitimately
+// appear in both a mechanism list and a demographic list; shown once, not
+// twice. Order preserved: the diet-mechanism items the user's actual
+// choice already earned stay first, age/sex additions come after.
+function buildDietSupplements(diet, demographics) {
+  const base = DIET_SUPPLEMENTS[diet] || DIET_SUPPLEMENTS.atkins;
+  if (!DIET_MECHANISM_KEYS.includes(diet)) return base;
+  const demoKey = demographicDietKey(demographics?.age, demographics?.gender);
+  if (!demoKey) return base;
+  const seen = new Set(base.map(item => item.name));
+  const extra = (DIET_SUPPLEMENTS[demoKey] || []).filter(item => !seen.has(item.name));
+  return extra.length ? [...base, ...extra] : base;
+}
+
 // Lab-driven supplement/advisory suggestions with no weather/location context
 // needed - used by the Supplements tab, which the user can open without ever
 // visiting the Weather & Hydration tab. Same underlying flags/logic as
@@ -3858,11 +3896,27 @@ app.get(`${BASE}/api/lab-results/recommendations`, auth, (req,res) => {
   // legacy rule" instead of presenting a suggestion as clinically confirmed.
   const { flags: labFlags, meta: referenceMetadata } = getLatestLabFlagsMeta(req.user.id);
   const diet = DIET_SUPPLEMENTS[req.query.diet] ? req.query.diet : 'atkins';
+  // Real age/gender, already collected — see buildDietSupplements' own
+  // comment for why a diet-mechanism choice (atkins/keto/mediterranean)
+  // needs this and a demographic-anchored one (women_40, diabetic, etc.)
+  // doesn't. Reading req.userObj.profile.gender directly rather than
+  // buildHealthProfile's demographics.gender — that field silently
+  // defaults unset gender to 'male' (`p.gender === 'female' ? ... : 'male'`,
+  // written for BMI-formula purposes where SOME sex has to be assumed to
+  // produce a number at all). Reusing that default here would silently
+  // show male-specific supplements to a user who simply never set their
+  // gender, exactly the kind of unverified assumption this whole pass has
+  // been about not making.
+  const demographics = {
+    age: buildHealthProfile(store, req.user.id)?.demographics?.age,
+    gender: req.userObj.profile?.gender === 'male' || req.userObj.profile?.gender === 'female'
+      ? req.userObj.profile.gender : null,
+  };
   res.json({
     supplements: buildLabSupplements(labFlags),
     advisories: buildLabAdvisories(labFlags),
     advisoryTriggers: buildAdvisoryTriggers(labFlags),
-    dietSupplements: DIET_SUPPLEMENTS[diet],
+    dietSupplements: buildDietSupplements(diet, demographics),
     referenceMetadata,
   });
 });
