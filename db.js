@@ -69,6 +69,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS lab_tests (
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 )`);
+// Added after the initial table: SQLite has no `ADD COLUMN IF NOT EXISTS`,
+// so this checks pragma_table_info first — safe to run on every boot.
+// flaggable exists because creatinine needs to stay in lab_tests (it's a
+// manual-entry field real users already fill in) without ever being
+// auto-flagged: kidney-function values were deliberately excluded from
+// rule-based flagging (too clinically sensitive), and that safety property
+// needs to survive in the new schema, not just be an accident of which
+// tests happened to be in the old hardcoded LAB_FLAG_RULES object.
+const hasFlaggable = db.prepare("SELECT 1 FROM pragma_table_info('lab_tests') WHERE name='flaggable'").get();
+if (!hasFlaggable) db.exec('ALTER TABLE lab_tests ADD COLUMN flaggable INTEGER NOT NULL DEFAULT 1');
 
 db.exec(`CREATE TABLE IF NOT EXISTS lab_reference_ranges (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,13 +99,68 @@ db.exec(`CREATE TABLE IF NOT EXISTS lab_reference_ranges (
 db.exec(`CREATE INDEX IF NOT EXISTS idx_ranges_test_id ON lab_reference_ranges(test_id)`);
 
 const upsertLabTestStmt = db.prepare(`INSERT INTO lab_tests
-    (test_id,loinc_code,name,name_ar,category,specimen,units,si_units,fasting_required,created_at,updated_at)
-  VALUES (@test_id,@loinc_code,@name,@name_ar,@category,@specimen,@units,@si_units,@fasting_required,@now,@now)
+    (test_id,loinc_code,name,name_ar,category,specimen,units,si_units,fasting_required,flaggable,created_at,updated_at)
+  VALUES (@test_id,@loinc_code,@name,@name_ar,@category,@specimen,@units,@si_units,@fasting_required,@flaggable,@now,@now)
   ON CONFLICT(test_id) DO NOTHING`);
 
 const insRangeStmt = db.prepare(`INSERT INTO lab_reference_ranges
     (test_id,population,range_low,range_high,critical_low,critical_high,unit,verified,source_name,source_url,version_date,notes,created_at)
   VALUES (@test_id,@population,@range_low,@range_high,@critical_low,@critical_high,@unit,@verified,@source_name,@source_url,@version_date,@notes,@now)`);
+
+// Every query joins lab_tests and requires flaggable=1 — creatinine has a
+// real reference_ranges row (for the manual-entry display hint) but
+// flaggable=0, so this always returns null for it regardless, the same as
+// if no row existed at all. That's deliberate: kidney-function values were
+// excluded from rule-based flagging as too clinically sensitive, and that
+// safety property must hold no matter what data exists, not depend on
+// every future caller remembering to check it themselves.
+const exactVerifiedStmt = db.prepare(`SELECT r.* FROM lab_reference_ranges r
+  JOIN lab_tests t ON t.test_id = r.test_id
+  WHERE r.test_id=? AND r.population=? AND r.verified=1 AND t.flaggable=1
+  ORDER BY r.version_date DESC LIMIT 1`);
+const generalVerifiedStmt = db.prepare(`SELECT r.* FROM lab_reference_ranges r
+  JOIN lab_tests t ON t.test_id = r.test_id
+  WHERE r.test_id=? AND r.population='adult_general' AND r.verified=1 AND t.flaggable=1
+  ORDER BY r.version_date DESC LIMIT 1`);
+const exactAnyStmt = db.prepare(`SELECT r.* FROM lab_reference_ranges r
+  JOIN lab_tests t ON t.test_id = r.test_id
+  WHERE r.test_id=? AND r.population=? AND t.flaggable=1
+  ORDER BY r.version_date DESC LIMIT 1`);
+const generalAnyStmt = db.prepare(`SELECT r.* FROM lab_reference_ranges r
+  JOIN lab_tests t ON t.test_id = r.test_id
+  WHERE r.test_id=? AND r.population='adult_general' AND t.flaggable=1
+  ORDER BY r.version_date DESC LIMIT 1`);
+
+// Fallback search order (never silently substitutes one population's data
+// for another without saying so):
+//   1. an exact match for the requested population, itself verified
+//   2. a verified adult_general default
+//   3. legacy compatibility — whatever unverified row exists (requested
+//      population first, else adult_general) — flagged legacy:true so a
+//      caller can never mistake this for confirmed clinical data
+//   4. null — genuinely nothing usable for this test_id: either no row
+//      exists at all, or (creatinine's case) flaggable=0
+// Logs once per call when legacy data is used — test_id + populations
+// only, no user data, so this is safe to leave on in production.
+function resolveReferenceRange(testId, population = 'adult_general') {
+  let row = exactVerifiedStmt.get(testId, population);
+  if (row) return { ...row, legacy: false, population_used: population };
+
+  row = generalVerifiedStmt.get(testId);
+  if (row) return { ...row, legacy: false, population_used: 'adult_general' };
+
+  row = exactAnyStmt.get(testId, population) || generalAnyStmt.get(testId);
+  if (row) {
+    console.log('[lab-reference] legacy fallback used', {
+      test_id: testId, population_requested: population,
+      population_on_row: row.population, verified: !!row.verified,
+      reason: 'no verified reference range exists for this test/population yet',
+    });
+    return { ...row, legacy: true, population_used: 'legacy' };
+  }
+
+  return null;
+}
 
 function getLabTest(testId) {
   return db.prepare('SELECT * FROM lab_tests WHERE test_id = ?').get(testId) || null;
@@ -109,12 +174,20 @@ function getReferenceRanges(testId) {
 // Only inserts a test's ranges the first time it's seeded (checked via the
 // test_id upsert's own no-op-on-conflict) — safe to call on every boot
 // without duplicating rows on restart, same discipline as migrateFromJson.
-function seedLabTest(test, ranges) {
-  const now = new Date().toISOString();
-  const result = upsertLabTestStmt.run({ ...test, now });
+// Wrapped in a transaction: without this, a crash between the test-row
+// insert and its range-row inserts would leave a lab_test with zero
+// reference_ranges — a real (if unlikely) data-integrity gap in the
+// original version of this function.
+const _seedTxn = db.transaction((test, ranges, now) => {
+  // flaggable defaults to 1 (most tests can be auto-flagged); only
+  // creatinine seeds with flaggable:0 explicitly.
+  const result = upsertLabTestStmt.run({ flaggable: 1, ...test, now });
   if (result.changes > 0) {
     for (const r of ranges) insRangeStmt.run({ ...r, test_id: test.test_id, now });
   }
+});
+function seedLabTest(test, ranges) {
+  _seedTxn(test, ranges, new Date().toISOString());
 }
 
 // Migrates the app's own pre-existing numbers — server.js's LAB_FLAG_RULES
@@ -174,6 +247,19 @@ function seedLabReferenceData() {
   seedLabTest(
     { test_id: 'tsh', loinc_code: null, name: 'TSH', name_ar: 'TSH (الغدة الدرقية)', category: 'Thyroid', specimen: null, units: 'mIU/L', si_units: null, fasting_required: 0 },
     [range({ range_low: 0.4, range_high: 4.0, unit: 'mIU/L' })]
+  );
+  // flaggable:0 — creatinine was in dashboard.html's manual-entry form
+  // (same 0.6-1.2 mg/dL hint migrated below) but was NEVER in
+  // LAB_FLAG_RULES; that exclusion was deliberate (kidney-function values
+  // are too clinically sensitive for a rule-based consumer suggestion) and
+  // resolveReferenceRange()'s flaggable=1 join means this row can never
+  // drive an automatic flag no matter what — restores the original manual-
+  // entry field (a real regression this seed's first version introduced by
+  // only migrating the 9 LAB_FLAG_RULES tests) without reintroducing
+  // automatic kidney-value flagging.
+  seedLabTest(
+    { test_id: 'creatinine', loinc_code: null, name: 'Creatinine', name_ar: 'كرياتينين', category: 'Kidney Function', specimen: null, units: 'mg/dL', si_units: null, fasting_required: 0, flaggable: 0 },
+    [range({ range_low: 0.6, range_high: 1.2, unit: 'mg/dL', notes: 'Display-only — flaggable=0, deliberately never used for automatic flagging (see LAB_FLAG_RULES history / kidney-function safety note).' })]
   );
 }
 seedLabReferenceData();
@@ -327,4 +413,4 @@ function backup(dest) {
 
 module.exports = { db, load, save, update, migrateFromJson, backup,
   logEvent, recentEvents, analytics, DB_PATH, DATA_DIR,
-  seedLabTest, getLabTest, listLabTests, getReferenceRanges };
+  seedLabTest, getLabTest, listLabTests, getReferenceRanges, resolveReferenceRange };

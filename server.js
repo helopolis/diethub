@@ -2381,6 +2381,56 @@ app.get(`${BASE}/api/labs`, auth, (req,res) => {
   res.json({ lastUpdated: data.lastUpdated, tests });
 });
 
+// Read-only: the lab_tests/lab_reference_ranges tables (db.js), the same
+// single source of truth deriveLabFlags() now reads from — a distinct
+// concept from /api/labs above (which tier of tests to consider getting),
+// this is normal-value reference data for interpreting a result. Standard
+// field names throughout (test_id/test_name/unit/population/verified/
+// source_url/notes/legacy) per the founder's naming convention; a fresh
+// endpoint, not a rename of any existing one, so nothing else changes
+// shape. `legacy` here just means "unverified" (no separate resolution
+// chain to run for a flat listing) — the richer legacy/population_used
+// semantics live in resolveReferenceRange(), used by deriveLabFlagsMeta.
+app.get(`${BASE}/api/lab-reference`, auth, (req,res) => {
+  try {
+    const tests = store.listLabTests().map(t => ({
+      test_id: t.test_id,
+      test_name: t.name,
+      test_name_ar: t.name_ar,
+      category: t.category,
+      specimen: t.specimen,
+      unit: t.units,
+      si_unit: t.si_units,
+      fasting_required: !!t.fasting_required,
+      loinc_code: t.loinc_code,
+      // false for creatinine only — real reference data exists for display,
+      // but resolveReferenceRange() will never resolve it for automatic
+      // flagging (kidney-function values are deliberately excluded from
+      // rule-based suggestions). Exposed so a client can show "for your
+      // reference" rather than implying this test drives a recommendation.
+      flaggable: !!t.flaggable,
+      reference_ranges: store.getReferenceRanges(t.test_id).map(r => ({
+        population: r.population,
+        range_low: r.range_low,
+        range_high: r.range_high,
+        critical_low: r.critical_low,
+        critical_high: r.critical_high,
+        unit: r.unit,
+        verified: !!r.verified,
+        legacy: !r.verified,
+        source_name: r.source_name,
+        source_url: r.source_url,
+        version_date: r.version_date,
+        notes: r.notes,
+      })),
+    }));
+    res.json({ tests });
+  } catch (e) {
+    console.error('Lab reference data error:', e.message);
+    res.status(500).json({ error: 'Failed to load lab reference data' });
+  }
+});
+
 const ACTIVITY_PLANS = buildActivityPlans();
 app.get(`${BASE}/api/activity-plan`, auth, (req,res) => {
   const diet = req.query.diet;
@@ -3801,12 +3851,19 @@ DIET_SUPPLEMENTS.kids.push({ icon:'⚕️', name:'Always consult a pediatrician 
 // visiting the Weather & Hydration tab. Same underlying flags/logic as
 // buildEcoRecommendations() uses, just without the indoor/watch-driven items.
 app.get(`${BASE}/api/lab-results/recommendations`, auth, (req,res) => {
-  const labFlags = getLatestLabFlags(req.user.id);
+  // referenceMetadata is additive — every existing field below is computed
+  // exactly as before (buildLabSupplements/buildLabAdvisories still take
+  // the same flat flags object), so existing clients see no change. New
+  // clients can use referenceMetadata to show "based on an unverified/
+  // legacy rule" instead of presenting a suggestion as clinically confirmed.
+  const { flags: labFlags, meta: referenceMetadata } = getLatestLabFlagsMeta(req.user.id);
   const diet = DIET_SUPPLEMENTS[req.query.diet] ? req.query.diet : 'atkins';
   res.json({
     supplements: buildLabSupplements(labFlags),
     advisories: buildLabAdvisories(labFlags),
+    advisoryTriggers: buildAdvisoryTriggers(labFlags),
     dietSupplements: DIET_SUPPLEMENTS[diet],
+    referenceMetadata,
   });
 });
 
@@ -3863,6 +3920,17 @@ function getLatestLabFlags(userId) {
   const latest = entries[0];
   if (!latest || !latest.numericResults) return {};
   return deriveLabFlags(latest.numericResults);
+}
+
+// Same lookup as getLatestLabFlags, but via deriveLabFlagsMeta — used only
+// by /api/lab-results/recommendations' additive metadata field, so the
+// other 2 getLatestLabFlags call sites are untouched.
+function getLatestLabFlagsMeta(userId) {
+  const all = load('lab_results.json') || {};
+  const entries = all[userId] || [];
+  const latest = entries[0];
+  if (!latest || !latest.numericResults) return { flags: {}, meta: [] };
+  return deriveLabFlagsMeta(latest.numericResults);
 }
 
 function updateLabEntryAnalysis(userId, date, analysis) {
@@ -4746,33 +4814,64 @@ function getLatestWatchEntry(userId) {
   return entries[0] || null; // already stored sorted newest-first (see /api/watch/sync)
 }
 
-// Thresholds match dashboard.html's labTests normal ranges exactly. Deterministic
-// (not AI-driven) on purpose - automatic supplement/food suggestions need to be
-// reliable, unlike the free-text AI narrative in analyzeLabResults() which stays
-// presentational-only. creatinine is deliberately excluded: kidney-function values
-// are too clinically sensitive for a rule-based consumer suggestion.
-const LAB_FLAG_RULES = {
-  glucose:       { high: 100 },
-  hba1c:         { high: 5.7 },
-  cholesterol:   { high: 200 },
-  ldl:           { high: 100 },
-  hdl:           { low: 40 },
-  triglycerides: { high: 150 },
-  hemoglobin:    { low: 13.5 },
-  vitd:          { low: 30 },
-  tsh:           { low: 0.4, high: 4.0 },
-};
-
+// Thresholds now come from the lab_tests/lab_reference_ranges tables (see
+// db.js's resolveReferenceRange) — the old hardcoded LAB_FLAG_RULES object
+// (a byte-for-byte duplicate of dashboard.html's labTests normal ranges)
+// is gone; the database is the single source of truth now, seeded from
+// exactly those same numbers so this function's behavior is unchanged.
+// Still deterministic (not AI-driven) on purpose - automatic supplement/
+// food suggestions need to be reliable, unlike the free-text AI narrative
+// in analyzeLabResults() which stays presentational-only. creatinine is
+// still deliberately excluded: resolveReferenceRange() returns null for
+// it (no row was ever seeded), same effective result as it never having
+// had a LAB_FLAG_RULES entry — kidney-function values are too clinically
+// sensitive for a rule-based consumer suggestion.
+//
+// Iterates numericResults' own keys rather than a fixed rule list (the
+// old version's approach) — equivalent either way: a key present in one
+// but not the other was always a no-op in the old code too, since you
+// can't threshold-compare an undefined value.
 function deriveLabFlags(numericResults) {
   const flags = {};
   if (!numericResults) return flags;
-  for (const [id, rule] of Object.entries(LAB_FLAG_RULES)) {
-    const v = numericResults[id];
+  for (const [id, v] of Object.entries(numericResults)) {
     if (v == null || isNaN(v)) continue;
-    if (rule.high != null && v > rule.high) flags[`high_${id}`] = true;
-    if (rule.low != null && v < rule.low) flags[`low_${id}`] = true;
+    const resolved = store.resolveReferenceRange(id);
+    if (!resolved) continue;
+    if (resolved.range_high != null && v > resolved.range_high) flags[`high_${id}`] = true;
+    if (resolved.range_low != null && v < resolved.range_low) flags[`low_${id}`] = true;
   }
   return flags;
+}
+
+// Same evaluation as deriveLabFlags, but also returns where each flag's
+// threshold actually came from — verified / legacy / population_used /
+// source — so a caller can tell a client "this suggestion is based on an
+// unverified legacy rule" instead of silently presenting it as confirmed.
+// A separate function rather than changing deriveLabFlags' own return
+// shape, so its ~3 existing call sites stay completely untouched.
+function deriveLabFlagsMeta(numericResults) {
+  const flags = {};
+  const meta = [];
+  if (!numericResults) return { flags, meta };
+  for (const [id, v] of Object.entries(numericResults)) {
+    if (v == null || isNaN(v)) continue;
+    const resolved = store.resolveReferenceRange(id);
+    if (!resolved) continue;
+    let flagged = null;
+    if (resolved.range_high != null && v > resolved.range_high) flagged = `high_${id}`;
+    if (resolved.range_low != null && v < resolved.range_low) flagged = `low_${id}`;
+    if (flagged) {
+      flags[flagged] = true;
+      meta.push({
+        test_id: id, flag: flagged,
+        verified: !!resolved.verified, legacy: resolved.legacy,
+        population_used: resolved.population_used,
+        source_url: resolved.source_url || null,
+      });
+    }
+  }
+  return { flags, meta };
 }
 
 // Shared between buildEcoRecommendations() (weather panel) and /api/meal-plan
@@ -4786,6 +4885,22 @@ function buildLabAdvisories(labFlags) {
     advisories.push('نتيجة الغدة الدرقية خارج المعدل الطبيعي — يُنصح باستشارة طبيبك · Your thyroid (TSH) result is outside the normal range — please consult your doctor');
   }
   return advisories;
+}
+
+// Parallel to buildLabAdvisories — same conditions, same order, same
+// length — so index i here always describes advisories[i]. Kept as a
+// separate function rather than changing buildLabAdvisories' own return
+// type (still a plain string[], all 3 existing callers untouched); this
+// one is only consumed by the new advisoryTriggers field below.
+function buildAdvisoryTriggers(labFlags) {
+  const triggers = [];
+  if (labFlags.high_glucose || labFlags.high_hba1c) {
+    triggers.push({ triggeredBy: ['glucose', 'hba1c'].filter(id => labFlags[`high_${id}`] || labFlags[`low_${id}`]) });
+  }
+  if (labFlags.high_tsh || labFlags.low_tsh) {
+    triggers.push({ triggeredBy: ['tsh'] });
+  }
+  return triggers;
 }
 
 // Adds supplement suggestions on top of buildWeatherRecs()'s hydration/food/
@@ -4847,6 +4962,13 @@ function buildEcoRecommendations(temp, humidity, indoorOutdoor, watchEntry, labF
 // recommendations endpoint (Supplements tab has no weather/location context).
 // includeVitd defaults true; buildEcoRecommendations passes false when it has
 // already added a merged indoor+lab Vitamin D card itself, to avoid a duplicate.
+// triggeredBy is additive — lists which real test_id(s) actually flagged
+// (not every test that *could* have) for this specific suggestion, so a
+// client can cross-reference against referenceMetadata (already returned
+// by /api/lab-results/recommendations) and show "based on an unverified
+// reference range" instead of presenting a suggestion as confirmed.
+// Existing consumers that don't read this field are unaffected — every
+// other property on these objects is unchanged.
 function buildLabSupplements(labFlags, { includeVitd = true } = {}) {
   const supplements = [];
   labFlags = labFlags || {};
@@ -4856,14 +4978,18 @@ function buildLabSupplements(labFlags, { includeVitd = true } = {}) {
       icon: '☀️', nameAr: 'فيتامين د', name: 'Vitamin D',
       whyAr: 'نتيجة تحليل فيتامين د الأخيرة منخفضة · Your latest Vitamin D lab result was low',
       link: 'https://www.amazon.eg/s?k=vitamin+d3',
+      triggeredBy: ['vitd'],
     });
   }
 
-  if (labFlags.high_ldl || labFlags.high_cholesterol || labFlags.high_triglycerides || labFlags.low_hdl) {
+  const lipidFlags = ['ldl', 'cholesterol', 'triglycerides', 'hdl'].filter(id =>
+    labFlags[`high_${id}`] || labFlags[`low_${id}`]);
+  if (lipidFlags.length) {
     supplements.push({
       icon: '🐟', nameAr: 'أوميجا 3', name: 'Omega-3',
       whyAr: 'بناءً على نتائج الدهون في تحليلك الأخير · Based on your latest lipid panel results',
       link: 'https://www.amazon.eg/s?k=omega+3',
+      triggeredBy: lipidFlags,
     });
   }
 
@@ -4872,6 +4998,7 @@ function buildLabSupplements(labFlags, { includeVitd = true } = {}) {
       icon: '🥩', nameAr: 'أطعمة غنية بالحديد', name: 'Iron-rich foods',
       whyAr: 'نتيجة الهيموجلوبين الأخيرة منخفضة · Your latest hemoglobin result was low',
       link: 'https://www.amazon.eg/s?k=iron+supplement',
+      triggeredBy: ['hemoglobin'],
     });
   }
 

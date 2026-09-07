@@ -1,41 +1,41 @@
 <!DOCTYPE html>
-<html id="htmlRoot" lang="ar" dir="rtl">
+<html id="htmlRoot" lang="ar" dir="rtl" class="hp-editorial">
 <head>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>DietHub — لوحة التحكم</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cairo:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#FAF7F2">
+<title>Health Pace — لوحة التحكم</title>
+<link rel="stylesheet" href="/theme.css">
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@700;900&family=Readex+Pro:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
 <style>
 :root {
-  --lime:#C8F560;--orange:#FF7A3D;--coral:#FF5757;
-  --yellow:#FFD63D;--green:#2D6A4F;--mint:#74C69D;
-  --dark:#1A1A2E;--bg:#F0F7F4;--card:#fff;
-  --text:#1A1A2E;--muted:#6B7280;--border:#E8EDF2;
   --shadow:0 4px 20px rgba(0,0,0,0.06);
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-[lang="en"] body,[lang="en"] *{font-family:'Inter','Cairo',sans-serif}
+body{font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+[lang="en"] body,[lang="en"] *{font-family:'Readex Pro','IBM Plex Sans',sans-serif}
 
 /* NAV */
 .nav{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}
 .nav-logo{display:flex;align-items:center;gap:10px}
 .logo-dot{width:38px;height:38px;background:linear-gradient(135deg,var(--lime),var(--orange));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
-.logo-text{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:900;color:var(--dark)}
+.logo-dot img{width:22px;height:22px}
+.logo-text{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif;font-size:1.3rem;font-weight:900;color:var(--dark)}
 .nav-right{display:flex;align-items:center;gap:12px}
 .trial-badge{background:linear-gradient(135deg,var(--yellow),var(--orange));color:var(--dark);font-size:0.72rem;font-weight:700;padding:4px 12px;border-radius:20px}
 .lang-toggle{display:flex;background:var(--bg);border-radius:20px;padding:3px;border:1px solid var(--border)}
-.lang-btn{padding:5px 12px;border-radius:16px;border:none;background:transparent;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Cairo',sans-serif;color:var(--muted);transition:all 0.2s}
+.lang-btn{padding:5px 12px;border-radius:16px;border:none;background:transparent;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;color:var(--muted);transition:all 0.2s}
 .lang-btn.active{background:#fff;color:var(--green);box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .user-pill{background:var(--bg);border:1px solid var(--border);border-radius:24px;padding:5px 14px 5px 6px;display:flex;align-items:center;gap:8px;font-size:0.82rem;font-weight:600}
 .avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--mint),var(--green));display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:700}
-.logout-btn{background:none;border:1px solid rgba(255,87,87,0.3);color:var(--coral);cursor:pointer;font-size:0.8rem;font-family:'Cairo',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s}
-.invite-btn{background:none;border:1px solid rgba(45,106,79,0.35);color:var(--green);cursor:pointer;font-size:0.8rem;font-family:'Cairo',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s;white-space:nowrap}
+.logout-btn{background:none;border:1px solid rgba(178,59,59,0.3);color:var(--coral);cursor:pointer;font-size:0.8rem;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s}
+.invite-btn{background:none;border:1px solid rgba(76,139,92,0.35);color:var(--green);cursor:pointer;font-size:0.8rem;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s;white-space:nowrap}
 .invite-btn:hover{background:var(--green);color:#fff}
-.back-admin-btn{background:rgba(200,245,96,0.15);border:1px solid rgba(200,245,96,0.4);color:#C8F560;cursor:pointer;font-size:0.8rem;font-family:'Cairo',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s;text-decoration:none;display:none}
+.back-admin-btn{background:rgba(169,124,47,0.15);border:1px solid rgba(169,124,47,0.4);color:var(--lime);cursor:pointer;font-size:0.8rem;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;padding:6px 12px;border-radius:8px;transition:all 0.2s;text-decoration:none;display:none}
 .logout-btn:hover{background:var(--coral);color:#fff}
 
 /* TABS */
@@ -49,12 +49,12 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-h
 .panel{display:none}.panel.active{display:block}
 
 /* HERO */
-.hero{background:linear-gradient(135deg,#1B4332 0%,var(--green) 60%,#40916C 100%);border-radius:20px;padding:28px 32px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden}
+.hero{background:linear-gradient(135deg,var(--hp-accent-ink) 0%,var(--orange) 55%,#2FA79A 100%);border-radius:20px;padding:28px 32px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden}
 .hero::before{content:'🥗';position:absolute;bottom:-20px;left:24px;font-size:5rem;opacity:0.12}
-.hero::after{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:rgba(200,245,96,0.12);border-radius:50%}
+.hero::after{content:'';position:absolute;top:-40px;right:-40px;width:160px;height:160px;background:rgba(169,124,47,0.12);border-radius:50%}
 .hero-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;position:relative;z-index:1}
 .hero-greeting{font-size:0.85rem;opacity:0.7;margin-bottom:6px}
-.hero-name{font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:900;margin-bottom:4px}
+.hero-name{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif;font-size:1.8rem;font-weight:900;margin-bottom:4px}
 .hero-sub{font-size:0.88rem;opacity:0.8}
 .trial-info{background:rgba(255,255,255,0.12);border-radius:12px;padding:12px 18px;text-align:center;min-width:140px}
 .trial-days{font-size:2rem;font-weight:700;color:var(--lime)}
@@ -76,16 +76,16 @@ body{font-family:'Cairo',sans-serif;background:var(--bg);color:var(--text);min-h
 
 /* SECTION HEADER */
 .sec-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
-.sec-title{font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:700}
+.sec-title{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif;font-size:1.3rem;font-weight:700}
 .sec-badge{background:var(--lime);color:var(--dark);font-size:0.72rem;font-weight:700;padding:4px 12px;border-radius:20px}
 
 /* DIET PILLS */
 .diet-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-.diet-pill{padding:7px 16px;border-radius:20px;border:2px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Cairo',sans-serif}
+.diet-pill{padding:7px 16px;border-radius:20px;border:2px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif}
 .diet-pill.active{background:var(--green);border-color:var(--green);color:#fff}
 
 /* BUDGET SECTION */
-.budget-section{background:linear-gradient(135deg,#FFF8F0,#FFF5E6);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid rgba(255,122,61,0.2)}
+.budget-section{background:linear-gradient(135deg,#FFF8F0,#FFF5E6);border-radius:16px;padding:20px;margin-bottom:20px;border:1px solid rgba(30,122,108,0.2)}
 .budget-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .budget-title{font-size:0.9rem;font-weight:700;color:var(--dark)}
 .budget-value{font-size:1.8rem;font-weight:700;color:var(--orange)}
@@ -95,7 +95,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 
 /* WEEKLY MEAL TABLE */
 .week-nav{display:flex;gap:6px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px}
-.day-tab{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s;font-family:'Cairo',sans-serif}
+.day-tab{padding:8px 16px;border-radius:20px;border:1px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif}
 .day-tab.active{background:var(--green);border-color:var(--green);color:#fff}
 
 .meal-table{width:100%;border-collapse:collapse}
@@ -127,7 +127,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 .meal-price.over-budget{color:var(--coral)}
 .price-note{font-size:0.7rem;color:var(--muted);margin-top:2px}
 
-.day-summary{background:linear-gradient(135deg,var(--bg),#E8F5E9);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border:1px solid rgba(45,106,79,0.15)}
+.day-summary{background:linear-gradient(135deg,var(--bg),#E8F5E9);border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border:1px solid rgba(76,139,92,0.15)}
 .day-total-price{font-size:1.1rem;font-weight:700;color:var(--green)}
 .day-within{font-size:0.78rem;padding:3px 10px;border-radius:10px;font-weight:600}
 .within-yes{background:#E8F5E9;color:var(--green)}
@@ -149,7 +149,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 .cat-fats{background:#FFF8E1;color:#F57F17}
 .best-price{color:var(--green);font-weight:700;background:#E8F5E9;border-radius:6px;padding:2px 8px}
 .price-cell{font-size:0.85rem}
-.savings-badge{font-size:0.7rem;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);padding:2px 8px;border-radius:10px;font-weight:700}
+.savings-badge{font-size:0.7rem;background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);padding:2px 8px;border-radius:10px;font-weight:700}
 
 /* LAB CARDS */
 .lab-grid{display:grid;gap:12px}
@@ -182,12 +182,12 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 .supp-why{font-size:0.78rem;color:var(--muted);line-height:1.5;margin-bottom:10px}
 .supp-footer{display:flex;justify-content:space-between;align-items:center}
 .supp-price{font-size:0.9rem;font-weight:700;color:var(--green)}
-.supp-link{font-size:0.78rem;color:var(--orange);text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(255,122,61,0.3);border-radius:8px;transition:all 0.2s}
+.supp-link{font-size:0.78rem;color:var(--orange);text-decoration:none;font-weight:600;padding:4px 10px;border:1px solid rgba(30,122,108,0.3);border-radius:8px;transition:all 0.2s}
 .supp-link:hover{background:var(--orange);color:#fff}
 
 /* ACTIVITY */
 .level-btns{display:flex;gap:8px;margin-bottom:16px}
-.level-btn{padding:8px 18px;border-radius:20px;border:2px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Cairo',sans-serif}
+.level-btn{padding:8px 18px;border-radius:20px;border:2px solid var(--border);background:#fff;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif}
 .level-btn.active{background:var(--green);border-color:var(--green);color:#fff}
 .week-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:18px}
 .day-box{background:var(--bg);border-radius:10px;padding:10px 4px;text-align:center;border:1px solid var(--border)}
@@ -214,28 +214,28 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 .fill-coral{background:linear-gradient(90deg,var(--coral),var(--orange))}
 
 /* RATING */
-.rating-form{background:linear-gradient(135deg,#FFFBF0,#FFF8E1);border-radius:16px;padding:24px;border:1px solid rgba(255,211,61,0.3);margin-top:20px}
+.rating-form{background:linear-gradient(135deg,#FFFBF0,#FFF8E1);border-radius:16px;padding:24px;border:1px solid rgba(184,135,58,0.3);margin-top:20px}
 .stars{display:flex;gap:6px;margin:12px 0}
 .star{font-size:2rem;cursor:pointer;opacity:0.3;transition:all 0.2s;user-select:none}
 .star.active{opacity:1;transform:scale(1.1)}
-.rating-input{width:100%;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;font-family:'Cairo',sans-serif;font-size:0.9rem;margin-bottom:10px;outline:none}
+.rating-input{width:100%;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:10px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-size:0.9rem;margin-bottom:10px;outline:none}
 .rating-input:focus{border-color:var(--yellow)}
-.btn-rate{padding:12px 24px;background:linear-gradient(135deg,var(--yellow),var(--orange));border:none;border-radius:12px;color:var(--dark);font-size:0.9rem;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;transition:all 0.2s}
-.btn-rate:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(255,211,61,0.4)}
+.btn-rate{padding:12px 24px;background:linear-gradient(135deg,var(--yellow),var(--orange));border:none;border-radius:12px;color:var(--dark);font-size:0.9rem;font-weight:700;cursor:pointer;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;transition:all 0.2s}
+.btn-rate:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(184,135,58,0.4)}
 .existing-ratings{margin-top:16px}
 .rating-card{background:#fff;border-radius:10px;padding:14px;margin-bottom:8px;border:1px solid var(--border)}
 .rating-stars{color:var(--yellow);font-size:0.9rem;margin-bottom:4px}
 .rating-comment{font-size:0.85rem;color:var(--text);margin-bottom:4px}
 .rating-meta{font-size:0.75rem;color:var(--muted)}
 .avg-rating{display:flex;align-items:center;gap:12px;padding:16px;background:var(--bg);border-radius:12px;margin-bottom:16px}
-.avg-number{font-size:3rem;font-weight:700;font-family:'Playfair Display',serif;color:var(--green)}
+.avg-number{font-size:3rem;font-weight:700;font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif;color:var(--green)}
 .avg-stars{color:var(--yellow);font-size:1.2rem}
 .avg-label{font-size:0.8rem;color:var(--muted);margin-top:4px}
 
 /* ALERTS */
 .alert{border-radius:12px;padding:12px 16px;font-size:0.85rem;font-weight:600;margin-bottom:10px}
-.alert-warning{background:#FFF3E0;border:1px solid rgba(255,122,61,0.3);color:#E65100}
-.alert-success{background:#E8F5E9;border:1px solid rgba(45,106,79,0.3);color:var(--green)}
+.alert-warning{background:#FFF3E0;border:1px solid rgba(30,122,108,0.3);color:#E65100}
+.alert-success{background:#E8F5E9;border:1px solid rgba(76,139,92,0.3);color:var(--green)}
 .alert-info{background:#E3F2FD;border:1px solid rgba(33,150,243,0.3);color:#0D47A1}
 
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--green);color:#fff;padding:12px 24px;border-radius:14px;font-weight:600;font-size:0.88rem;z-index:1000;transition:transform 0.4s;box-shadow:0 8px 24px rgba(0,0,0,0.15)}
@@ -244,7 +244,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 
 .tracker-card{background:#fff;border-radius:16px;padding:24px;margin-bottom:16px;border:1px solid var(--border)}
 .tracker-title{font-size:1rem;font-weight:700;color:var(--dark);margin-bottom:16px}
-.period-btn{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:#fff;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Cairo',sans-serif;transition:all 0.2s}
+.period-btn{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:#fff;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;transition:all 0.2s}
 .period-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
 .meal-check{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
 .meal-check:last-child{border-bottom:none}
@@ -253,9 +253,9 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 .lab-input-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .lab-input-group{display:flex;flex-direction:column;gap:4px}
 .lab-input-group label{font-size:0.78rem;font-weight:600;color:var(--muted)}
-.lab-input-group input{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.88rem;font-family:'Cairo',sans-serif;outline:none;transition:border 0.2s}
+.lab-input-group input{padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.88rem;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;outline:none;transition:border 0.2s}
 .lab-input-group input:focus{border-color:var(--green)}
-.lab-status-good{color:#2D6A4F;background:#e8f5e9;padding:4px 10px;border-radius:20px;font-size:0.78rem;font-weight:700}
+.lab-status-good{color:var(--green);background:#e8f5e9;padding:4px 10px;border-radius:20px;font-size:0.78rem;font-weight:700}
 .lab-status-warning{color:#856404;background:#fff3cd;padding:4px 10px;border-radius:20px;font-size:0.78rem;font-weight:700}
 .lab-status-critical{color:#dc3545;background:#ffe0e0;padding:4px 10px;border-radius:20px;font-size:0.78rem;font-weight:700}
 .blur-overlay{position:relative}
@@ -266,27 +266,27 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 
 <style>
 #chatbot-fab{position:fixed;bottom:24px;left:24px;z-index:9999;display:none}
-#chatbot-fab-btn{width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#C8F560,#A8E063);border:none;cursor:pointer;box-shadow:0 4px 20px rgba(200,245,96,0.5);display:flex;align-items:center;justify-content:center;transition:transform 0.2s}
+#chatbot-fab-btn{width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,var(--lime),#C9A24E);border:none;cursor:pointer;box-shadow:0 4px 20px rgba(169,124,47,0.5);display:flex;align-items:center;justify-content:center;transition:transform 0.2s}
 #chatbot-fab-btn:hover{transform:scale(1.1)}
 #chatbot-badge{position:absolute;top:-4px;right:-4px;background:#ff4444;color:#fff;border-radius:50%;width:20px;height:20px;font-size:0.7rem;display:none;align-items:center;justify-content:center;font-weight:700}
-#chatbot-window{position:fixed;bottom:96px;left:24px;width:min(340px,calc(100vw - 48px));max-height:520px;background:#1a1a2e;border:1px solid rgba(200,245,96,0.3);border-radius:20px;z-index:9999;display:none;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);overflow:hidden}
-#chatbot-header{background:linear-gradient(135deg,#C8F560,#A8E063);padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
-#chatbot-header-title{font-weight:700;color:#1a1a2e;font-size:0.95rem;font-family:"Cairo",sans-serif}
-#chatbot-close{background:none;border:none;cursor:pointer;color:#1a1a2e;font-size:1.2rem;padding:0;line-height:1}
+#chatbot-window{position:fixed;bottom:96px;left:24px;width:min(340px,calc(100vw - 48px));max-height:520px;background:var(--dark);border:1px solid rgba(169,124,47,0.3);border-radius:20px;z-index:9999;display:none;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);overflow:hidden}
+#chatbot-header{background:linear-gradient(135deg,var(--lime),#C9A24E);padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
+#chatbot-header-title{font-weight:700;color:var(--dark);font-size:0.95rem;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif}
+#chatbot-close{background:none;border:none;cursor:pointer;color:var(--dark);font-size:1.2rem;padding:0;line-height:1}
 #chatbot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:340px}
-.cb-msg{padding:10px 14px;border-radius:14px;font-size:0.88rem;line-height:1.5;max-width:85%;font-family:"Cairo",sans-serif;direction:rtl}
-.cb-msg.bot{background:rgba(200,245,96,0.1);border:1px solid rgba(200,245,96,0.2);color:#e0e0e0;align-self:flex-start}
-.cb-msg.user{background:linear-gradient(135deg,#C8F560,#A8E063);color:#1a1a2e;align-self:flex-end;font-weight:600}
+.cb-msg{padding:10px 14px;border-radius:14px;font-size:0.88rem;line-height:1.5;max-width:85%;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;direction:rtl}
+.cb-msg.bot{background:rgba(169,124,47,0.1);border:1px solid rgba(169,124,47,0.2);color:#e0e0e0;align-self:flex-start}
+.cb-msg.user{background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);align-self:flex-end;font-weight:600}
 .cb-msg.typing{color:#888;font-style:italic}
 #chatbot-input-area{padding:12px;border-top:1px solid rgba(255,255,255,0.1);display:flex;gap:8px}
-#chatbot-input{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:10px 12px;color:#fff;font-family:"Cairo",sans-serif;font-size:0.88rem;outline:none;direction:rtl}
-#chatbot-input:focus{border-color:#C8F560}
-#chatbot-send{background:linear-gradient(135deg,#C8F560,#A8E063);border:none;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#chatbot-popup{position:fixed;bottom:96px;left:24px;background:#1a1a2e;border:1px solid rgba(200,245,96,0.4);border-radius:16px;padding:20px;z-index:9998;display:none;max-width:300px;box-shadow:0 10px 40px rgba(0,0,0,0.4)}
-#chatbot-popup-title{color:#C8F560;font-weight:700;font-size:0.95rem;margin-bottom:8px;font-family:"Cairo",sans-serif;direction:rtl}
-#chatbot-popup-text{color:#aaa;font-size:0.82rem;font-family:"Cairo",sans-serif;direction:rtl;margin-bottom:12px}
-#chatbot-popup-btn{background:linear-gradient(135deg,#C8F560,#A8E063);color:#1a1a2e;border:none;border-radius:10px;padding:8px 16px;font-family:"Cairo",sans-serif;font-weight:700;cursor:pointer;font-size:0.85rem}
-#chatbot-popup-dismiss{background:none;border:none;color:#666;font-size:0.8rem;cursor:pointer;margin-right:10px;font-family:"Cairo",sans-serif}
+#chatbot-input{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:10px 12px;color:#fff;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-size:0.88rem;outline:none;direction:rtl}
+#chatbot-input:focus{border-color:var(--lime)}
+#chatbot-send{background:linear-gradient(135deg,var(--lime),#C9A24E);border:none;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#chatbot-popup{position:fixed;bottom:96px;left:24px;background:var(--dark);border:1px solid rgba(169,124,47,0.4);border-radius:16px;padding:20px;z-index:9998;display:none;max-width:300px;box-shadow:0 10px 40px rgba(0,0,0,0.4)}
+#chatbot-popup-title{color:var(--lime);font-weight:700;font-size:0.95rem;margin-bottom:8px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;direction:rtl}
+#chatbot-popup-text{color:#aaa;font-size:0.82rem;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;direction:rtl;margin-bottom:12px}
+#chatbot-popup-btn{background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);border:none;border-radius:10px;padding:8px 16px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-weight:700;cursor:pointer;font-size:0.85rem}
+#chatbot-popup-dismiss{background:none;border:none;color:#666;font-size:0.8rem;cursor:pointer;margin-right:10px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif}
 </style>
   <script async src="https://umami.talabatito.com/script.js" data-website-id="diethub-dashboard"></script>
 <script defer src="https://analytics.talabatito.com/script.js" data-website-id="4ed211ee-9096-49e6-a619-0bbca563db5b"></script>
@@ -295,8 +295,8 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 
 <nav class="nav">
   <div class="nav-logo">
-    <div class="logo-dot">🥗</div>
-    <span class="logo-text">DietHub</span>
+    <div class="logo-dot"><img src="/mark-dark.svg" alt="Health Pace"></div>
+    <span class="logo-text">Health Pace</span>
   </div>
   <div class="nav-right">
     <div class="trial-badge" id="trialBadge" style="display:none"></div>
@@ -352,6 +352,17 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
       <div class="hstat"><div class="hstat-val" id="hBmi">—</div><div class="hstat-label" id="lBmi">مؤشر كتلة الجسم · BMI</div></div>
       <div class="hstat"><div class="hstat-val" id="hBmr">—</div><div class="hstat-label" id="lBmr">الأيض الأساسي · BMR</div></div>
     </div>
+  </div>
+
+  <!-- In-app promo banner — real content from /api/banners?placement=app,
+       same source the landing page and mobile app both read. Dismissible
+       per browser (localStorage), so a returning user isn't shown the same
+       promo every single visit — different from the landing page's version,
+       which rotates because a visitor only sees it once anyway. -->
+  <div id="appBanner" style="display:none;background:linear-gradient(135deg,var(--lime),var(--orange));border-radius:16px;margin-bottom:16px;cursor:pointer;position:relative;overflow:hidden;aspect-ratio:1200/675;max-width:600px" onclick="appBannerClick(event)">
+    <button onclick="dismissAppBanner(event)" style="position:absolute;top:10px;left:10px;z-index:2;width:26px;height:26px;background:rgba(0,0,0,0.35);border:none;border-radius:50%;font-size:0.85rem;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center">✕</button>
+    <img id="appBannerImg" style="display:none;width:100%;height:100%;object-fit:cover" alt="">
+    <div id="appBannerText" style="display:none;font-weight:700;color:var(--dark);font-size:0.9rem;padding:14px 18px 14px 40px"></div>
   </div>
 
   <!-- LIVE HEALTH PROFILE (the unified hub) -->
@@ -414,7 +425,7 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
       </div>
     </div>
     <input type="range" min="100" max="500" value="200" step="25" id="budgetSlider" oninput="onBudgetChange(this.value)" dir="ltr" style="direction:ltr">
-    <div class="budget-markers">
+    <div class="budget-markers" dir="ltr">
       <span>100</span><span id="bEco">اقتصادي</span><span id="bPrem">مميز</span><span>500</span>
     </div>
   </div>
@@ -504,6 +515,20 @@ input[type=range]{width:100%;accent-color:var(--orange);cursor:pointer}
 <div class="toast" id="toast"></div>
 
 <script>
+// Production hardening pass (independent audit finding F6.1, 2026-08-14):
+// this legacy page doesn't include hpds.js, so it gets its own copy of the
+// same escape utility rather than a cross-file dependency. Applied to every
+// value in this page that originates from AI generation, free-text user
+// input, or admin-editable catalog data — real, confirmed or credible
+// stored-XSS sources, per the independent audit's exhaustive trace.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 let currentLang = 'ar';
 let currentDiet = 'atkins';
 let currentBudget = 200;
@@ -525,8 +550,8 @@ const T = {
     rateTitle:'⭐ قيّم الخدمة', rateBtn:'إرسال التقييم ⭐',
     urgentAlert:'⚠️ 3 تحاليل عاجلة يجب إجراؤها قبل بدء النظام وبعد أسبوعين',
     cheapest:'الأرخص', savings:'توفير',
-    inviteBtn:'📤 ادعُ صديق', inviteShareTitle:'DietHub - نظامك الغذائي المخصص',
-    inviteShareText:'جربت DietHub وحبيته! سجل مجاناً واحصل على خطتك الغذائية المخصصة:',
+    inviteBtn:'📤 ادعُ صديق', inviteShareTitle:'Health Pace - نظامك الغذائي المخصص',
+    inviteShareText:'جربت Health Pace وحبيته! سجل مجاناً واحصل على خطتك الغذائية المخصصة:',
     inviteCopied:'✓ تم نسخ الرابط! شاركه مع أصدقائك',
     beginner:'مبتدئ', intermediate:'متوسط', advanced:'متقدم',
     days:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'],
@@ -544,8 +569,8 @@ const T = {
     rateTitle:'⭐ Rate Our Service', rateBtn:'Submit Rating ⭐',
     urgentAlert:'⚠️ 3 urgent tests required before starting your diet and after 2 weeks',
     cheapest:'Cheapest', savings:'Save',
-    inviteBtn:'📤 Invite a Friend', inviteShareTitle:'DietHub - Your Personalized Diet Plan',
-    inviteShareText:'I tried DietHub and loved it! Sign up free and get your own personalized diet plan:',
+    inviteBtn:'📤 Invite a Friend', inviteShareTitle:'Health Pace - Your Personalized Diet Plan',
+    inviteShareText:'I tried Health Pace and loved it! Sign up free and get your own personalized diet plan:',
     inviteCopied:'✓ Link copied! Share it with your friends',
     beginner:'Beginner', intermediate:'Intermediate', advanced:'Advanced',
     days:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
@@ -679,14 +704,72 @@ async function init() {
   loadActivityPlan();
   setLevel(document.querySelector('.level-btn.active'), 'beginner');
   loadHealthProfile();
+  loadAppBanner();
 }
+
+// In-app promo banner — dismissed per-browser via localStorage so a
+// returning user doesn't see the same one every visit. Picks one real
+// banner (not a rotation like the landing page, since this is seen
+// repeatedly by the same person rather than once by a new visitor).
+let _appBanners = [];
+async function loadAppBanner() {
+  const dismissedId = localStorage.getItem('dh_app_banner_dismissed');
+  try {
+    const r = await fetch('/diet/api/banners?placement=app');
+    if (!r.ok) return;
+    _appBanners = (await r.json()).filter(b => b.id !== dismissedId);
+    if (!_appBanners.length) return;
+    const b = _appBanners[Math.floor(Math.random() * _appBanners.length)];
+    const isAr = (window.currentLang || currentLang) !== 'en';
+    const imgEl = document.getElementById('appBannerImg');
+    const textEl = document.getElementById('appBannerText');
+    // Both languages have real artwork now (image / image_en) — the text
+    // card only remains as a fallback for a banner missing artwork.
+    const imgSrc = isAr ? b.image : b.image_en;
+    if (imgSrc) {
+      imgEl.src = imgSrc; imgEl.alt = isAr ? b.title_ar : b.title_en; imgEl.style.display = 'block';
+      textEl.style.display = 'none';
+      document.getElementById('appBanner').style.background = '';
+      document.getElementById('appBanner').style.aspectRatio = '1200/675';
+    } else {
+      textEl.textContent = `${b.icon} ${isAr ? b.title_ar : b.title_en} — ${isAr ? b.subtitle_ar : b.subtitle_en}`;
+      textEl.style.display = 'block';
+      imgEl.style.display = 'none';
+      document.getElementById('appBanner').style.aspectRatio = 'auto';
+      document.getElementById('appBanner').style.background = 'linear-gradient(135deg,var(--lime),var(--orange))';
+    }
+    document.getElementById('appBanner').dataset.id = b.id;
+    document.getElementById('appBanner').dataset.cta = b.ctaAction || '';
+    document.getElementById('appBanner').style.display = 'block';
+  } catch (e) { /* promotional only — never worth surfacing an error for */ }
+}
+function dismissAppBanner(ev) {
+  ev.stopPropagation();
+  const el = document.getElementById('appBanner');
+  localStorage.setItem('dh_app_banner_dismissed', el.dataset.id);
+  el.style.display = 'none';
+}
+function appBannerClick() {
+  // The banner only ever shows inside the home panel to begin with, so
+  // there's no other panel to navigate away from — just scroll to the real
+  // health-profile section it's promoting (wearables/AI-coach features both
+  // live in or near there). 'register' CTA doesn't apply to an
+  // already-logged-in user, so it's a no-op here on purpose.
+  document.getElementById('hpBody')?.scrollIntoView({ behavior: 'smooth' });
+}
+window.dismissAppBanner = dismissAppBanner;
+window.appBannerClick = appBannerClick;
 
 // Live health-profile card — reads the unified hub (/api/health-profile) and
 // shows the user's real derived targets and risk flags instead of static text.
+let _hpTargets = null; // last-loaded targets, needed by the calorie slider handlers below
+let calSliderTimer = null;
+
 function renderHealthProfile(hp) {
   const lang = (window.currentLang || currentLang || 'ar');
   const en = lang === 'en';
   const d = hp.demographics, t = hp.targets, w = hp.wearable;
+  _hpTargets = t;
   const stat = (val, label, color) =>
     `<div class="card"><div class="stat-val" style="color:${color}">${val}</div><div class="stat-label">${label}</div></div>`;
   const bmiLabel = en ? `BMI${d.bmiCategory ? ' · ' + d.bmiCategory.en : ''}` : `كتلة الجسم${d.bmiCategory ? ' · ' + d.bmiCategory.ar : ''}`;
@@ -698,6 +781,67 @@ function renderHealthProfile(hp) {
         return `<div class="alert ${cls}">${icon} ${en ? f.en : f.ar}</div>`;
       }).join('')
     : `<div class="alert alert-success">✅ ${en ? 'No health flags — great work!' : 'لا توجد تنبيهات — أداء رائع!'}</div>`;
+
+  // Calorie slider — real safe range from the server (t.calorieMin/Max),
+  // two modes matching the "Health Pace suggestion vs my own number" request:
+  // clicking the recommended button snaps back to t.recommendedCalorieTarget
+  // and mode='recommended'; dragging the slider switches to mode='custom'.
+  // Same debounced-save pattern already used by the budget slider above.
+  //
+  // Preferred-zone visualization: NOT a background/overlay trick behind the
+  // native <input type="range"> (tried that — verified with a live
+  // screenshot that Chrome ignores an inline background on the native
+  // track without real ::-webkit-slider-runnable-track stylesheet rules).
+  // Instead this is a separate, independently-rendered indicator bar placed
+  // right below the real slider — plain positioned <div>s with percentage
+  // widths, which render identically in every browser because nothing is
+  // fighting native control internals. Paired with a live status line
+  // (updateCalorieStatus()) that reads the slider's own oninput event, so
+  // "is this a good choice" feedback doesn't depend on styling the track at
+  // all — a completely different, safer mechanism than the trend line.
+  const deficitNote = t.deficitPct
+    ? (en
+        ? `Estimated need: ${fmt(t.tdee)} kcal · ${t.deficitPct > 0 ? 'Surplus' : 'Deficit'}: ${Math.abs(t.deficitPct)}%`
+        : `الاحتياج التقديري: ${fmt(t.tdee)} سعرة · ${t.deficitPct > 0 ? 'فائض' : 'عجز'}: ${Math.abs(t.deficitPct)}%`)
+    : '';
+  const pct = v => Math.max(0, Math.min(100, ((v - t.calorieMin) / (t.calorieMax - t.calorieMin)) * 100));
+  const indicatorHtml = (t.preferredCalorieMin != null && t.calorieMax > t.calorieMin) ? `
+      <div class="range-indicator" dir="ltr" style="position:relative;height:6px;background:var(--border);border-radius:3px;margin-top:10px">
+        <div style="position:absolute;top:0;height:100%;border-radius:3px;background:var(--lime);opacity:0.55;left:${pct(t.preferredCalorieMin)}%;width:${pct(t.preferredCalorieMax) - pct(t.preferredCalorieMin)}%"></div>
+      </div>` : '';
+
+  const sliderHtml = (t.calorieMin != null && t.calorieMax != null) ? `
+    <div class="budget-section" style="margin-top:14px">
+      <div class="budget-header">
+        <div>
+          <div class="budget-title">${en ? '🔥 Daily Calorie Target' : '🔥 هدف السعرات اليومي'}</div>
+          <div class="budget-sub" id="calModeNote">${t.calorieMode === 'custom'
+            ? (en ? 'You chose this number yourself' : 'اخترت هذا الرقم بنفسك')
+            : (en ? 'Health Pace recommendation' : 'توصية Health Pace')}</div>
+        </div>
+        <div>
+          <div class="budget-value" id="calDisplay">${fmt(t.calorieTarget)} ${en ? 'kcal' : 'سعرة'}</div>
+          <div class="budget-sub">${en ? 'Recommended: ' : 'التوصية: '}${fmt(t.recommendedCalorieTarget)}</div>
+        </div>
+      </div>
+      ${deficitNote ? `<div class="budget-sub" style="margin-bottom:8px">${deficitNote}</div>` : ''}
+      <input type="range" min="${t.calorieMin}" max="${t.calorieMax}" step="25" value="${t.calorieTarget}"
+        id="calSlider" oninput="onCalorieSliderChange(this.value)" dir="ltr" style="direction:ltr">
+      ${indicatorHtml}
+      <div class="budget-markers" dir="ltr">
+        <span>${fmt(t.calorieMin)}</span>
+        <button type="button" class="btn-rate" style="padding:4px 12px;font-size:0.78rem" onclick="useRecommendedCalories()">
+          ${en ? '↺ Use Health Pace recommendation' : '↺ استخدام توصية Health Pace'}</button>
+        <span>${fmt(t.calorieMax)}</span>
+      </div>
+      ${t.preferredCalorieMin != null ? `<div class="budget-sub" dir="ltr" style="text-align:center;margin-top:4px">${en ? 'Preferred zone' : 'المنطقة المفضلة'}: ${fmt(t.preferredCalorieMin)}–${fmt(t.preferredCalorieMax)}</div>` : ''}
+      <div class="budget-sub" id="calStatus" style="text-align:center;margin-top:8px;font-weight:700"></div>
+    </div>
+    <div class="meal-check" style="margin-top:10px">
+      <input type="checkbox" id="creatineCheck" ${t.takesCreatine ? 'checked' : ''} onchange="onCreatineToggle(this.checked)">
+      <label for="creatineCheck" style="cursor:pointer">${en ? '💊 I take creatine (adjusts water & protein guidance)' : '💊 أتناول كرياتين (يعدّل هدف الماء والبروتين)'}</label>
+    </div>` : '';
+
   return `
     <div class="grid-3" style="margin-bottom:12px">
       ${stat(d.bmi != null ? d.bmi : '—', bmiLabel, 'var(--green)')}
@@ -709,8 +853,58 @@ function renderHealthProfile(hp) {
       ${stat(fmt(t.tdee), en ? 'Est. daily need' : 'الاحتياج التقديري', 'var(--orange)')}
       ${stat(w && w.avgSteps != null ? fmt(w.avgSteps) : '—', en ? 'Avg steps (7d)' : 'متوسط الخطوات', 'var(--coral)')}
     </div>
-    <div class="card-title" style="font-size:0.92rem;margin:6px 0">${en ? '🔔 Health flags' : '🔔 تنبيهات صحية'}</div>
+    ${sliderHtml}
+    <div class="card-title" style="font-size:0.92rem;margin:16px 0 6px">${en ? '🔔 Health flags' : '🔔 تنبيهات صحية'}</div>
     ${flags}`;
+}
+
+// Live feedback that doesn't depend on styling the slider track at all —
+// just reads the current value against the real preferred/safe range
+// already computed server-side and updates a plain text line. Works
+// identically in every browser because it's not fighting native control
+// rendering the way the earlier gradient attempt was.
+function updateCalorieStatus(val) {
+  if (!_hpTargets || _hpTargets.preferredCalorieMin == null) return;
+  const el = document.getElementById('calStatus');
+  if (!el) return;
+  const en = (window.currentLang || currentLang) === 'en';
+  const v = parseInt(val);
+  const t = _hpTargets;
+  let icon, text, color;
+  if (v < t.preferredCalorieMin) {
+    icon = '🔵'; color = 'var(--green)';
+    text = en ? 'Below your preferred range — still safe' : 'أقل من نطاقك المفضل — لكن ما زال آمناً';
+  } else if (v > t.preferredCalorieMax) {
+    icon = '🟠'; color = 'var(--orange)';
+    text = en ? 'Above preferred, still within the safe range' : 'أعلى من المفضل، لكن ضمن النطاق الآمن';
+  } else {
+    icon = '🟢'; color = 'var(--green)';
+    text = en ? 'Excellent — within your preferred range' : 'ممتاز — ضمن نطاقك المفضل';
+  }
+  el.textContent = `${icon} ${text}`;
+  el.style.color = color;
+}
+function onCalorieSliderChange(val) {
+  const en = (window.currentLang || currentLang) === 'en';
+  document.getElementById('calDisplay').textContent = val + (en ? ' kcal' : ' سعرة');
+  document.getElementById('calModeNote').textContent = en ? 'You chose this number yourself' : 'اخترت هذا الرقم بنفسك';
+  updateCalorieStatus(val);
+  clearTimeout(calSliderTimer);
+  calSliderTimer = setTimeout(() => saveCalorieChoice('custom', parseInt(val)), 500);
+}
+function useRecommendedCalories() {
+  if (!_hpTargets) return;
+  document.getElementById('calSlider').value = _hpTargets.recommendedCalorieTarget;
+  onCalorieSliderChange(_hpTargets.recommendedCalorieTarget); // updates the UI + saves via the same debounced path
+}
+function onCreatineToggle(checked) {
+  fetch('/diet/api/profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ takesCreatine: checked }) })
+    .then(() => loadHealthProfile()); // reload so the water/protein guidance reflects the change immediately
+}
+async function saveCalorieChoice(mode, customValue) {
+  await fetch('/diet/api/profile', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ calorieMode: mode, customCalorieTarget: customValue }) });
+  loadHealthProfile(); // re-fetch so the server-clamped value (if the slider's own min/max were somehow bypassed) is what's actually shown
 }
 async function loadHealthProfile() {
   const el = document.getElementById('hpBody');
@@ -719,7 +913,9 @@ async function loadHealthProfile() {
   try {
     const r = await fetch('/diet/api/health-profile');
     if (!r.ok) { el.style.display = 'none'; if (card) card.style.display = 'none'; return; }
-    el.innerHTML = renderHealthProfile(await r.json());
+    const hp = await r.json();
+    el.innerHTML = renderHealthProfile(hp);
+    if (hp.targets?.calorieTarget != null) updateCalorieStatus(hp.targets.calorieTarget); // show status on load, not just after dragging
   } catch (e) { el.style.display = 'none'; if (card) card.style.display = 'none'; }
 }
 
@@ -835,7 +1031,10 @@ function renderMeals() {
   day.meals.forEach((meal, idx) => {
     const typeMap = { 'إفطار':'breakfast', 'Breakfast':'breakfast', 'غداء':'lunch', 'Lunch':'lunch', 'عشاء':'dinner', 'Dinner':'dinner', 'سناك':'snack', 'Snack':'snack' };
     const typeClass = meal.mealTypeKey || typeMap[meal.type] || typeMap[meal.typeEn] || 'snack';
-    const mealName = isAr ? meal.name : meal.nameEn;
+    // meal.name/nameEn can be AI-regenerated content (POST /api/meal-plan/swap
+    // -> generateMealAlternative()) — escaped per the hardening pass, same
+    // class of finding as the chat plan-card sink in hpds.js.
+    const mealName = escapeHtml(isAr ? meal.name : meal.nameEn);
     const mealType = isAr ? meal.type : meal.typeEn;
     const ingTags = meal.ingredients.map(ing => {
       const qty = ing.qty;
@@ -863,7 +1062,7 @@ function renderMeals() {
           </button>
           <div id="swapChips_${idx}" style="display:none;margin-top:6px;flex-wrap:wrap;gap:6px" class="swap-chips-row">
             ${Object.entries({tastier:isAr?'ألذ 😋':'Tastier 😋',spicy:isAr?'حار 🌶️':'Spicy 🌶️',faster:isAr?'أسرع تحضير ⏱️':'Faster ⏱️',cheaper:isAr?'أرخص 💰':'Cheaper 💰'}).map(([key,label])=>`
-            <button class="swap-chip" onclick="swapMeal('${meal.mealTypeKey||typeClass}','${key}',${idx})" style="font-size:0.72rem;padding:4px 10px;border-radius:12px;border:1px solid var(--lime);background:rgba(200,245,96,0.15);cursor:pointer">${label}</button>`).join('')}
+            <button class="swap-chip" onclick="swapMeal('${meal.mealTypeKey||typeClass}','${key}',${idx})" style="font-size:0.72rem;padding:4px 10px;border-radius:12px;border:1px solid var(--lime);background:rgba(169,124,47,0.15);cursor:pointer">${label}</button>`).join('')}
           </div>
         </div>` : ''}
       </td>
@@ -903,34 +1102,65 @@ async function swapMeal(mealType, preference, idx) {
   }
 }
 
+// Per-item/per-store freshness, not one blanket date for the whole table -
+// a price sitting next to "Last updated: <today>" used to imply every cell
+// was checked today, when in practice most weekly runs only successfully
+// refresh a minority of items (the rest keep their last known-good price,
+// on purpose - see price_scraper.js - rather than being overwritten blind).
+// This makes that real state visible instead of implied-uniform.
+function freshnessDot(itemId, storeName, freshness, isAr) {
+  const f = freshness?.[itemId]?.[storeName];
+  if (!f || !f.lastSuccess) return `<span title="${isAr?'لم يُحدَّث بعد':'Never updated'}" style="opacity:0.4">⚪</span>`;
+  const ageDays = (Date.now() - new Date(f.lastSuccess).getTime()) / 86400000;
+  if (ageDays < 1) return `<span title="${isAr?'محدّث اليوم':'Updated today'}">🟢</span>`;
+  if (ageDays <= 7) return `<span title="${isAr?'محدّث خلال أسبوع':'Updated this week'}">🟡</span>`;
+  if (ageDays <= 30) return `<span title="${isAr?'قديم (أكثر من أسبوع)':'Aging (over a week old)'}">🟠</span>`;
+  return `<span title="${isAr?'قديم جداً (أكثر من شهر)':'Stale (over a month old)'}">🔴</span>`;
+}
+
 async function loadPrices() {
   const data = await fetch('/diet/api/food-prices').then(r=>r.json());
   const isAr = currentLang === 'ar';
-  document.getElementById('pDate').textContent = (isAr?'آخر تحديث: ':'Last updated: ') + data.lastUpdated;
+  document.getElementById('pDate').textContent = (isAr?'آخر تشغيل: ':'Last run: ') + data.lastUpdated
+    + (isAr?' — لكل سعر تاريخ تحديثه الفعلي أدناه':' — each price shows its own real update status below');
   const catMap = { protein:'cat-protein', dairy:'cat-dairy', vegetables:'cat-vegetables', fats:'cat-fats' };
   const catLabelAr = { protein:'بروتين', dairy:'ألبان', vegetables:'خضار', fats:'دهون' };
   const catLabelEn = { protein:'Protein', dairy:'Dairy', vegetables:'Veggies', fats:'Fats' };
+  // carrefour, royal and talabat were removed entirely - none of the three
+  // can ever get an automated price update (carrefour/talabat block
+  // scrapers outright, royal has no direct website), so showing them next
+  // to a "Last updated" date that only applies to the other 5 was misleading.
+  const storeNames = ['metro','seoudi','gourmet','spinneys','hyperone'];
+  const storeLabelAr = { metro:'مترو', seoudi:'سعودي', gourmet:'جورميه', spinneys:'سبينيس', hyperone:'هايبروان' };
+  const storeLabelEn = { metro:'Metro', seoudi:'Seoudi', gourmet:'Gourmet', spinneys:'Spinneys', hyperone:'HyperOne' };
+  const storeHeaders = storeNames.map(s => `<th>${isAr?storeLabelAr[s]:storeLabelEn[s]}</th>`).join('');
   let html = `<div style="overflow-x:auto"><table class="price-table">
     <thead><tr>
       <th>${isAr?'المنتج':'Product'}</th>
       <th>${isAr?'الكمية للحصة':'Serving Size'}</th>
       <th>${isAr?'القطاع':'Category'}</th>
-      <th>${isAr?'كارفور':'Carrefour'}</th>
-      <th>${isAr?'مترو':'Metro'}</th>
-      <th>${isAr?'رويال':'Royal'}</th>
-      <th>${isAr?'تلبات':'Talabat'}</th>
+      ${storeHeaders}
       <th>${isAr?'الأرخص':'Cheapest'}</th>
       <th>${isAr?'توفير':'Savings'}</th>
     </tr></thead><tbody>`;
   (data.items||[]).forEach(item => {
-    const prices = [item.carrefour, item.metro, item.royal, item.talabat].filter(Boolean);
+    // Compare every store actually tracked for this item, not a fixed
+    // subset - the "cheapest"/"savings" badges silently ignored seoudi,
+    // gourmet, spinneys and hyperone before, so a real cheaper price at one
+    // of those never showed even though its column was right there in the
+    // table.
+    const prices = storeNames.map(s => item[s]).filter(Boolean);
     const best = Math.min(...prices);
     const worst = Math.max(...prices);
     const saving = worst - best;
-    const storeNames = ['carrefour','metro','royal','talabat','seoudi','gourmet','spinneys','hyperone'];
-    const storeCells = storeNames.map(s => `<td class="price-cell"${item[s]===best?` style="font-weight:700"`:''}>${item[s]||'—'}<br><span style="font-size:0.65rem;color:var(--muted)">${isAr?'ج':'EGP'}</span></td>`).join('');
+    const storeCells = storeNames.map(s => `<td class="price-cell"${item[s]===best?` style="font-weight:700"`:''}>${freshnessDot(item.id, s, data.freshness, isAr)} ${item[s]||'—'}<br><span style="font-size:0.65rem;color:var(--muted)">${isAr?'ج':'EGP'}</span></td>`).join('');
     html += `<tr>
-      <td><div class="item-name">${isAr?item.name:item.nameEn}</div><div class="item-qty" style="font-size:0.7rem;color:var(--muted)">${isAr?'الوحدة: ':'Unit: '}${item.unit}</div></td>
+      <!-- item.name/nameEn come from food_prices.json, which POST /api/admin/food-prices
+           writes with no shape/content validation (independent audit, backend
+           finding) — escaped defensively so a compromised admin session can't
+           use that unvalidated write path as an XSS vector against every user
+           viewing the price table. -->
+      <td><div class="item-name">${escapeHtml(isAr?item.name:item.nameEn)}</div><div class="item-qty" style="font-size:0.7rem;color:var(--muted)">${isAr?'الوحدة: ':'Unit: '}${escapeHtml(item.unit)}</div></td>
       <td style="font-size:0.78rem;color:var(--muted)">${isAr?item.qtyAr:item.qty}</td>
       <td><span class="category-tag ${catMap[item.category]||'cat-protein'}">${isAr?(catLabelAr[item.category]||item.category):(catLabelEn[item.category]||item.category)}</span></td>
       ${storeCells}
@@ -1119,7 +1349,7 @@ init();
 <div id="chatbot-fab">
   <div id="chatbot-badge">1</div>
   <button id="chatbot-fab-btn" onclick="toggleChatbot()" title="مساعد غذائي ذكي">
-    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--dark)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   </button>
 </div>
 
@@ -1135,12 +1365,16 @@ init();
 <div id="chatbot-window">
   <div id="chatbot-header">
     <div id="chatbot-header-title">🥗 <span id="chatbot-title-text">مساعدك الغذائي الذكي</span></div>
-    <button id="chatbot-close" onclick="toggleChatbot()">✕</button>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button id="chatbot-saved-btn" onclick="toggleSavedSuggestions()" title="اقتراحاتي المحفوظة" style="background:none;border:none;cursor:pointer;color:var(--dark);font-size:1.05rem;padding:0;line-height:1">📂</button>
+      <button id="chatbot-close" onclick="toggleChatbot()">✕</button>
+    </div>
   </div>
   <div id="chatbot-messages"></div>
+  <div id="chatbot-saved-panel" style="display:none;flex:1;overflow-y:auto;padding:16px;max-height:340px"></div>
   <div id="chatbot-input-area">
     <button id="chatbot-send" onclick="sendChatMessage()">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a1a2e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--dark)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
     <input type="text" id="chatbot-input" placeholder="اكتب ردك هنا..." onkeydown="if(event.key==='Enter') sendChatMessage()">
   </div>
@@ -1153,6 +1387,33 @@ init();
   let chatHistory = [];
   let chatOpen = false;
   let questionsLoaded = false;
+  let suggestionsShown = false;
+  let questionsPromise = null; // in-flight loadQuestions() call, if any — awaited by
+                                // sendSuggestion() so a fast tap can't fire a second
+                                // AI call concurrently and have the two replies land
+                                // out of order in the conversation.
+  let savedSuggestionsCache = null; // null = needs a fetch; refetched after any new save
+  let savedPanelOpen = false;
+
+  // Quick-start prompts shown once when the chat first opens, so someone
+  // staring at a blank chat window has a real starting point instead of
+  // needing to think of what to type. Tapping one sends it exactly like the
+  // user typed it themselves — reuses the same sendChatMessage() path, no
+  // separate code to maintain. Fixed set (not AI-generated) on purpose:
+  // predictable, zero extra AI cost, and complements (doesn't replace) the
+  // AI-generated follow-up questions that already load separately.
+  // The two "plan"-tagged suggestions trigger generatePlan mode server-side
+  // (strict JSON output, validated, saved as a labeled AI suggestion — see
+  // /api/chatbot). The other two stay plain conversation on purpose: a
+  // supplement review or hydration tip isn't a "plan" shape, forcing one
+  // would mean inventing a fake structured schema for content that's
+  // naturally just advice.
+  const CHAT_SUGGESTIONS = [
+    { ar: '📋 ساعدني في تنظيم وجباتي الأسبوعية', en: '📋 Help me plan my weekly meals', plan: 'meals' },
+    { ar: '🏃 اقترح خطة نشاط يومية تناسبني', en: '🏃 Suggest a daily activity plan for me', plan: 'activity' },
+    { ar: '💊 راجع مكملاتي الغذائية', en: '💊 Review my supplements' },
+    { ar: '💧 كيف أحسّن ترطيبي اليومي؟', en: '💧 How do I improve my daily hydration?' },
+  ];
 
   function isChatbotPlan(plan) {
     return window._betaMode || ['vip','elite'].includes(plan);
@@ -1197,7 +1458,34 @@ init();
     win.style.display = 'flex';
     chatOpen = true;
     localStorage.setItem(PLAN_KEY, Date.now().toString());
-    if (!questionsLoaded) loadQuestions();
+    if (!questionsLoaded) questionsPromise = loadQuestions();
+    if (!suggestionsShown) showSuggestionChips();
+  }
+
+  function showSuggestionChips() {
+    suggestionsShown = true;
+    const en = currentLang === 'en';
+    const wrap = document.createElement('div');
+    wrap.id = 'cb-suggestions';
+    wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 8px';
+    CHAT_SUGGESTIONS.forEach(s => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = en ? s.en : s.ar;
+      btn.style.cssText = 'background:rgba(169,124,47,0.12);border:1px solid rgba(169,124,47,0.4);color:var(--lime);border-radius:14px;padding:6px 12px;font-family:"Readex Pro","IBM Plex Sans Arabic",sans-serif;font-size:0.76rem;cursor:pointer;white-space:nowrap';
+      btn.onclick = () => sendSuggestion(en ? s.en : s.ar, s.plan);
+      wrap.appendChild(btn);
+    });
+    document.getElementById('chatbot-messages').appendChild(wrap);
+  }
+
+  async function sendSuggestion(text, plan) {
+    const chips = document.getElementById('cb-suggestions');
+    if (chips) chips.remove(); // one shot — don't clutter the conversation after it's used
+    if (questionsPromise) await questionsPromise; // let the auto-generated questions finish first, so replies never interleave
+    const input = document.getElementById('chatbot-input');
+    input.value = text;
+    sendChatMessage(plan);
   }
 
   function toggleChatbot() {
@@ -1211,6 +1499,67 @@ init();
     }
   }
 
+  // Saved AI suggestions panel — swaps into the same space the messages use,
+  // rather than a separate window, to keep the widget's footprint the same.
+  async function toggleSavedSuggestions() {
+    const panel = document.getElementById('chatbot-saved-panel');
+    const msgs = document.getElementById('chatbot-messages');
+    const inputArea = document.getElementById('chatbot-input-area');
+    savedPanelOpen = !savedPanelOpen;
+    if (savedPanelOpen) {
+      msgs.style.display = 'none';
+      inputArea.style.display = 'none';
+      panel.style.display = 'block';
+      await renderSavedSuggestions();
+    } else {
+      panel.style.display = 'none';
+      msgs.style.display = 'flex';
+      inputArea.style.display = 'flex';
+    }
+  }
+
+  async function renderSavedSuggestions() {
+    const panel = document.getElementById('chatbot-saved-panel');
+    const en = currentLang === 'en';
+    panel.innerHTML = `<div style="text-align:center;color:#aaa;font-size:0.82rem">${en ? 'Loading…' : 'جارٍ التحميل...'}</div>`;
+    if (savedSuggestionsCache == null) {
+      try {
+        const r = await fetch('/diet/api/ai-suggestions');
+        savedSuggestionsCache = r.ok ? await r.json() : [];
+      } catch (e) { savedSuggestionsCache = []; }
+    }
+    if (!savedSuggestionsCache.length) {
+      panel.innerHTML = `<div style="text-align:center;color:#aaa;font-size:0.82rem;padding:20px 0">${en ? 'No saved suggestions yet — try a suggestion chip like "Help me plan my weekly meals."' : 'لا توجد اقتراحات محفوظة بعد — جرّب أحد الاقتراحات مثل "ساعدني في تنظيم وجباتي الأسبوعية".'}</div>`;
+      return;
+    }
+    panel.innerHTML = savedSuggestionsCache.map(s => {
+      const daysHtml = s.content.days.map(d => {
+        if (s.type === 'meals') {
+          const mealsHtml = d.meals.map(m => `<div style="font-size:0.76rem;color:#ccc;padding:2px 0">• ${m.type}: ${m.name} (${m.cal} ${en?'kcal':'سعرة'})</div>`).join('');
+          return `<div style="margin-top:6px"><div style="font-size:0.8rem;color:var(--lime);font-weight:700">${d.day}</div>${mealsHtml}</div>`;
+        }
+        return `<div style="margin-top:6px"><div style="font-size:0.8rem;color:var(--lime);font-weight:700">${d.day}</div><div style="font-size:0.76rem;color:#ccc">${d.activity}${d.estCalBurn ? ' — ' + d.estCalBurn + (en?' kcal':' سعرة') : ''}</div></div>`;
+      }).join('');
+      return `
+        <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(169,124,47,0.3);border-radius:12px;padding:12px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div>
+              <div style="font-weight:700;color:#fff;font-size:0.88rem">${s.title}</div>
+              <div style="font-size:0.7rem;color:var(--lime);margin-top:2px">🤖 ${en ? 'AI suggestion — not verified guidance' : 'اقتراح ذكاء اصطناعي — غير موثّق'}</div>
+            </div>
+            <button onclick="deleteSuggestion('${s.id}')" style="background:none;border:none;color:#ff8a8a;cursor:pointer;font-size:0.9rem;flex-shrink:0">✕</button>
+          </div>
+          ${daysHtml}
+        </div>`;
+    }).join('');
+  }
+
+  async function deleteSuggestion(id) {
+    savedSuggestionsCache = null;
+    try { await fetch('/diet/api/ai-suggestions/' + id, { method: 'DELETE' }); } catch (e) {}
+    renderSavedSuggestions();
+  }
+
   async function loadQuestions() {
     questionsLoaded = true;
     addBotMessage(currentLang==='ar'?'أهلاً! أنا مساعدك الغذائي الذكي 🥗 دعني أطرح عليك بعض أسئلة المتابعة...':'Hello! I am your AI nutrition assistant 🥗 Let me ask you some follow-up questions...');
@@ -1219,7 +1568,7 @@ init();
       const r = await fetch('/diet/api/chatbot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ generateQuestions: true, messages: [] })
+        body: JSON.stringify({ generateQuestions: true, messages: [], lang: currentLang })
       });
       const d = await r.json();
       removeTyping();
@@ -1233,36 +1582,45 @@ init();
     }
   }
 
-  async function sendChatMessage() {
+  async function sendChatMessage(generatePlan) {
     const input = document.getElementById('chatbot-input');
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
+    const chips = document.getElementById('cb-suggestions');
+    if (chips) chips.remove(); // any message sent (typed or tapped) retires the suggestions
     addUserMessage(text);
     chatHistory.push({ role: 'user', content: text });
     addBotMessage('...', true);
     try {
+      const body = { messages: chatHistory, lang: currentLang };
+      if (generatePlan) body.generatePlan = generatePlan;
       const r = await fetch('/diet/api/chatbot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: chatHistory })
+        body: JSON.stringify(body)
       });
       const d = await r.json();
       removeTyping();
       if (d.reply) {
-        addBotMessage(d.reply);
+        addBotMessage(d.reply, false, !!d.savedSuggestion);
         chatHistory.push({ role: 'assistant', content: d.reply });
       }
+      if (d.savedSuggestion) savedSuggestionsCache = null; // stale — refetch next time the panel opens
     } catch(e) {
       removeTyping();
       addBotMessage('خطأ في الاتصال، حاول مجدداً.');
     }
   }
 
-  function addBotMessage(text, isTyping=false) {
+  function addBotMessage(text, isTyping=false, isSaved=false) {
     const div = document.createElement('div');
     div.className = 'cb-msg bot' + (isTyping ? ' typing' : '');
     if (isTyping) div.id = 'cb-typing';
+    // Visually distinct when this reply resulted in a saved AI suggestion —
+    // a real signal, not decoration, so it's obviously different from a
+    // normal chat reply.
+    if (isSaved) div.style.cssText = 'border:1px solid rgba(169,124,47,0.5);background:rgba(169,124,47,0.08)';
     div.textContent = text;
     const msgs = document.getElementById('chatbot-messages');
     msgs.appendChild(div);
@@ -1287,6 +1645,8 @@ init();
   window.dismissPopup = dismissPopup;
   window.openChatbotFromPopup = openChatbotFromPopup;
   window.sendChatMessage = sendChatMessage;
+  window.toggleSavedSuggestions = toggleSavedSuggestions;
+  window.deleteSuggestion = deleteSuggestion;
 
   // Hook into existing init — wait for me object
   const origInit = window.init;
@@ -1410,9 +1770,9 @@ async function initNutritionTracker() {
       <div style="font-size:0.85rem;font-weight:700;color:var(--dark);margin-bottom:4px">${isAr?'🧠 أضف طعاماً تلقائياً':'🧠 Add Custom Food'}</div>
       <div style="font-size:0.75rem;color:var(--muted);margin-bottom:10px">${isAr?'اكتب اسم الطعام والوزن، وهنحسب لك السعرات والبروتين والكربوهيدرات والدهون تلقائياً':"Type the food name and weight, we'll calculate calories, protein, carbs & fat automatically"}</div>
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end">
-        <input type="text" id="customFood" placeholder="${isAr?'اسم الطعام (مثال: صدر فرخة مشوي)':'Food name (e.g. grilled chicken breast)'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:Cairo,sans-serif;font-size:0.85rem;outline:none">
+        <input type="text" id="customFood" placeholder="${isAr?'اسم الطعام (مثال: صدر فرخة مشوي)':'Food name (e.g. grilled chicken breast)'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-size:0.85rem;outline:none">
         <input type="number" id="customWeight" placeholder="${isAr?'وزن (جم)':'Weight (g)'}" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;width:90px;outline:none">
-        <button id="addCustomFoodBtn" onclick="addCustomFood()" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-weight:700;white-space:nowrap">${isAr?'احسب':'Calculate'}</button>
+        <button id="addCustomFoodBtn" onclick="addCustomFood()" style="padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-weight:700;white-space:nowrap">${isAr?'احسب':'Calculate'}</button>
       </div>
       <div id="customFoodMsg" style="font-size:0.78rem;margin-top:6px;display:none"></div>
       <div id="customFoodManual" style="display:none;margin-top:10px;padding:10px;background:var(--bg);border-radius:10px">
@@ -1423,12 +1783,12 @@ async function initNutritionTracker() {
           <input type="number" id="manCarbs" placeholder="${isAr?'كارب':'Carbs'}" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;outline:none">
           <input type="number" id="manFat" placeholder="${isAr?'دهون':'Fat'}" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;outline:none">
         </div>
-        <button onclick="addCustomFoodManual()" style="width:100%;padding:8px;background:var(--dark);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif;font-weight:700;font-size:0.82rem">${isAr?'إضافة يدوياً':'Add Manually'}</button>
+        <button onclick="addCustomFoodManual()" style="width:100%;padding:8px;background:var(--dark);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-weight:700;font-size:0.82rem">${isAr?'إضافة يدوياً':'Add Manually'}</button>
       </div>
       <div id="customFoodList" style="margin-top:8px"></div>
     </div>
 
-    <button onclick="saveNutritionLog()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">${isAr?'حفظ سجل اليوم ✓':"Save Today's Log ✓"}</button>
+    <button onclick="saveNutritionLog()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);border:none;border-radius:12px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">${isAr?'حفظ سجل اليوم ✓':"Save Today's Log ✓"}</button>
   </div>
 
   <!-- Graph -->
@@ -1547,8 +1907,9 @@ function renderCustomFoodList() {
   const el = document.getElementById('customFoodList');
   if (!el) return;
   el.innerHTML = (window._customFoods||[]).map((f,i) =>
+    // f.name is free-typed user input — escaped per the hardening pass.
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:0.82rem">
-      <span>${f.name}${f.weightGrams?` (${f.weightGrams}g)`:''} — ${f.cal} kcal · P:${f.protein}g · C:${f.carbs||0}g · F:${f.fat||0}g</span>
+      <span>${escapeHtml(f.name)}${f.weightGrams?` (${f.weightGrams}g)`:''} — ${f.cal} kcal · P:${f.protein}g · C:${f.carbs||0}g · F:${f.fat||0}g</span>
       <button onclick="removeCustomFood(${i})" style="background:none;border:none;color:var(--coral);cursor:pointer;font-size:0.9rem">✕</button>
     </div>`
   ).join('');
@@ -1661,7 +2022,7 @@ async function initLabTracker() {
         <div style="font-size:2rem;margin-bottom:8px">🔒</div>
         <div style="font-weight:700;color:var(--dark);margin-bottom:8px">${isAr?'متاح لأعضاء VIP و Elite فقط':'Available for VIP & Elite Members Only'}</div>
         <div style="font-size:0.85rem;color:var(--muted);margin-bottom:16px">${isAr?'تابع نتائج تحاليلك الدورية مع تحليل ذكي يربط نظامك الغذائي بصحتك':'Track your lab results with AI analysis connecting your diet to your health'}</div>
-        <a href="/diet/payment" style="display:inline-block;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);padding:10px 24px;border-radius:10px;text-decoration:none;font-weight:700">${isAr?'ترقية الآن ←':'Upgrade Now →'}</a>
+        <a href="/diet/payment" style="display:inline-block;background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);padding:10px 24px;border-radius:10px;text-decoration:none;font-weight:700">${isAr?'ترقية الآن ←':'Upgrade Now →'}</a>
       </div>
     </div>`;
     return;
@@ -1673,18 +2034,27 @@ async function initLabTracker() {
     labResults = await r.json();
   } catch(e) { labResults = []; }
 
-  const labTests = [
-    {id:'glucose', label_ar:'سكر الدم (Glucose)', label_en:'Blood Glucose', unit:'mg/dL', normal:'70-100', min:40, max:400},
-    {id:'hba1c', label_ar:'HbA1c', label_en:'HbA1c', unit:'%', normal:'<5.7', min:3, max:15},
-    {id:'cholesterol', label_ar:'الكوليسترول الكلي', label_en:'Total Cholesterol', unit:'mg/dL', normal:'<200', min:50, max:400},
-    {id:'ldl', label_ar:'LDL (الكوليسترول الضار)', label_en:'LDL Cholesterol', unit:'mg/dL', normal:'<100', min:30, max:300},
-    {id:'hdl', label_ar:'HDL (الكوليسترول النافع)', label_en:'HDL Cholesterol', unit:'mg/dL', normal:'>40', min:10, max:150},
-    {id:'triglycerides', label_ar:'الدهون الثلاثية', label_en:'Triglycerides', unit:'mg/dL', normal:'<150', min:30, max:600},
-    {id:'creatinine', label_ar:'كرياتينين', label_en:'Creatinine', unit:'mg/dL', normal:'0.6-1.2', min:0, max:15},
-    {id:'tsh', label_ar:'TSH (الغدة الدرقية)', label_en:'TSH', unit:'mIU/L', normal:'0.4-4.0', min:0, max:20},
-    {id:'hemoglobin', label_ar:'هيموغلوبين', label_en:'Hemoglobin', unit:'g/dL', normal:'M:13.5-17.5', min:5, max:25},
-    {id:'vitd', label_ar:'فيتامين D', label_en:'Vitamin D', unit:'ng/mL', normal:'30-100', min:0, max:150},
-  ];
+  // Was a hardcoded array duplicating server.js's (now-removed) LAB_FLAG_RULES
+  // — fetched from the database instead, the one real source of truth for
+  // this data now (see db.js's lab_tests/lab_reference_ranges tables and
+  // GET /api/lab-reference). Mapped into the exact same {id,label_ar,
+  // label_en,unit,normal} shape this function already expected, so nothing
+  // below this block needed to change. Empty array on failure — the manual-
+  // entry grid just renders with no fields rather than falling back to a
+  // second hardcoded copy of the same data.
+  let labTests = [];
+  try {
+    const rr = await fetch('/diet/api/lab-reference');
+    const rd = await rr.json();
+    labTests = (rd.tests || []).map(t => {
+      const range = (t.reference_ranges || []).find(r => r.population === 'adult_general') || t.reference_ranges?.[0];
+      const normal = !range ? '' :
+        range.range_low != null && range.range_high != null ? `${range.range_low}-${range.range_high}` :
+        range.range_low != null ? `>${range.range_low}` :
+        range.range_high != null ? `<${range.range_high}` : '';
+      return { id: t.test_id, label_ar: t.test_name_ar, label_en: t.test_name, unit: t.unit, normal };
+    });
+  } catch (e) { labTests = []; }
 
   const latest = labResults[0] || {};
 
@@ -1713,9 +2083,12 @@ async function initLabTracker() {
           <div style="font-weight:700;color:var(--dark)">${isAr?'🤖 تحليل الذكاء الاصطناعي':'🤖 AI Analysis'}</div>
           <span class="lab-status-${latest.analysis.status||'good'}">${latest.analysis.status==='good'?(isAr?'جيد':'Good'):latest.analysis.status==='warning'?(isAr?'تحذير':'Warning'):(isAr?'حرج':'Critical')}</span>
         </div>
-        <p style="color:#555;line-height:1.7;margin:0 0 8px">${isAr?latest.analysis.analysis_ar:latest.analysis.analysis_en}</p>
+        <!-- analysis_ar/en and recommendations_ar/en are AI-generated
+             (server.js's lab-result analysis via Anthropic vision) — real
+             stored-XSS source per the hardening pass, escaped below. -->
+        <p style="color:#555;line-height:1.7;margin:0 0 8px">${escapeHtml(isAr?latest.analysis.analysis_ar:latest.analysis.analysis_en)}</p>
         <div style="margin-top:8px">
-          ${(isAr?latest.analysis.recommendations_ar:latest.analysis.recommendations_en||[]).map(r=>`<div style="display:flex;gap:6px;margin-bottom:4px"><span style="color:var(--green)">●</span><span style="font-size:0.85rem;color:#555">${r}</span></div>`).join('')}
+          ${(isAr?latest.analysis.recommendations_ar:latest.analysis.recommendations_en||[]).map(r=>`<div style="display:flex;gap:6px;margin-bottom:4px"><span style="color:var(--green)">●</span><span style="font-size:0.85rem;color:#555">${escapeHtml(r)}</span></div>`).join('')}
         </div>
       </div>` : ''}
     </div>
@@ -1724,9 +2097,9 @@ async function initLabTracker() {
   <!-- Photo upload — auto-extract -->
   <div class="tracker-card">
     <div class="tracker-title">${isAr?'📷 صوّر تحليلك وارفعه':'📷 Upload a Photo of Your Report'}</div>
-    <p style="color:var(--muted);font-size:0.85rem;margin:4px 0 12px">${isAr?'صور ورقة التحليل أو ارفع صورة، وهنقرأ النتائج تلقائياً':"Take a photo or upload an image of your lab report — we'll read the values automatically"}</p>
-    <input type="file" id="labPhotoInput" accept="image/*" capture="environment" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;font-family:Cairo,sans-serif">
-    <button onclick="uploadLabPhoto()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--orange),#FF9A6B);color:#fff;border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">
+    <p style="color:var(--muted);font-size:0.85rem;margin:4px 0 12px">${isAr?'صور ورقة التحليل أو ارفع صورة (تقدر تختار أكتر من صفحة)، وهنقرأ النتائج تلقائياً':"Take a photo or upload an image of your lab report (select multiple pages if needed) — we'll read the values automatically"}</p>
+    <input type="file" id="labPhotoInput" accept="image/*" capture="environment" multiple style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif">
+    <button onclick="uploadLabPhoto()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--orange),#2FA79A);color:#fff;border:none;border-radius:12px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">
       ${isAr?'ارفع وحلل تلقائياً 🤖':'Upload & Auto-Analyze 🤖'}
     </button>
     <div id="labPhotoStatus" style="text-align:center;padding:10px;color:var(--muted);display:none"></div>
@@ -1737,7 +2110,7 @@ async function initLabTracker() {
     <div class="tracker-title">${isAr?'➕ أو أدخل النتائج يدوياً':'➕ Or Enter Results Manually'}</div>
     <div style="margin-bottom:12px">
       <label style="font-size:0.82rem;font-weight:600;color:var(--muted)">${isAr?'تاريخ التحليل':'Test Date'}</label>
-      <input type="date" id="labDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-family:Cairo,sans-serif;outline:none">
+      <input type="date" id="labDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;outline:none">
     </div>
     <div class="lab-input-row">
       ${labTests.map(t => `
@@ -1746,7 +2119,7 @@ async function initLabTracker() {
         <input type="number" id="lab_${t.id}" placeholder="${t.normal}" value="${latest.results?.[t.id]||''}" step="0.1">
       </div>`).join('')}
     </div>
-    <button onclick="saveLabResults()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer;margin-top:8px">
+    <button onclick="saveLabResults()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);border:none;border-radius:12px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer;margin-top:8px">
       ${isAr?'حفظ وتحليل بالذكاء الاصطناعي 🤖':'Save & AI Analysis 🤖'}
     </button>
     <div id="labSaving" style="text-align:center;padding:10px;color:var(--muted);display:none">${isAr?'⏳ جاري التحليل...':'⏳ Analyzing...'}</div>
@@ -1776,8 +2149,8 @@ async function uploadLabPhoto() {
   const isAr = currentLang === 'ar';
   const input = document.getElementById('labPhotoInput');
   const status = document.getElementById('labPhotoStatus');
-  const file = input?.files?.[0];
-  if (!file) {
+  const files = input?.files;
+  if (!files || files.length === 0) {
     alert(isAr ? 'اختار صورة الأول' : 'Please choose an image first');
     return;
   }
@@ -1785,7 +2158,7 @@ async function uploadLabPhoto() {
   status.textContent = isAr ? '⏳ جاري قراءة الصورة وتحليلها... قد يستغرق دقيقة' : '⏳ Reading and analyzing the image... may take a minute';
   try {
     const fd = new FormData();
-    fd.append('file', file);
+    for (const file of files) fd.append('files', file);
     fd.append('date', new Date().toISOString().split('T')[0]);
     const r = await fetch('/diet/api/lab-results/upload', { method: 'POST', body: fd });
     const data = await r.json();
@@ -1883,7 +2256,7 @@ window.setLabPeriod = setLabPeriod;
 <button id="dhBackBtn" onclick="dhGoBack()" title="رجوع" style="
   display:none;position:fixed;bottom:24px;left:24px;z-index:9999;
   width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;
-  background:var(--green,#2D6A4F);box-shadow:0 4px 16px rgba(45,106,79,0.35);
+  background:var(--green,var(--green));box-shadow:0 4px 16px rgba(76,139,92,0.35);
   align-items:center;justify-content:center;transition:transform 0.18s,box-shadow 0.18s;
 " aria-label="رجوع">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -1945,11 +2318,11 @@ window.setLabPeriod = setLabPeriod;
   // Hover effect
   btn.addEventListener('mouseenter', function(){
     btn.style.transform='scale(1.12)';
-    btn.style.boxShadow='0 6px 22px rgba(45,106,79,0.45)';
+    btn.style.boxShadow='0 6px 22px rgba(76,139,92,0.45)';
   });
   btn.addEventListener('mouseleave', function(){
     btn.style.transform='scale(1)';
-    btn.style.boxShadow='0 4px 16px rgba(45,106,79,0.35)';
+    btn.style.boxShadow='0 4px 16px rgba(76,139,92,0.35)';
   });
 })();
 </script>
@@ -2014,7 +2387,7 @@ async function initWatchPanel() {
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       ${WATCH_PROVIDERS.map(p => {
         const connected = connectedProviders.includes(p.id);
-        return `<a href="${connected ? '#' : '/diet/api/watch/connect/' + p.id}" style="display:flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid ${connected?'var(--green)':'var(--border)'};background:${connected?'rgba(45,106,79,0.08)':'#fff'};color:${connected?'var(--green)':'var(--dark)'};text-decoration:none;font-size:0.82rem;font-weight:600;${connected?'cursor:default':'cursor:pointer'}">
+        return `<a href="${connected ? '#' : '/diet/api/watch/connect/' + p.id}" style="display:flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;border:1px solid ${connected?'var(--green)':'var(--border)'};background:${connected?'rgba(76,139,92,0.08)':'#fff'};color:${connected?'var(--green)':'var(--dark)'};text-decoration:none;font-size:0.82rem;font-weight:600;${connected?'cursor:default':'cursor:pointer'}">
           <span>${p.icon}</span><span>${p.name}</span>${connected?'<span>✓</span>':''}
         </a>`;
       }).join('')}
@@ -2105,11 +2478,11 @@ async function initWatchPanel() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div>
         <label style="font-size:0.78rem;font-weight:600;color:var(--muted)">${isAr?'التاريخ':'Date'}</label>
-        <input type="date" id="watchDate" value="${today}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-family:Cairo,sans-serif;outline:none">
+        <input type="date" id="watchDate" value="${today}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;outline:none">
       </div>
       <div>
         <label style="font-size:0.78rem;font-weight:600;color:var(--muted)">${isAr?'المصدر':'Source'}</label>
-        <select id="watchSource" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-family:Cairo,sans-serif;outline:none">
+        <select id="watchSource" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;outline:none">
           <option value="manual">${isAr?'إدخال يدوي':'Manual'}</option>
           <option value="apple_watch">Apple Watch</option>
           <option value="wear_os">Wear OS</option>
@@ -2151,7 +2524,7 @@ async function initWatchPanel() {
         <input type="number" id="wWater" placeholder="2.5" step="0.5" value="${todayData.water||''}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;margin-top:4px;outline:none">
       </div>
     </div>
-    <button onclick="saveWatchData()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#A8E063);color:var(--dark);border:none;border-radius:12px;font-family:Cairo,sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">
+    <button onclick="saveWatchData()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);border:none;border-radius:12px;font-family:'Readex Pro','IBM Plex Sans Arabic',sans-serif;font-weight:700;font-size:0.95rem;cursor:pointer">
       ${isAr?'حفظ البيانات ✓':'Save Data ✓'}
     </button>
     <div id="watchSaveMsg" style="text-align:center;margin-top:8px;font-size:0.85rem;display:none"></div>
@@ -2273,13 +2646,13 @@ window.setWatchPeriod = setWatchPeriod;
 <style>
 #p-weather{padding:0}
 .wx-wrap{max-width:700px;margin:0 auto;padding:24px 16px;display:flex;flex-direction:column;gap:20px}
-.wx-card{background:#fff;border-radius:18px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #E8EDF2}
+.wx-card{background:#fff;border-radius:18px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid var(--border)}
 .wx-main{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
 .wx-icon{font-size:4rem;line-height:1}
 .wx-temps{flex:1}
-.wx-temp{font-size:3rem;font-weight:700;color:#1A1A2E;line-height:1}
-.wx-feels{font-size:0.85rem;color:#6B7280;margin-top:4px}
-.wx-desc{font-size:0.95rem;color:#2D6A4F;font-weight:600;margin-top:6px;text-transform:capitalize}
+.wx-temp{font-size:3rem;font-weight:700;color:var(--dark);line-height:1}
+.wx-feels{font-size:0.85rem;color:var(--muted);margin-top:4px}
+.wx-desc{font-size:0.95rem;color:var(--green);font-weight:600;margin-top:6px;text-transform:capitalize}
 .wx-city{font-size:0.8rem;color:#9CA3AF;margin-top:4px}
 .wx-humidity{background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:12px}
 .wx-humidity-icon{font-size:2rem}
@@ -2298,7 +2671,7 @@ window.setWatchPeriod = setWatchPeriod;
 .wx-recs-title{font-size:0.85rem;font-weight:700;color:#374151;margin-bottom:10px}
 .wx-recs-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .wx-rec-group{background:#F9FAFB;border-radius:12px;padding:14px}
-.wx-rec-group-title{font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.wx-rec-group-title{font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
 .wx-rec-item{font-size:0.82rem;color:#374151;padding:4px 0;border-bottom:1px solid #F3F4F6}
 .wx-rec-item:last-child{border-bottom:none}
 .wx-zone{background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:14px;padding:18px;border:1px solid #DDD6FE}
@@ -2315,9 +2688,9 @@ window.setWatchPeriod = setWatchPeriod;
 .wx-zone-list{margin-top:10px;display:flex;flex-direction:column;gap:6px}
 .wx-zone-row{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:8px;padding:8px 12px;font-size:0.82rem;border:1px solid #EDE9FE}
 .wx-zone-del{background:none;border:none;color:#EF4444;cursor:pointer;font-size:1rem}
-.wx-btn{background:linear-gradient(135deg,#C8F560,#A8E063);color:#1A1A2E;border:none;border-radius:12px;padding:12px 24px;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;justify-content:center;width:100%;transition:opacity 0.2s}
+.wx-btn{background:linear-gradient(135deg,var(--lime),#C9A24E);color:var(--dark);border:none;border-radius:12px;padding:12px 24px;font-size:0.9rem;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;justify-content:center;width:100%;transition:opacity 0.2s}
 .wx-btn:disabled{opacity:0.5;cursor:not-allowed}
-.wx-status{font-size:0.82rem;color:#6B7280;text-align:center}
+.wx-status{font-size:0.82rem;color:var(--muted);text-align:center}
 .wx-updated{font-size:0.72rem;color:#9CA3AF;text-align:center}
 @media(max-width:500px){.wx-recs-grid{grid-template-columns:1fr}.wx-zone-form{grid-template-columns:1fr}}
 </style>
