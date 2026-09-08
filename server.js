@@ -4167,6 +4167,38 @@ app.get(`${BASE}/api/daily-recipe`, auth, (req, res) => {
   res.json({ recipe: all[todayCairoServer()] || null });
 });
 
+// Nothing in the app ever shows a past day's recipe — only ever GET
+// /api/daily-recipe for today — so records and images older than the
+// retention window are pure dead weight, not a feature users would miss.
+// Left unpruned, both daily_recipes.json and RECIPE_IMAGE_DIR grow forever.
+// Runs once a day; also once at boot so a restart doesn't wait a full day
+// to catch up (same pattern as runReminderCheck below).
+const DAILY_RECIPE_RETENTION_DAYS = 30;
+function cleanupOldDailyRecipes() {
+  const cutoff = new Date(Date.now() - DAILY_RECIPE_RETENTION_DAYS * 86400000);
+  const cutoffStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(cutoff);
+  update('daily_recipes.json', all => {
+    for (const date of Object.keys(all)) {
+      if (date < cutoffStr) delete all[date];
+    }
+    return all;
+  }, {});
+  // Image filenames embed their date (recipe-YYYY-MM-DD-<token>.jpg, see
+  // POST /api/admin/daily-recipe/image) — pruning by filename means this
+  // doesn't need to cross-reference the JSON above, so an image can never
+  // be orphaned by the two falling out of sync.
+  let files;
+  try { files = fs.readdirSync(RECIPE_IMAGE_DIR); } catch { return; }
+  for (const file of files) {
+    const m = file.match(/^recipe-(\d{4}-\d{2}-\d{2})-/);
+    if (m && m[1] < cutoffStr) {
+      try { fs.unlinkSync(path.join(RECIPE_IMAGE_DIR, file)); } catch (e) { console.error('[daily-recipe] failed to delete old image:', e.message); }
+    }
+  }
+}
+setInterval(cleanupOldDailyRecipes, 24 * 60 * 60 * 1000);
+cleanupOldDailyRecipes();
+
 // Shared by manual entry AND photo-upload extraction. This function's own
 // comment previously claimed exactly that, but it wasn't actually true —
 // the manual-entry route below had its own second, inline copy of this
