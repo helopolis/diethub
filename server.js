@@ -35,7 +35,16 @@ app.set('trust proxy', TP === 'true' ? true : TP === 'false' ? false : /^\d+$/.t
 // because Svix signature verification (watch webhook receiver) must HMAC
 // the untouched request bytes, not a re-serialized JSON.stringify(req.body)
 // which can differ in key order/whitespace and would break the signature.
-app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
+// One route needs a much larger body: n8n's daily-recipe image upload sends
+// a base64-encoded AI-generated image (routinely 2-4MB as base64, well over
+// the 1mb every other route needs). Scoped by exact path rather than
+// raising the global limit, so the rest of the app keeps the tighter
+// default — a bigger blanket limit would just be more request-body surface
+// every other route never needs.
+app.use((req, res, next) => {
+  const limit = req.path === '/diet/api/admin/daily-recipe/image' ? '20mb' : '1mb';
+  express.json({ limit, verify: (req, res, buf) => { req.rawBody = buf; } })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -54,6 +63,13 @@ fs.mkdirSync(AVATAR_DIR, { recursive: true });
 // no "stale cached old photo" case to worry about, a changed photo is
 // always a different URL.
 app.use('/uploads/avatars', express.static(AVATAR_DIR, { maxAge: '30d', immutable: true }));
+// Same random-filename-per-upload reasoning as AVATAR_DIR above — the daily
+// recipe image (n8n-generated, see POST /api/admin/daily-recipe/image)
+// needs a real hostable URL too, for the same "binary doesn't belong in a
+// JSON-blob document" reason.
+const RECIPE_IMAGE_DIR = path.join(DATA_DIR, 'uploads', 'recipes');
+fs.mkdirSync(RECIPE_IMAGE_DIR, { recursive: true });
+app.use('/uploads/recipes', express.static(RECIPE_IMAGE_DIR, { maxAge: '30d', immutable: true }));
 const JWT_SECRET = process.env.JWT_SECRET || 'diethub_secret_2026_CHANGE_IN_PROD';
 const BASE = '/diet';
 const TRIAL_DAYS = 14;
@@ -4088,6 +4104,67 @@ app.get(`${BASE}/api/cycle-today`, auth, (req, res) => {
   const phaseKey = getCyclePhase(p.lastPeriodStart, cycleLength);
   if (!phaseKey) return res.json({ phase: null });
   res.json({ phase: { key: phaseKey, ...CYCLE_PHASES[phaseKey] } });
+});
+
+// Fed by an n8n workflow (n8n.talabatito.com), not user input — same
+// "service account logs in, then POSTs" pattern already used by the
+// Diethub price updater workflow against /api/admin/food-prices. Macros
+// are computed by the workflow from real per-ingredient nutrition data
+// (USDA FoodData Central), never asked from the AI step directly, so this
+// endpoint just stores whatever real numbers it's given rather than
+// re-deriving or trusting an LLM's stated calorie count.
+function validateDailyRecipe(b) {
+  if (!b || typeof b !== 'object') return false;
+  if (typeof b.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) return false;
+  if (typeof b.name !== 'string' || typeof b.nameAr !== 'string' || !b.name || !b.nameAr) return false;
+  if (typeof b.imageUrl !== 'string' || !b.imageUrl) return false;
+  if (!Array.isArray(b.ingredients) || !b.ingredients.length || b.ingredients.length > 20) return false;
+  if (!b.ingredients.every(i => i && typeof i.emoji === 'string' && typeof i.name === 'string'
+    && typeof i.nameAr === 'string' && typeof i.qty === 'string' && typeof i.qtyAr === 'string')) return false;
+  if (!Array.isArray(b.steps) || !Array.isArray(b.stepsAr) || !b.steps.length || b.steps.length !== b.stepsAr.length || b.steps.length > 15) return false;
+  if (!b.steps.every(s => typeof s === 'string') || !b.stepsAr.every(s => typeof s === 'string')) return false;
+  const macros = b.macros;
+  if (!macros || typeof macros !== 'object') return false;
+  return ['cal', 'protein', 'carbs', 'fat'].every(k => typeof macros[k] === 'number' && macros[k] >= 0);
+}
+// Image comes from n8n as a base64 JSON body (the AI image-generation step's
+// native output shape), not a multipart file — hence the path-scoped 20mb
+// body limit above, rather than reusing avatarUpload's multer config, which
+// expects multipart. Same sharp() re-encode discipline as POST /api/profile/avatar:
+// never trust what's sent as final bytes for something about to be served
+// back out over a public URL — always re-decode and re-encode.
+app.post(`${BASE}/api/admin/daily-recipe/image`, auth, adminOnly, async (req, res) => {
+  const { imageBase64 } = req.body;
+  if (typeof imageBase64 !== 'string' || !imageBase64) return res.status(400).json({ error: 'Missing imageBase64' });
+  let resized;
+  try {
+    resized = await sharp(Buffer.from(imageBase64, 'base64')).resize(900, 620, { fit: 'cover' }).jpeg({ quality: 85 }).toBuffer();
+  } catch (e) {
+    return res.status(400).json({ error: 'Could not process this image' });
+  }
+  const filename = `recipe-${todayCairoServer()}-${randToken(8)}.jpg`;
+  fs.writeFileSync(path.join(RECIPE_IMAGE_DIR, filename), resized);
+  res.json({ url: `/uploads/recipes/${filename}` });
+});
+app.post(`${BASE}/api/admin/daily-recipe`, auth, adminOnly, (req, res) => {
+  if (!validateDailyRecipe(req.body)) {
+    return res.status(400).json({ ok: false, error: 'Invalid recipe payload' });
+  }
+  const b = req.body;
+  const recipe = {
+    date: b.date, name: sanitize(b.name), nameAr: sanitize(b.nameAr), imageUrl: b.imageUrl,
+    ingredients: b.ingredients.map(i => ({
+      emoji: i.emoji, name: sanitize(i.name), nameAr: sanitize(i.nameAr), qty: sanitize(i.qty), qtyAr: sanitize(i.qtyAr),
+    })),
+    steps: b.steps.map(sanitize), stepsAr: b.stepsAr.map(sanitize),
+    macros: { cal: b.macros.cal, protein: b.macros.protein, carbs: b.macros.carbs, fat: b.macros.fat },
+  };
+  update('daily_recipes.json', all => { all[recipe.date] = recipe; return all; }, {});
+  res.json({ ok: true, date: recipe.date });
+});
+app.get(`${BASE}/api/daily-recipe`, auth, (req, res) => {
+  const all = load('daily_recipes.json') || {};
+  res.json({ recipe: all[todayCairoServer()] || null });
 });
 
 // Shared by manual entry AND photo-upload extraction. This function's own
