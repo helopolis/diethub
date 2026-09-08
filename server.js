@@ -3921,6 +3921,61 @@ app.get(`${BASE}/api/lab-results/recommendations`, auth, (req,res) => {
   });
 });
 
+// ─── TODAY'S TREAT ──────────────────────────────────────────────────────────
+// A small, positive-framing "treat" suggestion for TodayScreen — real,
+// standard nutrition facts for a normal serving of each item (same spirit as
+// buildMealPlans()'s own healthy-snack list, just indulgent instead of
+// "clean"), not a medical/nutrition prescription. Only 2 of these
+// (dark_chocolate, almonds) are tagged lowCarb — real macros, not guessed —
+// so a keto/Atkins user is never handed a treat that would blow their carb
+// budget for the day.
+const TREATS = [
+  { id: 'dark_chocolate', icon: '🍫', name: 'Dark Chocolate Square', nameAr: 'مربع شوكولاتة داكنة', portion: '2 small squares (85% cocoa, ~10g)', portionAr: 'مربعان صغيران (شوكولاتة 85%، ~10 جم)', cal: 57, protein: 1, carbs: 4, fat: 5, lowCarb: true },
+  { id: 'almonds', icon: '🌰', name: 'Roasted Almonds', nameAr: 'لوز محمص', portion: '10 almonds (~12g)', portionAr: '10 حبات لوز (~12 جم)', cal: 70, protein: 3, carbs: 2, fat: 6, lowCarb: true },
+  { id: 'medjool_date', icon: '🌴', name: 'Medjool Date', nameAr: 'تمرة مجهول', portion: '1 date (~24g)', portionAr: 'تمرة واحدة (~24 جم)', cal: 66, protein: 0.4, carbs: 18, fat: 0, lowCarb: false },
+  { id: 'greek_yogurt_honey', icon: '🍯', name: 'Greek Yogurt with Honey', nameAr: 'زبادي يوناني بالعسل', portion: '100g yogurt + 1 tsp honey', portionAr: '100 جم زبادي + ملعقة صغيرة عسل', cal: 95, protein: 9, carbs: 9, fat: 2, lowCarb: false },
+  { id: 'frozen_grapes', icon: '🍇', name: 'Frozen Grapes', nameAr: 'عنب مجمد', portion: '1 cup (~150g)', portionAr: 'كوب واحد (~150 جم)', cal: 104, protein: 1, carbs: 27, fat: 0, lowCarb: false },
+  { id: 'popcorn', icon: '🍿', name: 'Air-Popped Popcorn', nameAr: 'فشار منفوخ بالهواء', portion: '1 cup (~8g)', portionAr: 'كوب واحد (~8 جم)', cal: 31, protein: 1, carbs: 6, fat: 0, lowCarb: false },
+  { id: 'ice_cream', icon: '🍨', name: 'Vanilla Ice Cream', nameAr: 'آيس كريم فانيليا', portion: '1 small scoop (~65g)', portionAr: 'كرة صغيرة (~65 جم)', cal: 135, protein: 2, carbs: 16, fat: 7, lowCarb: false },
+  { id: 'apple_pb', icon: '🍎', name: 'Apple Slices with Peanut Butter', nameAr: 'شرائح تفاح بزبدة الفول السوداني', portion: '1/2 apple + 1 tbsp peanut butter', portionAr: 'نصف تفاحة + ملعقة كبيرة زبدة فول سوداني', cal: 120, protein: 4, carbs: 10, fat: 8, lowCarb: false },
+];
+const LOW_CARB_DIETS = ['keto', 'atkins'];
+
+// Deterministic per real calendar day (the client's own todayCairo()-computed
+// date string, same convention watch-data sync already uses) — stable across
+// refreshes/re-opens within the same day, rotates the next day. Never a
+// re-roll on every screen open, which would feel random rather than "today's
+// pick".
+function hashDateString(dateStr) {
+  let hash = 0;
+  for (let i = 0; i < dateStr.length; i++) hash = (hash * 31 + dateStr.charCodeAt(i)) >>> 0;
+  return hash;
+}
+function pickTodayTreat(dateStr, remainingCal, diet) {
+  if (remainingCal == null || remainingCal <= 0) return null;
+  const needsLowCarb = LOW_CARB_DIETS.includes(diet);
+  const eligible = TREATS.filter(t => t.cal <= remainingCal && (!needsLowCarb || t.lowCarb));
+  if (!eligible.length) return null;
+  return eligible[hashDateString(dateStr) % eligible.length];
+}
+
+// Returns null (not an error) when nothing fits — e.g. today's budget is
+// already fully spent, or the diet needs low-carb and none fit — so the
+// client can simply not show the card that day. No "you failed" framing;
+// this is meant to feel like an earned option, never a nag.
+app.get(`${BASE}/api/today-treat`, auth, (req, res) => {
+  const dateStr = sanitize(req.query.date) || new Date().toISOString().split('T')[0];
+  const calorieTarget = buildHealthProfile(store, req.user.id)?.targets?.calorieTarget;
+  if (calorieTarget == null) return res.json({ treat: null });
+  const logs = load('nutrition_logs.json') || {};
+  const dayLog = (logs[req.user.id] || []).find(l => l.date === dateStr);
+  const consumed = [...(dayLog?.meals || []), ...(dayLog?.custom || [])]
+    .reduce((sum, it) => sum + (it.cal || 0), 0);
+  const remainingCal = calorieTarget - consumed;
+  const diet = req.userObj.profile?.diet || 'atkins';
+  res.json({ treat: pickTodayTreat(dateStr, remainingCal, diet), remainingCal });
+});
+
 // Shared by manual entry AND photo-upload extraction. This function's own
 // comment previously claimed exactly that, but it wasn't actually true —
 // the manual-entry route below had its own second, inline copy of this
