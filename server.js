@@ -2013,6 +2013,7 @@ app.post(`${BASE}/api/account/delete`, auth, (req, res) => {
   const PER_USER_KEYED_FILES = [
     'nutrition_logs.json', 'weight_history.json', 'watch_data.json', 'lab_results.json',
     'meal_overrides.json', 'ai_suggestions.json', 'geofence_zones.json', 'push_tokens.json',
+    'geofence_dwell.json',
   ];
   for (const file of PER_USER_KEYED_FILES) {
     update(file, all => { delete all[userId]; return all; }, {});
@@ -3927,11 +3928,34 @@ app.get(`${BASE}/api/lab-results/recommendations`, auth, (req,res) => {
     gender: req.userObj.profile?.gender === 'male' || req.userObj.profile?.gender === 'female'
       ? req.userObj.profile.gender : null,
   };
+  // Third supplement source, alongside labs and diet — real, not invented:
+  // reuses the exact same indoor-detection (geofence zone match, else GPS
+  // accuracy heuristic) and Vitamin D copy the Weather tab's eco-
+  // recommendations already use, just surfaced here too. Optional and
+  // additive — a client that doesn't send lat/lon (or a user who denied
+  // location) sees byte-identical behavior to before this existed:
+  // buildLabSupplements keeps its own default includeVitd:true, and
+  // locationSupplements is simply an empty array, never a guess.
+  const qlat = parseFloat(req.query.lat), qlon = parseFloat(req.query.lon), qacc = parseFloat(req.query.accuracy);
+  let locationSupplements = [];
+  let hasLocationVitd = false;
+  if (!isNaN(qlat) && !isNaN(qlon)) {
+    const indoorOutdoor = inferIndoorOutdoor(req.user.id, qlat, qlon, isNaN(qacc) ? null : qacc);
+    // Only when actually indoor — a purely lab-triggered Vitamin D
+    // suggestion (low_vitd flag, user currently outdoor/unknown) belongs in
+    // the regular labs list below, not mislabeled as "based on your
+    // location" just because coordinates happened to be sent.
+    if (indoorOutdoor.state === 'indoor') {
+      const vitaminD = buildVitaminDSuggestion(indoorOutdoor.state, labFlags);
+      if (vitaminD) { locationSupplements = [vitaminD]; hasLocationVitd = true; }
+    }
+  }
   res.json({
-    supplements: buildLabSupplements(labFlags),
+    supplements: buildLabSupplements(labFlags, { includeVitd: !hasLocationVitd }),
     advisories: buildLabAdvisories(labFlags),
     advisoryTriggers: buildAdvisoryTriggers(labFlags),
     dietSupplements: buildDietSupplements(diet, demographics),
+    locationSupplements,
     referenceMetadata,
   });
 });
@@ -5102,6 +5126,31 @@ function buildAdvisoryTriggers(labFlags) {
   return triggers;
 }
 
+// Vitamin D can be triggered by either the indoor signal or a low lab
+// reading - only ever shown once, with whichever reason(s) actually apply.
+// Extracted so /api/lab-results/recommendations (Supplements tab) can show
+// the same real, indoor-aware suggestion buildEcoRecommendations() already
+// does for the Weather tab, instead of only ever seeing the lab-only
+// trigger — same copy, same logic, one source of truth for both.
+function buildVitaminDSuggestion(indoorState, labFlags) {
+  const vitdReasonsAr = [];
+  const vitdReasonsEn = [];
+  if (indoorState === 'indoor') {
+    vitdReasonsAr.push('التواجد الداخلي لفترات طويلة يقلل التعرض لأشعة الشمس');
+    vitdReasonsEn.push('Extended time indoors reduces natural sun exposure');
+  }
+  if (labFlags?.low_vitd) {
+    vitdReasonsAr.push('نتيجة تحليل فيتامين د الأخيرة منخفضة');
+    vitdReasonsEn.push('Your latest Vitamin D lab result was low');
+  }
+  if (!vitdReasonsAr.length) return null;
+  return {
+    icon: '☀️', nameAr: 'فيتامين د', name: 'Vitamin D',
+    whyAr: `${vitdReasonsAr.join(' · ')} · ${vitdReasonsEn.join(' · ')}`,
+    link: 'https://www.amazon.eg/s?k=vitamin+d3',
+  };
+}
+
 // Adds supplement suggestions on top of buildWeatherRecs()'s hydration/food/
 // drinks, informed by location (indoor/outdoor), the user's latest synced
 // watch entry, and their latest lab-result flags when available. Framed as
@@ -5131,27 +5180,10 @@ function buildEcoRecommendations(temp, humidity, indoorOutdoor, watchEntry, labF
     });
   }
 
-  // Vitamin D can be triggered by either the indoor signal or a low lab
-  // reading - only ever show it once, with whichever reason(s) actually apply.
-  const vitdReasonsAr = [];
-  const vitdReasonsEn = [];
-  if (indoorOutdoor.state === 'indoor') {
-    vitdReasonsAr.push('التواجد الداخلي لفترات طويلة يقلل التعرض لأشعة الشمس');
-    vitdReasonsEn.push('Extended time indoors reduces natural sun exposure');
-  }
-  if (labFlags.low_vitd) {
-    vitdReasonsAr.push('نتيجة تحليل فيتامين د الأخيرة منخفضة');
-    vitdReasonsEn.push('Your latest Vitamin D lab result was low');
-  }
-  if (vitdReasonsAr.length) {
-    supplements.push({
-      icon: '☀️', nameAr: 'فيتامين د', name: 'Vitamin D',
-      whyAr: `${vitdReasonsAr.join(' · ')} · ${vitdReasonsEn.join(' · ')}`,
-      link: 'https://www.amazon.eg/s?k=vitamin+d3',
-    });
-  }
+  const vitaminD = buildVitaminDSuggestion(indoorOutdoor.state, labFlags);
+  if (vitaminD) supplements.push(vitaminD);
 
-  supplements.push(...buildLabSupplements(labFlags, { includeVitd: !vitdReasonsAr.length }));
+  supplements.push(...buildLabSupplements(labFlags, { includeVitd: !vitaminD }));
 
   return { ...base, supplements, advisories: buildLabAdvisories(labFlags), indoorOutdoor: indoorOutdoor.state };
 }
@@ -5288,6 +5320,43 @@ app.delete(`${BASE}/api/geofence/:id`, auth, (req, res) => {
 });
 
 // Location check — returns active geofence zone + zone-based activity note
+// Cairo calendar-day string, server-side — matches the client's own
+// todayCairo() convention (api.js) used everywhere else "today" boundaries
+// matter, so a dwell counter doesn't reset at a random UTC-midnight offset.
+function todayCairoServer() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(new Date());
+}
+
+// Honest, not invented: this ONLY knows "how long since the app first
+// noticed you here today" — it has zero visibility into anything before
+// that first check, and zero visibility while the app is closed in
+// between checks (no background location tracking exists in this app —
+// deliberately not built, see the founder discussion this shipped from).
+// Persisted per (user, zone, day) so opening the app again later the same
+// day continues the same clock instead of restarting it.
+function trackZoneDwell(userId, zoneId) {
+  const today = todayCairoServer();
+  const all = load('geofence_dwell.json') || {};
+  if (!all[userId]) all[userId] = {};
+  const rec = all[userId][zoneId];
+  const now = Date.now();
+  if (!rec || rec.date !== today) {
+    all[userId][zoneId] = { date: today, firstSeenAt: new Date(now).toISOString() };
+    save('geofence_dwell.json', all);
+    return 0;
+  }
+  return +((now - new Date(rec.firstSeenAt).getTime()) / 3600000).toFixed(1);
+}
+
+// hoursAtZone-triggered posture nudge — deliberately NOT a diagnostic claim
+// (no "you may have a back problem", no test/scan recommended). Just a
+// break-and-stretch suggestion, the same category of advice as the
+// hydration/snacking notes below, shown only for indoor zone types where
+// "sitting a long time" is the realistic scenario (home/work/gym), not
+// outdoor.
+const POSTURE_TIP_HOURS = 3;
+const POSTURE_TIP = 'يبدو أنك هنا منذ فترة طويلة — قف وتمدد لبضع دقائق كل ساعة، وإن شعرت بألم مستمر في الظهر استشر طبيبك · Looks like you\'ve been here a while — stand and stretch for a couple of minutes every hour, and see a doctor if you have ongoing back pain';
+
 app.post(`${BASE}/api/location/check`, auth, (req, res) => {
   const flat = parseFloat(req.body.lat), flon = parseFloat(req.body.lon);
   if (isNaN(flat) || isNaN(flon)) return res.status(400).json({ error: 'Invalid coordinates' });
@@ -5301,7 +5370,14 @@ app.post(`${BASE}/api/location/check`, auth, (req, res) => {
     home:    'في المنزل — وقت مثالي لتحضير وجبتك · Home — great time to prep your meal',
     other:   null
   };
-  res.json({ activeZone, activityNote: activeZone ? (notes[activeZone.type] || null) : null });
+  let hoursAtZone = null, postureTip = null;
+  if (activeZone) {
+    hoursAtZone = trackZoneDwell(req.user.id, activeZone.id);
+    if (['home', 'work', 'gym'].includes(activeZone.type) && hoursAtZone >= POSTURE_TIP_HOURS) {
+      postureTip = POSTURE_TIP;
+    }
+  }
+  res.json({ activeZone, activityNote: activeZone ? (notes[activeZone.type] || null) : null, hoursAtZone, postureTip });
 });
 
 // ─── NEARBY FITNESS FACILITIES ──────────────────────────────────────────────
