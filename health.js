@@ -118,7 +118,18 @@ function buildHealthProfile(store, userId) {
   return {
     userId, username: user.username, plan: user.plan, lang: user.lang || 'ar',
     demographics: { age, gender, height, weight, bmi, bmiCategory: cat, bodyFat: num(p.bodyFat), muscleMass: num(p.muscleMass) },
-    goals: { diet: p.diet || 'atkins', goalType, targetWeight: num(p.targetWeight), budget: num(p.budget) || 200, activityLevel },
+    // Raw, non-defaulted gender — demographics.gender above defaults an
+    // unset value to 'male' for BMI-formula purposes (some sex has to be
+    // assumed to produce a number). Reusing that default to gate a
+    // female-only feature like cycle tracking would silently show it to no
+    // one who hasn't explicitly set their gender, or worse, hide it
+    // incorrectly — same reasoning already applied in server.js's
+    // demographic-layered supplement recommendations.
+    genderRaw: p.gender === 'female' || p.gender === 'male' ? p.gender : null,
+    goals: {
+      diet: p.diet || 'atkins', goalType, targetWeight: num(p.targetWeight), budget: num(p.budget) || 200, activityLevel,
+      cycleTrackingEnabled: !!p.cycleTrackingEnabled, lastPeriodStart: p.lastPeriodStart || null, cycleLength: p.cycleLength || 28,
+    },
     targets: { bmr, tdee, calorieTarget, proteinTargetG, hydrationTargetL },
     nutrition: { loggedDaysLast7, lastLoggedDate: logs[0]?.date || null },
     wearable: recent.length ? { source: recent[0].source, latestDate: recent[0].date, avgSteps, avgSleepH: avgSleep, latestHeartRate: latestHR } : null,

@@ -1753,8 +1753,23 @@ function validateProfileField(key, value) {
       return PROFILE_VALID_DIETS.includes(value) ? value : null;
     case 'gender':
       return PROFILE_VALID_GENDERS.includes(value) ? value : null;
-    case 'takesCreatine':
+    case 'takesCreatine': case 'cycleTrackingEnabled':
       return typeof value === 'boolean' ? value : null;
+    case 'lastPeriodStart': {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+      const d = new Date(value + 'T00:00:00Z');
+      if (isNaN(d.getTime()) || d.getTime() > Date.now()) return null; // not a real date, or in the future
+      return value;
+    }
+    case 'cycleLength': {
+      const n = Number(value);
+      // 20-45 days is a permissive input bound (covers real irregular
+      // cycles), not a claimed "normal range" shown to the user anywhere —
+      // just wide enough to reject garbage input, not narrow enough to
+      // reject a real person's real cycle.
+      if (!Number.isFinite(n) || n < 20 || n > 45) return null;
+      return Math.round(n);
+    }
     default:
       return value; // level/calorieMode/customCalorieTarget: accepted as-is — not read by any real calculation server-side, confirmed by grep before this change; not worth inventing enforcement for fields nothing enforces meaning on
   }
@@ -1763,7 +1778,7 @@ app.post(`${BASE}/api/profile`, auth, (req,res) => {
   const users = load('users.json')||[];
   const idx = users.findIndex(u=>u.id===req.user.id);
   if (idx<0) return res.status(404).json({});
-  const ok = ['diet','budget','weight','height','age','gender','bodyFat','muscleMass','level','calorieMode','customCalorieTarget','takesCreatine','allergies','customAllergyText','medicalConditions'];
+  const ok = ['diet','budget','weight','height','age','gender','bodyFat','muscleMass','level','calorieMode','customCalorieTarget','takesCreatine','allergies','customAllergyText','medicalConditions','cycleTrackingEnabled','lastPeriodStart','cycleLength'];
   const safe = {};
   for (const k of ok) {
     if (req.body[k] === undefined) continue;
@@ -3974,6 +3989,81 @@ app.get(`${BASE}/api/today-treat`, auth, (req, res) => {
   const remainingCal = calorieTarget - consumed;
   const diet = req.userObj.profile?.diet || 'atkins';
   res.json({ treat: pickTodayTreat(dateStr, remainingCal, diet), remainingCal });
+});
+
+// ─── CYCLE-AWARE FOOD TIPS ──────────────────────────────────────────────────
+// Optional, female-only, off by default (cycleTrackingEnabled must be
+// explicitly turned on — see /api/profile's whitelist above). Phase math
+// uses the one real, well-established clinical estimate in this whole
+// feature: ovulation ≈ 14 days before the NEXT period, regardless of total
+// cycle length (the luteal phase itself is what's relatively fixed at
+// ~14 days; cycle-length variation lives almost entirely in the follicular
+// phase before it) — this is the same estimate every real ovulation
+// calculator uses, not a number invented for this feature. Menstrual phase
+// is fixed at ~5 days (typical bleeding duration doesn't scale with total
+// cycle length). Food/drink suggestions below are common, widely-published
+// nutrition guidance (iron during menstruation, magnesium/calcium during
+// the luteal phase, etc.) — not a clinical claim, and never a substitute for
+// a real diagnosis; copy is written to be warm and supportive, not clinical.
+const CYCLE_PHASES = {
+  menstrual: {
+    icon: '🩸',
+    titleAr: 'الدورة الشهرية', title: 'Menstrual Phase',
+    noteAr: 'نعلم أن هذه الأيام قد تكون متعبة 💛 هذه الأطعمة قد تساعد جسمك الآن:',
+    note: "We know these few days can be tough 💛 These might help your body right now:",
+    tipsAr: ['أطعمة غنية بالحديد (لحوم حمراء، عدس، سبانخ)', 'شاي زنجبيل دافئ لتخفيف التقلصات', 'شوكولاتة داكنة (مغنيسيوم لتقليل التقلصات)'],
+    tips: ['Iron-rich foods (red meat, lentils, spinach)', 'Warm ginger tea to ease cramps', 'Dark chocolate (magnesium may help cramps)'],
+  },
+  follicular: {
+    icon: '🌱',
+    titleAr: 'المرحلة الجرابية', title: 'Follicular Phase',
+    noteAr: 'طاقتك بدأت ترتفع 🌱 وقت رائع للتزود بـ:',
+    note: 'Your energy is likely picking up 🌱 A great time to fuel up with:',
+    tipsAr: ['بروتينات خفيفة (سمك، دجاج، بيض)', 'أطعمة مخمّرة (زبادي، مخلل طبيعي)', 'فواكه وخضروات طازجة'],
+    tips: ['Light proteins (fish, chicken, eggs)', 'Fermented foods (yogurt, natural pickles)', 'Fresh fruits and vegetables'],
+  },
+  ovulation: {
+    icon: '✨',
+    titleAr: 'التبويض', title: 'Ovulation',
+    noteAr: 'أنتِ في ذروة نشاطك ✨ حافظي عليه بـ:',
+    note: "You're likely at your peak energy ✨ Keep feeling great with:",
+    tipsAr: ['خضروات ورقية وتوت (مضادة للالتهاب)', 'أطعمة غنية بالألياف', 'خيار وبطيخ للترطيب'],
+    tips: ['Leafy greens and berries (anti-inflammatory)', 'Fiber-rich foods', 'Cucumber and watermelon for hydration'],
+  },
+  luteal: {
+    icon: '🌙',
+    titleAr: 'المرحلة الأصفرية (ما قبل الدورة)', title: 'Luteal Phase (PMS)',
+    noteAr: 'أعراض ما قبل الدورة قد تكون صعبة 💛 القليل من الاهتمام يفرق كثيراً — جرّبي:',
+    note: 'PMS can be rough 💛 A little extra care goes a long way — try:',
+    tipsAr: ['كربوهيدرات معقدة (شوفان، حبوب كاملة) لتحسين المزاج', 'أطعمة غنية بالمغنيسيوم والكالسيوم', 'شاي بابونج دافئ، وتقليل الكافيين والملح إن أمكن'],
+    tips: ['Complex carbs (oats, whole grains) to help mood', 'Magnesium- and calcium-rich foods', 'Warm chamomile tea, and less caffeine/salt if you can'],
+  },
+};
+
+function getCyclePhase(lastPeriodStart, cycleLength) {
+  const start = new Date(lastPeriodStart + 'T00:00:00Z');
+  const daysSince = Math.floor((Date.now() - start.getTime()) / 86400000);
+  if (daysSince < 0) return null; // future date, shouldn't happen post-validation, but never guess
+  const dayOfCycle = (daysSince % cycleLength) + 1; // 1-indexed
+  const ovulationDay = Math.max(cycleLength - 14, 10);
+  if (dayOfCycle <= 5) return 'menstrual';
+  if (dayOfCycle >= ovulationDay - 1 && dayOfCycle <= ovulationDay + 1) return 'ovulation';
+  if (dayOfCycle < ovulationDay - 1) return 'follicular';
+  return 'luteal';
+}
+
+// Returns null (not an error) whenever the feature doesn't apply — not
+// female, tracking not explicitly enabled, or no start-date entered yet —
+// so the client simply shows nothing rather than an empty/broken card.
+app.get(`${BASE}/api/cycle-today`, auth, (req, res) => {
+  const p = req.userObj.profile || {};
+  if (p.gender !== 'female' || !p.cycleTrackingEnabled || !p.lastPeriodStart) {
+    return res.json({ phase: null });
+  }
+  const cycleLength = p.cycleLength || 28;
+  const phaseKey = getCyclePhase(p.lastPeriodStart, cycleLength);
+  if (!phaseKey) return res.json({ phase: null });
+  res.json({ phase: { key: phaseKey, ...CYCLE_PHASES[phaseKey] } });
 });
 
 // Shared by manual entry AND photo-upload extraction. This function's own
