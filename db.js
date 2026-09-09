@@ -684,6 +684,37 @@ function verifyFoodResolution() {
 }
 
 seedFoods(FOOD_SEED_DATA);
+
+// Real, distinct foods (not aliases of anything already in FOOD_SEED_DATA -
+// each has meaningfully different macros from every existing entry) found
+// missing while verifying full coverage against every actual meal-plan/
+// price-catalog name in production. Standard reference composition (USDA
+// FoodData Central equivalents, matching this table's existing sourcing
+// standard - same category as the turkey/chickpeas additions made earlier
+// this migration), not measured for any specific product or brand, and not
+// invented - real published nutrition science for well-established foods.
+//
+// Adding these was NOT optional/cosmetic: checking the OLD substring-based
+// findFoodMatch's actual behavior for these exact names before cutting
+// anything over surfaced a real safety issue. "تونة في زيت"/Tuna in Oil and
+// "لبنة"/Labneh currently get their correct fish/milk allergen ONLY because
+// the old buggy matcher happens to substring-match them to a semantically
+// related (if technically wrong) entry that carries the right tag - moving
+// to exact-match without adding real entries for these would have SILENTLY
+// REMOVED that protection. Worse, "جبنة موزاريلا"/Mozzarella Cheese was
+// found to currently match "موز"/banana (allergens: none) in production
+// right now, because "موزاريلا" contains "موز" as a substring - a live,
+// pre-existing allergy-safety bug this migration did not introduce but did
+// surface, and closes here by giving mozzarella its own real milk-tagged
+// entry instead of an accidental, unprotected match.
+seedFoods([
+  { nameAr: 'تونة في زيت', nameEn: 'tuna, canned in oil, drained', aliases: [], cal: 198, protein: 25, carbs: 0, fat: 8.2, allergens: ['fish'] },
+  { nameAr: 'لبنة', nameEn: 'labneh (strained yogurt)', aliases: [], cal: 140, protein: 5.5, carbs: 4.8, fat: 11, allergens: ['milk'] },
+  { nameAr: 'جبنة موزاريلا', nameEn: 'mozzarella cheese, whole milk', aliases: [], cal: 280, protein: 22, carbs: 2.2, fat: 22, allergens: ['milk'] },
+  { nameAr: 'زيتون', nameEn: 'olives, green, canned', aliases: [], cal: 145, protein: 1, carbs: 3.8, fat: 15.3, allergens: [] },
+  { nameAr: 'بطاطس', nameEn: 'potato, raw', aliases: [], cal: 77, protein: 2, carbs: 17, fat: 0.1, allergens: [] },
+]);
+
 seedFoodAliases([
   { nameAr: 'فرخة كاملة', nameEn: 'Whole Chicken', matchesNameAr: 'فرخة كاملة مشوية' },
   { nameAr: 'جمبري مجمد', nameEn: 'Frozen Shrimp', matchesNameAr: 'جمبري' },
