@@ -983,6 +983,19 @@ function getMealNutrition(mealId) {
 }
 function listMealsForDiet(dietId) { return db.prepare('SELECT * FROM meals WHERE diet_id = ? ORDER BY day_index').all(dietId); }
 
+// The read-path cutover: real computed macros for a specific meal_plans.json
+// entry, looked up by the same (diet, day, type, name) identity
+// seedMealsFromDietPlans() used to create it in the first place. Returns
+// null (not a thrown error) if no matching row exists, so the caller can
+// gracefully fall back to the blob's own declared numbers rather than
+// break - the same "never crash, degrade gracefully" pattern already used
+// throughout the meal-plan route for AI failures and allergy substitution.
+function getMealNutritionByIdentity(dietId, dayIndex, mealType, nameAr) {
+  const meal = findExistingMealStmt.get(dietId, dayIndex, mealType, nameAr);
+  if (!meal) return null;
+  return getMealNutrition(meal.id);
+}
+
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
 // events are high-volume and append-heavy — exactly the access pattern the
@@ -1137,4 +1150,4 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   verifyLookupTablesMatch,
   resolveFood, normalizeFoodName, verifyFoodResolution,
   listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
-  seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet };
+  seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity };

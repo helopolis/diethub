@@ -2623,17 +2623,42 @@ Return ONLY valid JSON, no other text, in this exact shape:
 // the real week data instead - the same "trust the actual meals, not a
 // declared field" approach already used by getMealTypeMacroTarget above -
 // fixes the header displayed to every user, not just personalized ones.
-function getWeekAvgDaily(plan) {
+// Reads real computed macros from the meals/recipe_ingredients tables
+// (Phase 4 migration) per meal, rather than trusting the blob's own
+// declared cal/protein/carbs/fat fields directly - those were found by the
+// architecture audit to disagree with what the real ingredients add up to
+// for 24 of 267 meals, by as much as 67%. Falls back to the blob's
+// declared value for any single meal with no DB match (defensive only -
+// 100% of this exact live data was verified to resolve during the
+// migration, so this should never actually trigger in practice).
+function getWeekAvgDaily(plan, dietId) {
   const days = plan.week || [];
   if (!days.length) return { cal: 0, protein: 0, carbs: 0, fat: 0 };
-  const sums = days.map(d => (d.meals || []).reduce((acc, m) => ({
-    cal: acc.cal + (m.cal || 0),
-    protein: acc.protein + parseGramsField(m.protein),
-    carbs: acc.carbs + parseGramsField(m.carbs),
-    fat: acc.fat + parseGramsField(m.fat),
-  }), { cal: 0, protein: 0, carbs: 0, fat: 0 }));
+  const sums = days.map((d, dayIndex) => (d.meals || []).reduce((acc, m) => {
+    const mealType = m.typeEn ? m.typeEn.toLowerCase() : m.type;
+    const real = dietId ? store.getMealNutritionByIdentity(dietId, dayIndex, mealType, m.name) : null;
+    return {
+      cal: acc.cal + (real ? real.cal : (m.cal || 0)),
+      protein: acc.protein + (real ? real.protein : parseGramsField(m.protein)),
+      carbs: acc.carbs + (real ? real.carbs : parseGramsField(m.carbs)),
+      fat: acc.fat + (real ? real.fat : parseGramsField(m.fat)),
+    };
+  }, { cal: 0, protein: 0, carbs: 0, fat: 0 }));
   const avg = (key) => Math.round(sums.reduce((s, d) => s + d[key], 0) / sums.length);
   return { cal: avg('cal'), protein: avg('protein'), carbs: avg('carbs'), fat: avg('fat') };
+}
+
+// Same real-data correction as getWeekAvgDaily above, applied per meal
+// before it's scaled/priced/displayed - the actual fix for the 24 meals
+// the architecture audit found with an inaccurate declared calorie value.
+// Falls back to the meal's own declared fields if no DB match exists
+// (defensive only, see getWeekAvgDaily's comment on why this shouldn't
+// actually trigger for this live data).
+function correctMealMacros(meal, dietId, dayIndex) {
+  const mealType = meal.typeEn ? meal.typeEn.toLowerCase() : meal.type;
+  const real = store.getMealNutritionByIdentity(dietId, dayIndex, mealType, meal.name);
+  if (!real) return meal;
+  return { ...meal, cal: Math.round(real.cal), protein: `${Math.round(real.protein)}g`, carbs: `${Math.round(real.carbs)}g`, fat: `${Math.round(real.fat)}g` };
 }
 
 // calScale: the existing calorie-based resize. proteinBoost: only >1 for the
@@ -2740,7 +2765,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const plan = plans?.[diet]||plans?.atkins;
   if (!plan) return res.json({error:'Plan not found'});
   const pd = load('food_prices.json');
-  const weekAvg = getWeekAvgDaily(plan);
+  const weekAvg = getWeekAvgDaily(plan, diet);
   const { calScale: personalScale, proteinBoost } = getPersonalTargets(req.user.id, weekAvg);
   const userAllergies = req.userObj?.profile?.allergies || [];
   const customAllergyText = req.userObj?.profile?.customAllergyText || '';
@@ -2753,7 +2778,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
       // Only day 0 (today) carries per-user overrides - the rest of the week
       // is still the static plan preview, matching how the dashboard only
       // ever requests/edits "today" via date.
-      let effectiveMeal = scaleMeal(meal, personalScale, proteinBoost, pd);
+      let effectiveMeal = scaleMeal(correctMealMacros(meal, diet, dayIdx), personalScale, proteinBoost, pd);
       let swapsUsed = 0;
       let mealTypeKey = null;
       if (dayIdx === 0) {
@@ -2844,7 +2869,7 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
   const budgetTier = budgetTierFor(budget);
   const pd = load('food_prices.json');
   const dietPlan = load('meal_plans.json')?.[diet];
-  const { calScale: personalScale, proteinBoost } = getPersonalTargets(req.user.id, dietPlan ? getWeekAvgDaily(dietPlan) : { cal: 0, protein: 0, carbs: 0, fat: 0 });
+  const { calScale: personalScale, proteinBoost } = getPersonalTargets(req.user.id, dietPlan ? getWeekAvgDaily(dietPlan, diet) : { cal: 0, protein: 0, carbs: 0, fat: 0 });
   const userAllergies = req.userObj?.profile?.allergies || [];
   const customAllergyText = req.userObj?.profile?.customAllergyText || '';
 
