@@ -6054,6 +6054,18 @@ initData();
 // a failure here means meal_plans.json changed since that was verified.
 store.seedMealsFromDietPlans(load('meal_plans.json'));
 
+// Users migration (verification-only, no cutover) - same ordering
+// requirement as meals above: users.json is itself seeded by initData()
+// just above, so this must run after it, not at db.js's own module-load
+// time (a real ordering bug this exact sequencing caught before it ever
+// touched real user data - see seedUsersFromBlob's comment in db.js).
+// Nothing in this file reads users/user_profiles/user_allergies/
+// user_medical_conditions yet - users.json remains the sole live source of
+// truth for login, sessions, and billing until a dedicated, separately-
+// staged cutover.
+store.seedUsersFromBlob();
+store.verifyUsersMigration();
+
 // Production hardening pass, Phase 4 (independent audit, DevOps F8.1 — zero
 // automated tests existed anywhere): tests need to import the real Express
 // `app` and drive it with supertest, without binding a real port (which

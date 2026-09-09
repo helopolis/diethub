@@ -8,6 +8,13 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+// health.js has zero requires of its own (fully self-contained, takes
+// `store` as a parameter rather than requiring db.js) - safe for db.js to
+// require it with no circularity. Reused here (not duplicated) for the
+// users migration below, which needs to normalize legacy goalType values
+// ('lose'/'gain') the exact same way the live app already does, so a
+// migrated user's goal_id FK reference is valid.
+const { normalizeGoalType } = require('./health');
 
 const DATA_DIR = process.env.DATA_DIR || '/data/diethub';
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'diethub.db');
@@ -1202,6 +1209,259 @@ function migrateMealOverridesBlob() {
 }
 migrateMealOverridesBlob();
 
+// ─── USERS (architecture audit's other critical scalability finding) ──────
+// The last, and highest-stakes, blob-store migration: users.json holds
+// EVERY user's identity, password hash, subscription/billing state, and
+// full health profile in one JSON array, loaded and fully re-parsed on
+// nearly every authenticated request (`auth()` middleware, every profile
+// read/write, every admin action). This is Phase 1 of that migration only
+// - build the real tables, migrate the real data, verify it byte-for-byte
+// - deliberately NOT a cutover. Not one route in server.js reads or writes
+// these tables yet; users.json remains the sole live source of truth for
+// login, sessions, and billing until a dedicated, carefully-staged cutover
+// (a separate, later piece of work - this touches real passwords and real
+// subscriptions for real paying users, categorically higher stakes than
+// the nutrition-domain tables migrated earlier today).
+//
+// Split into `users` (identity/auth/billing) and `user_profiles` (health/
+// nutrition preferences, 1:1) rather than one wide table - genuinely
+// different concerns, matching how the rest of this migration separated
+// diets from goals from medical conditions instead of one flat blob.
+// Allergies and medical conditions become real many-to-many junction
+// tables referencing the exact Phase 1 lookup tables (allergens,
+// medical_conditions) - the actual point of building those tables in the
+// first place, not just a parallel copy of the same 2 arrays.
+db.exec(`CREATE TABLE IF NOT EXISTS users (
+  id                     TEXT PRIMARY KEY,
+  username               TEXT NOT NULL UNIQUE,
+  password               TEXT NOT NULL,
+  email                  TEXT,
+  phone                  TEXT,
+  role                   TEXT NOT NULL DEFAULT 'user',
+  plan                   TEXT,
+  created                TEXT,
+  active                 INTEGER NOT NULL DEFAULT 1,
+  email_verified         INTEGER NOT NULL DEFAULT 0,
+  trial_start            TEXT,
+  paid                   INTEGER NOT NULL DEFAULT 0,
+  lang                   TEXT,
+  login_attempts         INTEGER NOT NULL DEFAULT 0,
+  avatar_url             TEXT,
+  last_login             TEXT,
+  deleted_at             TEXT,
+  facebook_auth          INTEGER NOT NULL DEFAULT 0,
+  google_auth            INTEGER NOT NULL DEFAULT 0,
+  forced_reregistration  INTEGER NOT NULL DEFAULT 0,
+  open_wearables_user_id TEXT,
+  updated_at             TEXT NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id                 TEXT PRIMARY KEY REFERENCES users(id),
+  diet_id                 TEXT REFERENCES diets(id),
+  weight                  REAL,
+  height                  REAL,
+  age                     INTEGER,
+  gender                  TEXT,
+  budget                  REAL,
+  body_fat                REAL,
+  muscle_mass             REAL,
+  bmi                     REAL,
+  bmr                     REAL,
+  goal_id                 TEXT REFERENCES goals(id),
+  activity_level_id       TEXT REFERENCES activity_levels(id),
+  calorie_mode            TEXT,
+  custom_calorie_target   REAL,
+  cycle_tracking_enabled  INTEGER NOT NULL DEFAULT 0,
+  last_period_start       TEXT,
+  cycle_length            INTEGER,
+  takes_creatine          INTEGER NOT NULL DEFAULT 0,
+  measurements_updated_at TEXT,
+  custom_allergy_text     TEXT,
+  target_weight           REAL,
+  profile_lang            TEXT,
+  updated_at              TEXT NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS user_allergies (
+  user_id     TEXT NOT NULL REFERENCES users(id),
+  allergen_id TEXT NOT NULL REFERENCES allergens(id),
+  PRIMARY KEY (user_id, allergen_id)
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS user_medical_conditions (
+  user_id      TEXT NOT NULL REFERENCES users(id),
+  condition_id TEXT NOT NULL REFERENCES medical_conditions(id),
+  PRIMARY KEY (user_id, condition_id)
+)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`);
+
+const upsertUserStmt = db.prepare(`INSERT INTO users
+    (id,username,password,email,phone,role,plan,created,active,email_verified,trial_start,paid,lang,
+     login_attempts,avatar_url,last_login,deleted_at,facebook_auth,google_auth,forced_reregistration,open_wearables_user_id,updated_at)
+  VALUES (@id,@username,@password,@email,@phone,@role,@plan,@created,@active,@email_verified,@trial_start,@paid,@lang,
+     @login_attempts,@avatar_url,@last_login,@deleted_at,@facebook_auth,@google_auth,@forced_reregistration,@open_wearables_user_id,@now)
+  ON CONFLICT(id) DO UPDATE SET
+    username=excluded.username, password=excluded.password, email=excluded.email, phone=excluded.phone,
+    role=excluded.role, plan=excluded.plan, created=excluded.created, active=excluded.active, email_verified=excluded.email_verified,
+    trial_start=excluded.trial_start, paid=excluded.paid, lang=excluded.lang, login_attempts=excluded.login_attempts,
+    avatar_url=excluded.avatar_url, last_login=excluded.last_login, deleted_at=excluded.deleted_at,
+    facebook_auth=excluded.facebook_auth, google_auth=excluded.google_auth,
+    forced_reregistration=excluded.forced_reregistration, open_wearables_user_id=excluded.open_wearables_user_id,
+    updated_at=excluded.updated_at`);
+const upsertUserProfileStmt = db.prepare(`INSERT INTO user_profiles
+    (user_id,diet_id,weight,height,age,gender,budget,body_fat,muscle_mass,bmi,bmr,goal_id,activity_level_id,
+     calorie_mode,custom_calorie_target,cycle_tracking_enabled,last_period_start,cycle_length,takes_creatine,
+     measurements_updated_at,custom_allergy_text,target_weight,profile_lang,updated_at)
+  VALUES (@user_id,@diet_id,@weight,@height,@age,@gender,@budget,@body_fat,@muscle_mass,@bmi,@bmr,@goal_id,@activity_level_id,
+     @calorie_mode,@custom_calorie_target,@cycle_tracking_enabled,@last_period_start,@cycle_length,@takes_creatine,
+     @measurements_updated_at,@custom_allergy_text,@target_weight,@profile_lang,@now)
+  ON CONFLICT(user_id) DO UPDATE SET
+    diet_id=excluded.diet_id, weight=excluded.weight, height=excluded.height, age=excluded.age, gender=excluded.gender,
+    budget=excluded.budget, body_fat=excluded.body_fat, muscle_mass=excluded.muscle_mass, bmi=excluded.bmi, bmr=excluded.bmr,
+    goal_id=excluded.goal_id, activity_level_id=excluded.activity_level_id, calorie_mode=excluded.calorie_mode,
+    custom_calorie_target=excluded.custom_calorie_target, cycle_tracking_enabled=excluded.cycle_tracking_enabled,
+    last_period_start=excluded.last_period_start, cycle_length=excluded.cycle_length, takes_creatine=excluded.takes_creatine,
+    measurements_updated_at=excluded.measurements_updated_at, custom_allergy_text=excluded.custom_allergy_text,
+    target_weight=excluded.target_weight, profile_lang=excluded.profile_lang, updated_at=excluded.updated_at`);
+const insUserAllergyStmt = db.prepare(`INSERT INTO user_allergies (user_id,allergen_id) VALUES (@user_id,@allergen_id) ON CONFLICT DO NOTHING`);
+const insUserConditionStmt = db.prepare(`INSERT INTO user_medical_conditions (user_id,condition_id) VALUES (@user_id,@condition_id) ON CONFLICT DO NOTHING`);
+const deleteUserAllergiesStmt = db.prepare('DELETE FROM user_allergies WHERE user_id = ?');
+const deleteUserConditionsStmt = db.prepare('DELETE FROM user_medical_conditions WHERE user_id = ?');
+const bool01 = (v) => (v ? 1 : 0);
+
+// Idempotent (UPSERT on both real tables; junction rows are cleared and
+// re-inserted per user each run, since a plain array has no stable row
+// identity to UPSERT against) - safe to run on every boot. Every field is
+// copied faithfully from the live blob, including ones no current user
+// happens to have set (nullable throughout) - nothing guessed, nothing
+// dropped. diet_id/goal_id/activity_level_id are only set when they
+// reference a row that genuinely exists in that lookup table (checked
+// live before this shipped: all real diet values already match; goalType
+// is normalized through the exact same normalizeGoalType() the live app
+// itself uses, so a legacy 'lose'/'gain' value migrates to the same
+// lose_weight/gain_weight a real request would resolve it to) - anything
+// that still doesn't match is left NULL rather than forced through, since
+// a FK violation would abort the whole migration for every user, not just
+// the one with bad data.
+function seedUsersFromBlob() {
+  const users = load('users.json') || [];
+  const now = new Date().toISOString();
+  let migrated = 0;
+  const skippedRefs = [];
+  for (const u of users) {
+    const p = u.profile || {};
+    upsertUserStmt.run({
+      id: u.id, username: u.username, password: u.password, email: u.email || null, phone: u.phone || null,
+      role: u.role || 'user', plan: u.plan || null, created: u.created || null,
+      active: bool01(u.active), email_verified: bool01(u.emailVerified), trial_start: u.trialStart || null,
+      paid: bool01(u.paid), lang: u.lang || null, login_attempts: u.loginAttempts || 0,
+      avatar_url: u.avatarUrl || null, last_login: u.lastLogin || null, deleted_at: u.deletedAt || null,
+      facebook_auth: bool01(u.facebookAuth), google_auth: bool01(u.googleAuth),
+      forced_reregistration: bool01(u.forcedReregistration), open_wearables_user_id: u.openWearablesUserId || null,
+      now,
+    });
+
+    const dietId = p.diet && getDiet(p.diet) ? p.diet : (p.diet ? (skippedRefs.push(`${u.id} diet="${p.diet}"`), null) : null);
+    const goalId = p.goalType ? normalizeGoalType(p.goalType) : null;
+    const activityLevelId = p.activityLevel && getActivityLevel(p.activityLevel) ? p.activityLevel : (p.activityLevel ? (skippedRefs.push(`${u.id} activityLevel="${p.activityLevel}"`), null) : null);
+
+    upsertUserProfileStmt.run({
+      user_id: u.id, diet_id: dietId, weight: p.weight ?? null, height: p.height ?? null, age: p.age ?? null,
+      gender: p.gender || null, budget: p.budget ?? null, body_fat: p.bodyFat ?? null, muscle_mass: p.muscleMass ?? null,
+      bmi: p.bmi ?? null, bmr: p.bmr ?? null, goal_id: goalId, activity_level_id: activityLevelId,
+      calorie_mode: p.calorieMode || null, custom_calorie_target: p.customCalorieTarget ?? null,
+      cycle_tracking_enabled: bool01(p.cycleTrackingEnabled), last_period_start: p.lastPeriodStart || null,
+      cycle_length: p.cycleLength ?? null, takes_creatine: bool01(p.takesCreatine),
+      measurements_updated_at: p.measurementsUpdatedAt || null, custom_allergy_text: p.customAllergyText || null,
+      target_weight: p.targetWeight ?? null, profile_lang: p.lang || null, now,
+    });
+
+    deleteUserAllergiesStmt.run(u.id);
+    for (const allergenId of (Array.isArray(p.allergies) ? p.allergies : [])) {
+      if (db.prepare('SELECT 1 FROM allergens WHERE id = ?').get(allergenId)) {
+        insUserAllergyStmt.run({ user_id: u.id, allergen_id: allergenId });
+      } else {
+        skippedRefs.push(`${u.id} allergy="${allergenId}"`);
+      }
+    }
+    deleteUserConditionsStmt.run(u.id);
+    for (const conditionId of (Array.isArray(p.medicalConditions) ? p.medicalConditions : [])) {
+      if (db.prepare('SELECT 1 FROM medical_conditions WHERE id = ?').get(conditionId)) {
+        insUserConditionStmt.run({ user_id: u.id, condition_id: conditionId });
+      } else {
+        skippedRefs.push(`${u.id} medicalCondition="${conditionId}"`);
+      }
+    }
+    migrated++;
+  }
+  if (skippedRefs.length) console.error('[db] seedUsersFromBlob: skipped invalid references (left NULL/omitted, did not block migration):\n' + skippedRefs.join('\n'));
+  console.log(`[db] users migrated: ${migrated} from the legacy blob (verification-only - no route reads this table yet).`);
+  return { migrated, skippedRefs };
+}
+// NOT auto-run at module-load time, unlike Phases 1-3 - users.json is
+// itself seeded by server.js's initData(), which runs near the end of
+// server.js, long after `require('./db')` already finished running this
+// file's own top-level code (the exact same ordering hazard as Phase 4's
+// meals table, caught here by testing against a fresh deployment before
+// this ever touched real user data: migrating at module-load time here
+// would run against an empty/stale blob on first boot, then silently
+// leave a duplicate stale row once initData() populated it moments later).
+// server.js must call seedUsersFromBlob()/verifyUsersMigration() itself,
+// positioned after initData().
+
+function getUserRow(id) { return db.prepare('SELECT * FROM users WHERE id = ?').get(id) || null; }
+function getUserProfileRow(userId) { return db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(userId) || null; }
+function getUserAllergyIds(userId) { return db.prepare('SELECT allergen_id FROM user_allergies WHERE user_id = ?').all(userId).map(r => r.allergen_id); }
+function getUserMedicalConditionIds(userId) { return db.prepare('SELECT condition_id FROM user_medical_conditions WHERE user_id = ?').all(userId).map(r => r.condition_id); }
+
+// Boot-time proof this matches the real, live blob exactly - same
+// discipline as every other phase's verification, adapted for this one
+// having no independent JS-constant reference: compares the freshly-
+// migrated tables field-by-field against the blob they were migrated FROM,
+// which is the actual source of truth being protected here. Deliberately
+// tolerant of the same normalization the migration itself applies (goalType
+// via normalizeGoalType, invalid diet/activity refs left null) - flagging
+// those as errors would mean the verification disagrees with the
+// migration's own documented, correct behavior.
+function verifyUsersMigration() {
+  const users = load('users.json') || [];
+  const errors = [];
+  for (const u of users) {
+    const p = u.profile || {};
+    const row = getUserRow(u.id);
+    if (!row) { errors.push(`user ${u.id} missing from users table`); continue; }
+    const checks = [
+      ['username', row.username, u.username], ['password', row.password, u.password],
+      ['email', row.email, u.email || null], ['phone', row.phone, u.phone || null],
+      ['role', row.role, u.role || 'user'], ['plan', row.plan, u.plan || null],
+      ['active', !!row.active, !!u.active], ['email_verified', !!row.email_verified, !!u.emailVerified],
+      ['trial_start', row.trial_start, u.trialStart || null], ['paid', !!row.paid, !!u.paid],
+    ];
+    for (const [field, got, want] of checks) {
+      if (got !== want) errors.push(`user ${u.id} field ${field} mismatch: table=${JSON.stringify(got)} blob=${JSON.stringify(want)}`);
+    }
+    const profileRow = getUserProfileRow(u.id) || {};
+    const profileChecks = [
+      ['weight', profileRow.weight ?? null, p.weight ?? null], ['height', profileRow.height ?? null, p.height ?? null],
+      ['age', profileRow.age ?? null, p.age ?? null], ['gender', profileRow.gender ?? null, p.gender || null],
+      ['bmi', profileRow.bmi ?? null, p.bmi ?? null], ['bmr', profileRow.bmr ?? null, p.bmr ?? null],
+    ];
+    for (const [field, got, want] of profileChecks) {
+      if (got !== want) errors.push(`user_profiles ${u.id} field ${field} mismatch: table=${JSON.stringify(got)} blob=${JSON.stringify(want)}`);
+    }
+    const wantAllergies = [...(Array.isArray(p.allergies) ? p.allergies : [])].sort();
+    const gotAllergies = getUserAllergyIds(u.id).sort();
+    const wantValidAllergies = wantAllergies.filter(a => db.prepare('SELECT 1 FROM allergens WHERE id = ?').get(a));
+    if (JSON.stringify(gotAllergies) !== JSON.stringify(wantValidAllergies)) {
+      errors.push(`user_allergies ${u.id} mismatch: table=${JSON.stringify(gotAllergies)} blob(valid only)=${JSON.stringify(wantValidAllergies)}`);
+    }
+  }
+  const tableCount = db.prepare('SELECT COUNT(*) c FROM users').get().c;
+  if (tableCount !== users.length) errors.push(`row count mismatch: users table has ${tableCount}, blob has ${users.length}`);
+  if (errors.length) throw new Error('[db] users migration verification FAILED:\n' + errors.join('\n'));
+  console.log(`[db] users migration verified: all ${users.length} users match the live blob exactly (identity/billing fields, profile fields, and allergy links).`);
+}
+// Also not auto-run - see seedUsersFromBlob's comment above. Called by
+// server.js right after seedUsersFromBlob(), both positioned after initData().
+
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
 // events are high-volume and append-heavy — exactly the access pattern the
@@ -1358,4 +1618,5 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
   seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity,
   getMealOverrideRow, saveMealOverrideRow, deleteMealOverrideRow, deleteAllMealOverridesForUser,
-  listFoodCategories, listFoodsByCategory };
+  listFoodCategories, listFoodsByCategory,
+  getUserRow, getUserProfileRow, getUserAllergyIds, getUserMedicalConditionIds, verifyUsersMigration, seedUsersFromBlob };
