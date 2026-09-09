@@ -105,6 +105,7 @@ store.verifyLookupTablesMatch({
   knownAllergens: KNOWN_ALLERGENS,
   knownMedicalConditions: KNOWN_MEDICAL_CONDITIONS,
   activityFactors: ACTIVITY_FACTORS,
+  goalTypes: GOAL_TYPES,
   goalDeficitPct: DEFICIT_PCT,
   goalProteinBoost: GOAL_PROTEIN_BOOST_PER_KG,
 });
@@ -1887,15 +1888,22 @@ app.post(`${BASE}/api/profile`, auth, (req,res) => {
     if (validated === null) return res.status(400).json({ error: `Invalid value for ${k}` });
     safe[k] = validated;
   }
+  // Reads the allergens/medical_conditions tables (Phase 1 migration) rather
+  // than the KNOWN_ALLERGENS/KNOWN_MEDICAL_CONDITIONS constants directly -
+  // both constants still exist and are exported, but only as the
+  // independent reference verifyLookupTablesMatch checks the tables against
+  // at boot, not as the active read path anymore.
   if (safe.allergies !== undefined) {
-    safe.allergies = Array.isArray(safe.allergies) ? safe.allergies.filter(a => KNOWN_ALLERGENS.includes(a)) : [];
+    const validAllergenIds = new Set(store.listAllergens().map(r => r.id));
+    safe.allergies = Array.isArray(safe.allergies) ? safe.allergies.filter(a => validAllergenIds.has(a)) : [];
   }
   // Self-reported, not diagnosed by the app — used to gate genuinely unsafe
   // combinations (a calorie deficit during pregnancy, an aggressive deficit
   // for a minor, Keto/Atkins with no T1D warning) rather than to make any
   // clinical claim itself. See KNOWN_MEDICAL_CONDITIONS.
   if (safe.medicalConditions !== undefined) {
-    safe.medicalConditions = Array.isArray(safe.medicalConditions) ? safe.medicalConditions.filter(c => KNOWN_MEDICAL_CONDITIONS.includes(c)) : [];
+    const validConditionIds = new Set(store.listMedicalConditions().map(r => r.id));
+    safe.medicalConditions = Array.isArray(safe.medicalConditions) ? safe.medicalConditions.filter(c => validConditionIds.has(c)) : [];
   }
   // Free-text allergy the user typed under "Other" (e.g. "sesame", "kiwi") —
   // not one of the 8 structured KNOWN_ALLERGENS categories, so it can't be
@@ -2164,14 +2172,20 @@ app.post(`${BASE}/api/health-profile/goals`, auth, (req,res) => {
   const { goalType, targetWeight, activityLevel } = req.body;
   const patch = {};
   if (goalType !== undefined) {
-    // 'lose'/'gain' still accepted (health.js's normalizeGoalType treats
-    // them as lose_weight/gain_weight) so an un-updated mobile build in the
-    // wild doesn't start getting rejected the moment this ships.
-    if (![...GOAL_TYPES, 'lose', 'gain'].includes(goalType)) return res.status(400).json({ error: 'Invalid goalType' });
+    // Reads the goals table (Phase 1 migration) rather than GOAL_TYPES
+    // directly. 'lose'/'gain' still accepted (health.js's normalizeGoalType
+    // treats them as lose_weight/gain_weight) so an un-updated mobile build
+    // in the wild doesn't start getting rejected the moment this ships.
+    const validGoalIds = store.listGoals().map(g => g.id);
+    if (![...validGoalIds, 'lose', 'gain'].includes(goalType)) return res.status(400).json({ error: 'Invalid goalType' });
     patch.goalType = goalType;
   }
   if (activityLevel !== undefined) {
-    if (!['sedentary','light','moderate','active','very_active'].includes(activityLevel)) return res.status(400).json({ error: 'Invalid activityLevel' });
+    // Previously its own third hardcoded copy of this 5-value list
+    // (independent of both ACTIVITY_FACTORS and this route's own goalType
+    // check above) - now reads the same activity_levels table as everything
+    // else, so there's exactly one place this list can ever drift.
+    if (!store.getActivityLevel(activityLevel)) return res.status(400).json({ error: 'Invalid activityLevel' });
     patch.activityLevel = activityLevel;
   }
   if (targetWeight !== undefined) {

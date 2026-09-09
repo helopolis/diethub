@@ -388,16 +388,17 @@ function getActivityLevel(id) { return db.prepare('SELECT * FROM activity_levels
 // Callers pass in the live constants (not re-declared here) so this check
 // can never drift out of sync with whichever object server.js/health.js
 // actually still uses.
-function verifyLookupTablesMatch({ knownAllergens, knownMedicalConditions, activityFactors, goalDeficitPct, goalProteinBoost }) {
+function verifyLookupTablesMatch({ knownAllergens, knownMedicalConditions, activityFactors, goalTypes, goalDeficitPct, goalProteinBoost }) {
   const errors = [];
-  const dbAllergenIds = listAllergens().map(r => r.id).sort();
-  if (JSON.stringify(dbAllergenIds) !== JSON.stringify([...knownAllergens].sort())) {
-    errors.push(`allergens mismatch: DB=${JSON.stringify(dbAllergenIds)} JS=${JSON.stringify(knownAllergens)}`);
-  }
-  const dbConditionIds = listMedicalConditions().map(r => r.id).sort();
-  if (JSON.stringify(dbConditionIds) !== JSON.stringify([...knownMedicalConditions].sort())) {
-    errors.push(`medical_conditions mismatch: DB=${JSON.stringify(dbConditionIds)} JS=${JSON.stringify(knownMedicalConditions)}`);
-  }
+  const idSetMismatch = (label, dbIds, jsIds) => {
+    const a = [...dbIds].sort(), b = [...jsIds].sort();
+    if (JSON.stringify(a) !== JSON.stringify(b)) errors.push(`${label} ID set mismatch: DB=${JSON.stringify(a)} JS=${JSON.stringify(b)}`);
+  };
+  idSetMismatch('allergens', listAllergens().map(r => r.id), knownAllergens);
+  idSetMismatch('medical_conditions', listMedicalConditions().map(r => r.id), knownMedicalConditions);
+  idSetMismatch('activity_levels', listActivityLevels().map(r => r.id), Object.keys(activityFactors));
+  idSetMismatch('goals', listGoals().map(r => r.id), goalTypes);
+
   for (const level of listActivityLevels()) {
     if (activityFactors[level.id] !== level.factor) {
       errors.push(`activity_levels.${level.id}.factor mismatch: DB=${level.factor} JS=${activityFactors[level.id]}`);
@@ -415,7 +416,7 @@ function verifyLookupTablesMatch({ knownAllergens, knownMedicalConditions, activ
   if (errors.length) {
     throw new Error('[db] lookup-table migration verification FAILED:\n' + errors.join('\n'));
   }
-  console.log('[db] lookup-table migration verified: allergens/medical_conditions/activity_levels/goals all match production JS constants exactly.');
+  console.log('[db] lookup-table migration verified: allergens/medical_conditions/activity_levels/goals all match production JS constants exactly (IDs and values).');
 }
 
 // ─── EVENTS ─────────────────────────────────────────────────────────────────

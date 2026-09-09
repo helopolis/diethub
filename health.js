@@ -193,8 +193,13 @@ function buildHealthProfile(store, userId) {
     : null;
 
   // ── Activity: explicit setting → inferred from steps → sedentary default ──
-  const activityLevel = ACTIVITY_FACTORS[p.activityLevel] ? p.activityLevel
+  // Reads the activity_levels table (Phase 1 migration) rather than the
+  // ACTIVITY_FACTORS constant directly - the constant still exists and is
+  // exported, but only as the independent reference verifyLookupTablesMatch
+  // checks the table against at boot, not as the active read path anymore.
+  const activityLevel = store.getActivityLevel(p.activityLevel) ? p.activityLevel
     : (activityFromSteps(avgSteps) || 'sedentary');
+  const activityFactor = store.getActivityLevel(activityLevel)?.factor;
 
   // ── Labs (moved ahead of the calorie range below - a critical lab result
   // tightens the safe slider range, so it needs to be known first) ──
@@ -209,7 +214,7 @@ function buildHealthProfile(store, userId) {
   // same graceful-degradation pattern already used everywhere else here.
   const bmrFormula = lbm != null ? 'katch-mcardle' : 'mifflin-st-jeor';
   const bmr = lbm != null ? katchMcArdleBMR(lbm) : mifflinBMR({ weight, height, age, gender });
-  const tdee = bmr ? Math.round(bmr * ACTIVITY_FACTORS[activityLevel]) : null;
+  const tdee = bmr ? Math.round(bmr * activityFactor) : null;
   const goalType = normalizeGoalType(p.goalType);
   const floor = gender === 'female' ? 1200 : 1500; // don't recommend unsafe deficits
   const medicalConditions = Array.isArray(p.medicalConditions) ? p.medicalConditions : [];
@@ -242,6 +247,12 @@ function buildHealthProfile(store, userId) {
     ? 'underweight_bmi'
     : null;
   const effectiveGoalType = goalSafetyOverride ? 'maintain' : goalType;
+  // Single fetch from the goals table (Phase 1 migration) reused below for
+  // both the calorie delta and the protein boost, rather than reading
+  // DEFICIT_PCT/GOAL_PROTEIN_BOOST_PER_KG directly - those constants still
+  // exist and are exported, but only as the independent reference
+  // verifyLookupTablesMatch checks the table against at boot.
+  const effectiveGoalRow = store.getGoal(effectiveGoalType);
   // Percentage-based deficit/surplus, not a flat ±500 kcal — a fixed amount
   // is a much bigger relative hit for someone with a 1,700 kcal TDEE than a
   // 4,000 kcal one. 18%/12% were chosen because the app's own prior fixed
@@ -261,7 +272,7 @@ function buildHealthProfile(store, userId) {
       // itself — no floor involved, because there's nothing to floor.
       recommendedCalorieTarget = tdee;
     } else {
-      const delta = Math.round(tdee * (DEFICIT_PCT[effectiveGoalType] ?? 0));
+      const delta = Math.round(tdee * (effectiveGoalRow?.deficit_pct ?? 0));
       recommendedCalorieTarget = Math.max(tdee + delta, floor);
     }
   }
@@ -332,7 +343,7 @@ function buildHealthProfile(store, userId) {
   // calorie number: preserving muscle while cutting or building it while
   // bulking both come down to hitting real protein, standard sports-
   // nutrition range being ~1.8-2.2g/kg once that's the explicit goal.
-  const effectiveProteinPerKg = Math.min((dietMeta.proteinPerKg || 1.4) + (GOAL_PROTEIN_BOOST_PER_KG[effectiveGoalType] || 0), 2.2);
+  const effectiveProteinPerKg = Math.min((dietMeta.proteinPerKg || 1.4) + (effectiveGoalRow?.protein_boost_per_kg || 0), 2.2);
   // Protein need scales with the tissue that actually uses it (muscle),
   // not total body weight — real sports-nutrition practice once lean mass
   // is known (fat mass doesn't need dietary protein to maintain itself the
@@ -401,7 +412,7 @@ function buildHealthProfile(store, userId) {
       bmr, bmrFormula, tdee, proteinTargetG, hydrationTargetL,
       calorieMode, calorieTarget, recommendedCalorieTarget,
       calorieMin, calorieMax, preferredCalorieMin, preferredCalorieMax,
-      deficitPct: tdee ? Math.round((DEFICIT_PCT[effectiveGoalType] ?? 0) * 100) : null,
+      deficitPct: tdee ? Math.round((effectiveGoalRow?.deficit_pct ?? 0) * 100) : null,
       // goalType above (in `goals`) is what the user selected; this is what
       // was actually applied — they differ only when goalSafetyOverride is
       // set, in which case the UI should tell the user why their selected
