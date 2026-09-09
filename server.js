@@ -17,7 +17,7 @@ const { Webhook } = require('svix');
 const { AppStoreServerAPIClient, SignedDataVerifier, Environment: AppleEnv, Status: AppleSubStatus } = require('@apple/app-store-server-library');
 const { androidpublisher } = require('@googleapis/androidpublisher');
 const store = require('./db');
-const { buildHealthProfile, coachSummary } = require('./health');
+const { buildHealthProfile, coachSummary, GOAL_TYPES } = require('./health');
 const aiLanguage = require('./ai_language');
 const { runReminderCheck } = require('./reminders');
 const { buildDailyBrief, buildWeeklySummary } = require('./daily_brief');
@@ -2134,7 +2134,10 @@ app.post(`${BASE}/api/health-profile/goals`, auth, (req,res) => {
   const { goalType, targetWeight, activityLevel } = req.body;
   const patch = {};
   if (goalType !== undefined) {
-    if (!['lose','maintain','gain'].includes(goalType)) return res.status(400).json({ error: 'Invalid goalType' });
+    // 'lose'/'gain' still accepted (health.js's normalizeGoalType treats
+    // them as lose_weight/gain_weight) so an un-updated mobile build in the
+    // wild doesn't start getting rejected the moment this ships.
+    if (![...GOAL_TYPES, 'lose', 'gain'].includes(goalType)) return res.status(400).json({ error: 'Invalid goalType' });
     patch.goalType = goalType;
   }
   if (activityLevel !== undefined) {
