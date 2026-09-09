@@ -1011,6 +1011,88 @@ function getMealNutritionByIdentity(dietId, dayIndex, mealType, nameAr) {
   return getMealNutrition(meal.id);
 }
 
+// ─── MEAL OVERRIDES (scalability fix, architecture audit Section 13/14) ────
+// Previously `meal_overrides.json` was a single JSON blob keyed by user,
+// with EVERY user's every override nested inside one document - reading or
+// writing any single user's single meal override meant loading, parsing,
+// mutating, and re-serializing every other user's data too (`load`/`save`
+// in this file are whole-document operations). At 39 users this is
+// invisible (~13KB). At the "millions of users" scale this migration is
+// scoped for, it's not a slowdown, it's a memory ceiling: the process would
+// need to hold the entire user base's override history just to answer one
+// user's one meal-plan request. Real indexed rows fix this by construction.
+// Unlike Phases 1-3, this is NOT compared against a JS constant at boot
+// (there's no equivalent hardcoded reference for user-generated data) -
+// the migration itself, and the natural-key UNIQUE index, are the safety
+// net. Safe to seed at module-load time (unlike Phase 4's meals table):
+// meal_overrides.json is user-generated, not seeded by initData(), so
+// there's no "doesn't exist yet on a fresh deployment" ordering concern -
+// load() on an empty/missing key just returns null and the migration
+// below correctly does nothing.
+db.exec(`CREATE TABLE IF NOT EXISTS meal_overrides (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     TEXT NOT NULL,
+  date        TEXT NOT NULL,
+  meal_type   TEXT NOT NULL,
+  diet_id     TEXT,
+  meal_json   TEXT NOT NULL,
+  tier        TEXT,
+  swaps_used  INTEGER NOT NULL DEFAULT 0,
+  manual_swap INTEGER NOT NULL DEFAULT 0,
+  updated_at  TEXT NOT NULL
+)`);
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_meal_overrides_key ON meal_overrides(user_id, date, meal_type)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_meal_overrides_user ON meal_overrides(user_id)`);
+
+const upsertMealOverrideStmt = db.prepare(`INSERT INTO meal_overrides (user_id,date,meal_type,diet_id,meal_json,tier,swaps_used,manual_swap,updated_at)
+  VALUES (@user_id,@date,@meal_type,@diet_id,@meal_json,@tier,@swaps_used,@manual_swap,@now)
+  ON CONFLICT(user_id,date,meal_type) DO UPDATE SET
+    diet_id=excluded.diet_id, meal_json=excluded.meal_json, tier=excluded.tier,
+    swaps_used=excluded.swaps_used, manual_swap=excluded.manual_swap, updated_at=excluded.updated_at`);
+const getMealOverrideStmt = db.prepare('SELECT * FROM meal_overrides WHERE user_id=? AND date=? AND meal_type=?');
+const deleteMealOverrideStmt = db.prepare('DELETE FROM meal_overrides WHERE user_id=? AND date=? AND meal_type=?');
+
+// Same {meal, tier, diet, swapsUsed, manualSwap} shape the old blob entries
+// had, so server.js's callers need zero changes beyond the call sites.
+function getMealOverrideRow(userId, date, mealType) {
+  const row = getMealOverrideStmt.get(userId, date, mealType);
+  if (!row) return null;
+  return { meal: JSON.parse(row.meal_json), tier: row.tier, diet: row.diet_id, swapsUsed: row.swaps_used, manualSwap: !!row.manual_swap };
+}
+function saveMealOverrideRow(userId, date, mealType, entry) {
+  upsertMealOverrideStmt.run({
+    user_id: userId, date, meal_type: mealType, diet_id: entry.diet || null,
+    meal_json: JSON.stringify(entry.meal), tier: entry.tier || null,
+    swaps_used: entry.swapsUsed || 0, manual_swap: entry.manualSwap ? 1 : 0,
+    now: new Date().toISOString(),
+  });
+}
+function deleteMealOverrideRow(userId, date, mealType) { deleteMealOverrideStmt.run(userId, date, mealType); }
+// For account deletion - the whole point of moving off the blob is that a
+// single user's rows can be targeted directly instead of loading/mutating/
+// rewriting everyone's data to remove one user's slice.
+function deleteAllMealOverridesForUser(userId) { db.prepare('DELETE FROM meal_overrides WHERE user_id = ?').run(userId); }
+
+// One-time migration of the legacy blob into real rows. Idempotent via the
+// UPSERT above (re-running just overwrites with the same values), so safe
+// to run on every boot rather than needing a one-shot flag.
+function migrateMealOverridesBlob() {
+  const blob = load('meal_overrides.json');
+  if (!blob) return { migrated: 0 };
+  let migrated = 0;
+  for (const userId of Object.keys(blob)) {
+    for (const date of Object.keys(blob[userId] || {})) {
+      for (const mealType of Object.keys(blob[userId][date] || {})) {
+        saveMealOverrideRow(userId, date, mealType, blob[userId][date][mealType]);
+        migrated++;
+      }
+    }
+  }
+  if (migrated) console.log(`[db] meal_overrides migrated: ${migrated} entries from the legacy blob.`);
+  return { migrated };
+}
+migrateMealOverridesBlob();
+
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
 // events are high-volume and append-heavy — exactly the access pattern the
@@ -1165,4 +1247,5 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   verifyLookupTablesMatch,
   resolveFood, normalizeFoodName, verifyFoodResolution,
   listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
-  seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity };
+  seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity,
+  getMealOverrideRow, saveMealOverrideRow, deleteMealOverrideRow, deleteAllMealOverridesForUser };

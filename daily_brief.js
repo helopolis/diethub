@@ -194,10 +194,12 @@ function buildSavingsCard(store, lang) {
 
 // Mirrors getMealOverride() in server.js exactly (server.js isn't set up as
 // an importable module, so this is a small, deliberate duplication — keep
-// in sync if that one changes).
+// in sync if that one changes). Updated for the meal_overrides scalability
+// migration (architecture audit Section 13): reads the real table via
+// store.getMealOverrideRow() instead of the old meal_overrides.json blob -
+// same shape, so nothing downstream in this file needed to change.
 function getMealOverride(store, userId, date, mealType) {
-  const all = store.load('meal_overrides.json') || {};
-  return all[userId]?.[date]?.[mealType] || null;
+  return store.getMealOverrideRow(userId, date, mealType);
 }
 
 // ─── Real nutrition totals for today, from data already logged ────────────

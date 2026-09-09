@@ -2122,14 +2122,22 @@ app.post(`${BASE}/api/account/delete`, auth, (req, res) => {
   // JSON documents, so the avatar file needs its own explicit deletion.
   deleteAvatarFile(users[idx].avatarUrl);
 
+  // meal_overrides moved to a real table (scalability fix, architecture
+  // audit Section 13) - deleted via a direct indexed statement below, not
+  // this blob loop. The blob key can still exist from before that
+  // migration, but it's no longer where live override data lives, so
+  // clearing it here would be a no-op that looks like real deletion
+  // without being one - removed from this list instead of leaving
+  // misleading dead code.
   const PER_USER_KEYED_FILES = [
     'nutrition_logs.json', 'weight_history.json', 'watch_data.json', 'lab_results.json',
-    'meal_overrides.json', 'ai_suggestions.json', 'geofence_zones.json', 'push_tokens.json',
+    'ai_suggestions.json', 'geofence_zones.json', 'push_tokens.json',
     'geofence_dwell.json',
   ];
   for (const file of PER_USER_KEYED_FILES) {
     update(file, all => { delete all[userId]; return all; }, {});
   }
+  store.deleteAllMealOverridesForUser(userId);
   update('pending_verifications.json', list => (list || []).filter(Boolean).filter(p => p.userId !== userId), []);
   update('refresh_tokens.json', tokens => {
     for (const [token, rec] of Object.entries(tokens)) if (rec.userId === userId) delete tokens[token];
@@ -2390,9 +2398,14 @@ function budgetTierFor(budget) {
   return 'mid';
 }
 
+// Reads the real meal_overrides table (scalability fix, architecture audit
+// Section 13) rather than the old meal_overrides.json blob - a single
+// indexed lookup instead of loading and parsing every user's entire
+// override history on every call. Same external shape and behavior
+// (including the diet-mismatch invalidation), so callers needed zero
+// changes beyond the call sites themselves.
 function getMealOverride(userId, date, mealType, diet) {
-  const all = load('meal_overrides.json') || {};
-  const entry = all[userId]?.[date]?.[mealType] || null;
+  const entry = store.getMealOverrideRow(userId, date, mealType);
   // An override generated under a different diet (e.g. the user swapped a
   // meal while on keto, then switched their plan to atkins) is stale for
   // this diet - treat it as if it never existed rather than serving a meal
@@ -2402,11 +2415,7 @@ function getMealOverride(userId, date, mealType, diet) {
 }
 
 function saveMealOverride(userId, date, mealType, entry) {
-  const all = load('meal_overrides.json') || {};
-  if (!all[userId]) all[userId] = {};
-  if (!all[userId][date]) all[userId][date] = {};
-  all[userId][date][mealType] = entry;
-  save('meal_overrides.json', all);
+  store.saveMealOverrideRow(userId, date, mealType, entry);
 }
 
 const MEAL_TYPE_LABELS = {
