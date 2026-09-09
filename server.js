@@ -588,20 +588,74 @@ function initData() {
     'ratings.json': [],
     'pending_verifications.json': [],
     'security_log.json': [],
+    // Seeds a brand-new deployment only (initData() skips any key that
+    // already exists — see the `if (load(f) === null)` guard below), so
+    // this never overwrites the live, scraper-maintained catalog. Kept in
+    // sync with it anyway: a stale/incomplete seed here would silently
+    // reintroduce the exact "ingredient not in catalog → 0 EGP" bug for
+    // any fresh environment, which is worse than just not having a seed.
+    // Snapshotted from the live catalog 2026-09-09, after auditing every
+    // ingredient referenced anywhere in buildMealPlans() below and adding
+    // the 36 that were missing (real per-store prices, not placeholders).
     'food_prices.json': {
-      lastUpdated:'2026-04-20',
+      lastUpdated:'2026-09-09',
       items:[
-        {id:'chicken',name:'صدر فراخ طازج',nameEn:'Chicken Breast',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',metro:175,category:'protein'},
-        {id:'eggs',name:'بيض أحمر',nameEn:'Eggs (30 pcs)',unit:'carton',qty:'2-3 eggs per serving',qtyAr:'2-3 بيضات',metro:125,category:'protein'},
-        {id:'fish',name:'سمك بلطي',nameEn:'Tilapia Fish',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',metro:90,category:'protein'},
-        {id:'beef',name:'لحمة كندوز',nameEn:'Beef',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',metro:265,category:'protein'},
-        {id:'cheese',name:'جبن قريش',nameEn:'Fresh Cheese',unit:'500g',qty:'3-4 tbsp (60g)',qtyAr:'60 جم',metro:42,category:'dairy'},
-        {id:'veggies',name:'خضار مشكلة',nameEn:'Mixed Vegetables',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',metro:28,category:'vegetables'},
-        {id:'avocado',name:'أفوكادو',nameEn:'Avocado',unit:'kg',qty:'half (80g)',qtyAr:'نصف حبة (80 جم)',metro:88,category:'vegetables'},
-        {id:'olive_oil',name:'زيت زيتون',nameEn:'Olive Oil',unit:'500ml',qty:'1 tbsp per meal',qtyAr:'ملعقة للوجبة',metro:135,category:'fats'},
-        {id:'nuts',name:'مكسرات مشكلة',nameEn:'Mixed Nuts',unit:'250g',qty:'30g handful',qtyAr:'30 جم',metro:98,category:'fats'},
-        {id:'cucumber',name:'خيار',nameEn:'Cucumber',unit:'kg',qty:'1 medium (120g)',qtyAr:'حبة متوسطة (120 جم)',metro:10,category:'vegetables'},
-        {id:'tomato',name:'طماطم',nameEn:'Tomatoes',unit:'kg',qty:'1 medium (100g)',qtyAr:'حبة متوسطة (100 جم)',metro:12,category:'vegetables'}
+        {id:'chicken',name:'صدر فراخ طازج',nameEn:'Chicken Breast',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',category:'protein',metro:290,seoudi:328,gourmet:105,spinneys:135,hyperone:172},
+        {id:'eggs',name:'بيض أحمر',nameEn:'Eggs (30 pcs)',unit:'carton',qty:'2-3 eggs per serving',qtyAr:'2-3 بيضات',category:'protein',metro:170,seoudi:158,gourmet:178,spinneys:180,hyperone:162},
+        {id:'fish',name:'سمك بلطي',nameEn:'Tilapia Fish',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'protein',metro:95,seoudi:85,gourmet:110,spinneys:112,hyperone:89},
+        {id:'beef',name:'لحمة كندوز',nameEn:'Beef',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'protein',metro:267,seoudi:395,gourmet:465,spinneys:495,hyperone:415},
+        {id:'turkey',name:'صدر ديك رومي',nameEn:'Turkey Breast',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'protein',metro:130,seoudi:118,gourmet:140,spinneys:142,hyperone:122},
+        {id:'shrimp',name:'جمبري مجمد',nameEn:'Frozen Shrimp',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'protein',metro:290,seoudi:265,gourmet:315,spinneys:320,hyperone:275},
+        {id:'tuna',name:'تونة في زيت',nameEn:'Tuna in Oil',unit:'can 185g',qty:'1 can per serving',qtyAr:'علبة واحدة',category:'protein',metro:48,seoudi:43,gourmet:52,spinneys:54,hyperone:46},
+        {id:'cheese',name:'جبن قريش',nameEn:'Fresh Cheese',unit:'500g',qty:'60g per serving',qtyAr:'60 جم',category:'dairy',metro:195,seoudi:132,gourmet:215,spinneys:220,hyperone:180},
+        {id:'labneh',name:'لبنة',nameEn:'Labneh',unit:'500g',qty:'3 tbsp per serving',qtyAr:'3 ملاعق',category:'dairy',metro:222,seoudi:250,gourmet:60,spinneys:198,hyperone:246},
+        {id:'greek_yogurt',name:'زبادي يوناني',nameEn:'Greek Yogurt',unit:'200g',qty:'1 cup per serving',qtyAr:'كوب واحد',category:'dairy',metro:53,seoudi:53,gourmet:72,spinneys:43,hyperone:64},
+        {id:'veggies',name:'خضار مشكلة',nameEn:'Mixed Vegetables',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',category:'vegetables',metro:71,seoudi:84,gourmet:26,spinneys:27,hyperone:95},
+        {id:'avocado',name:'أفوكادو',nameEn:'Avocado',unit:'kg',qty:'half (80g)',qtyAr:'نصف حبة (80 جم)',category:'vegetables',metro:88,seoudi:80,gourmet:95,spinneys:98,hyperone:82},
+        {id:'cucumber',name:'خيار',nameEn:'Cucumber',unit:'kg',qty:'1 medium (120g)',qtyAr:'حبة متوسطة (120 جم)',category:'vegetables',metro:55,seoudi:35,gourmet:14,spinneys:51,hyperone:12},
+        {id:'tomato',name:'طماطم',nameEn:'Tomatoes',unit:'kg',qty:'1 medium (100g)',qtyAr:'حبة متوسطة (100 جم)',category:'vegetables',metro:231,seoudi:182,gourmet:21,spinneys:168,hyperone:18},
+        {id:'spinach',name:'سبانخ',nameEn:'Spinach',unit:'kg',qty:'100g per serving',qtyAr:'100 جم',category:'vegetables',metro:40,seoudi:156,gourmet:32,spinneys:155,hyperone:29},
+        {id:'broccoli',name:'بروكلي',nameEn:'Broccoli',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'vegetables',metro:70,seoudi:300,gourmet:52,spinneys:30,hyperone:46},
+        {id:'olive_oil',name:'زيت زيتون',nameEn:'Olive Oil',unit:'500ml',qty:'1 tbsp per meal',qtyAr:'ملعقة للوجبة',category:'fats',metro:170,seoudi:550,gourmet:560,spinneys:483,hyperone:400},
+        {id:'nuts',name:'مكسرات مشكلة',nameEn:'Mixed Nuts',unit:'250g',qty:'30g per serving',qtyAr:'30 جم',category:'fats',metro:461,seoudi:286,gourmet:260,spinneys:265,hyperone:240},
+        {id:'almonds',name:'لوز',nameEn:'Almonds',unit:'250g',qty:'30g per serving',qtyAr:'30 جم',category:'fats',metro:295,seoudi:213,gourmet:315,spinneys:320,hyperone:280},
+        {id:'butter',name:'زبدة طبيعية',nameEn:'Natural Butter',unit:'200g',qty:'1 tbsp per serving',qtyAr:'ملعقة للوجبة',category:'fats',metro:62,seoudi:121,gourmet:66,spinneys:78,hyperone:120},
+        {id:'brown_rice',name:'أرز بني',nameEn:'Brown Rice',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'grains',metro:58,seoudi:52,gourmet:65,spinneys:68,hyperone:55},
+        {id:'orange',name:'برتقال',nameEn:'Orange',unit:'kg',qty:'1 medium (200g)',qtyAr:'حبة متوسطة (200 جم)',category:'fruits',metro:32,seoudi:28,gourmet:38,spinneys:40,hyperone:30},
+        {id:'potato',name:'بطاطس',nameEn:'Potato',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'vegetables',metro:24,seoudi:20,gourmet:30,spinneys:32,hyperone:22},
+        {id:'apple',name:'تفاح',nameEn:'Apple',unit:'kg',qty:'1 medium (150g)',qtyAr:'حبة متوسطة (150 جم)',category:'fruits',metro:65,seoudi:58,gourmet:78,spinneys:82,hyperone:62},
+        {id:'dates',name:'تمر',nameEn:'Dates',unit:'250g',qty:'2 pieces (~40g)',qtyAr:'حبتان (~40 جم)',category:'fruits',metro:85,seoudi:75,gourmet:95,spinneys:100,hyperone:80},
+        {id:'mixed_berries',name:'توت مشكل مجمد',nameEn:'Mixed Berries',unit:'125g',qty:'60g per serving',qtyAr:'60 جم للحصة',category:'fruits',metro:110,seoudi:95,gourmet:130,spinneys:140,hyperone:105},
+        {id:'carrot',name:'جزر',nameEn:'Carrot',unit:'kg',qty:'1 medium (80g)',qtyAr:'حبة متوسطة (80 جم)',category:'vegetables',metro:20,seoudi:16,gourmet:25,spinneys:27,hyperone:18},
+        {id:'shredded_coconut',name:'جوز الهند مبشور',nameEn:'Shredded Coconut',unit:'200g',qty:'20g per serving',qtyAr:'20 جم للحصة',category:'condiments',metro:85,seoudi:75,gourmet:95,spinneys:100,hyperone:80},
+        {id:'hummus',name:'حمص بالطحينة',nameEn:'Hummus',unit:'250g',qty:'100g per serving',qtyAr:'100 جم للحصة',category:'legumes',metro:55,seoudi:48,gourmet:65,spinneys:70,hyperone:50},
+        {id:'chickpeas',name:'حمص حب معلب',nameEn:'Chickpeas',unit:'can 400g',qty:'80g per serving',qtyAr:'80 جم للحصة',category:'legumes',metro:32,seoudi:28,gourmet:38,spinneys:40,hyperone:30},
+        {id:'plain_yogurt',name:'زبادي',nameEn:'Plain Yogurt',unit:'170g',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'dairy',metro:20,seoudi:17,gourmet:25,spinneys:27,hyperone:18},
+        {id:'zaatar',name:'زعتر',nameEn:'Zaatar',unit:'200g',qty:'1 tbsp per serving',qtyAr:'ملعقة للحصة',category:'condiments',metro:50,seoudi:44,gourmet:58,spinneys:62,hyperone:46},
+        {id:'coconut_oil',name:'زيت جوز الهند',nameEn:'Coconut Oil',unit:'500ml',qty:'1 tbsp per meal',qtyAr:'ملعقة للوجبة',category:'fats',metro:320,seoudi:290,gourmet:380,spinneys:400,hyperone:310},
+        {id:'green_salad',name:'سلطة خضراء',nameEn:'Green Salad',unit:'kg',qty:'100g per serving',qtyAr:'100 جم للحصة',category:'vegetables',metro:50,seoudi:44,gourmet:58,spinneys:62,hyperone:46},
+        {id:'salmon',name:'سلمون',nameEn:'Salmon',unit:'kg',qty:'180g per serving',qtyAr:'180 جم للحصة',category:'protein',metro:850,seoudi:780,gourmet:950,spinneys:1050,hyperone:820},
+        {id:'oats',name:'شوفان',nameEn:'Oats',unit:'500g',qty:'50g per serving',qtyAr:'50 جم للحصة',category:'grains',metro:68,seoudi:60,gourmet:78,spinneys:82,hyperone:64},
+        {id:'tahini',name:'طحينة',nameEn:'Tahini',unit:'400g',qty:'1 tbsp per meal',qtyAr:'ملعقة للوجبة',category:'fats',metro:75,seoudi:68,gourmet:88,spinneys:92,hyperone:72},
+        {id:'falafel',name:'طعمية',nameEn:'Falafel',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'legumes',metro:85,seoudi:75,gourmet:100,spinneys:105,hyperone:80},
+        {id:'lentils',name:'عدس',nameEn:'Lentils',unit:'kg',qty:'200g per serving',qtyAr:'200 جم للحصة',category:'legumes',metro:55,seoudi:48,gourmet:65,spinneys:68,hyperone:50},
+        {id:'honey',name:'عسل نحل',nameEn:'Honey',unit:'250g',qty:'1 tbsp per serving',qtyAr:'ملعقة للحصة',category:'condiments',metro:120,seoudi:105,gourmet:145,spinneys:155,hyperone:110},
+        {id:'brown_bread',name:'عيش أسمر',nameEn:'Brown Bread',unit:'pack 400g',qty:'1 small loaf (60g)',qtyAr:'رغيف صغير (60 جم)',category:'bakery',metro:25,seoudi:22,gourmet:30,spinneys:32,hyperone:23},
+        {id:'baladi_bread',name:'عيش بلدي',nameEn:'Baladi Bread',unit:'pack of 5',qty:'half loaf (60g)',qtyAr:'نصف رغيف (60 جم)',category:'bakery',metro:18,seoudi:15,gourmet:22,spinneys:24,hyperone:16},
+        {id:'white_bread',name:'عيش فينو',nameEn:'White Bread',unit:'pack 400g',qty:'1 loaf (60g)',qtyAr:'رغيف (60 جم)',category:'bakery',metro:20,seoudi:17,gourmet:25,spinneys:27,hyperone:18},
+        {id:'whole_chicken',name:'فرخة كاملة',nameEn:'Whole Chicken',unit:'kg',qty:'250g per serving',qtyAr:'250 جم للحصة',category:'protein',metro:95,seoudi:85,gourmet:115,spinneys:120,hyperone:90},
+        {id:'green_pepper',name:'فلفل أخضر',nameEn:'Green Pepper',unit:'kg',qty:'80g per serving',qtyAr:'80 جم للحصة',category:'vegetables',metro:26,seoudi:22,gourmet:32,spinneys:34,hyperone:24},
+        {id:'foul_medames',name:'فول مدمس معلب',nameEn:'Foul Medames',unit:'can 400g',qty:'200g per serving',qtyAr:'200 جم للحصة',category:'legumes',metro:22,seoudi:19,gourmet:27,spinneys:29,hyperone:20},
+        {id:'cinnamon',name:'قرفة',nameEn:'Cinnamon',unit:'50g',qty:'pinch (2g)',qtyAr:'رشة (2 جم)',category:'condiments',metro:32,seoudi:28,gourmet:38,spinneys:40,hyperone:30},
+        {id:'beef_liver',name:'كبدة بقري',nameEn:'Beef Liver',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'protein',metro:165,seoudi:150,gourmet:195,spinneys:205,hyperone:155},
+        {id:'coconut_cream',name:'كريمة جوز الهند',nameEn:'Coconut Cream',unit:'can 400ml',qty:'50ml per serving',qtyAr:'50 مل للحصة',category:'dairy',metro:68,seoudi:60,gourmet:78,spinneys:82,hyperone:64},
+        {id:'cooking_cream',name:'كريمة طبخ',nameEn:'Cooking Cream',unit:'200ml',qty:'3 tbsp (45ml)',qtyAr:'3 ملاعق (45 مل)',category:'dairy',metro:42,seoudi:37,gourmet:48,spinneys:50,hyperone:39},
+        {id:'couscous',name:'كسكسي',nameEn:'Couscous',unit:'500g',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'grains',metro:62,seoudi:55,gourmet:72,spinneys:75,hyperone:58},
+        {id:'corn_flakes',name:'كورن فليكس',nameEn:'Corn Flakes',unit:'500g',qty:'40g per serving',qtyAr:'40 جم للحصة',category:'grains',metro:110,seoudi:98,gourmet:130,spinneys:138,hyperone:105},
+        {id:'milk',name:'لبن',nameEn:'Milk',unit:'1L',qty:'200ml per serving',qtyAr:'200 مل للحصة',category:'dairy',metro:42,seoudi:38,gourmet:48,spinneys:50,hyperone:40},
+        {id:'mayonnaise',name:'مايونيز',nameEn:'Mayonnaise',unit:'400g',qty:'1 tbsp per meal',qtyAr:'ملعقة للوجبة',category:'condiments',metro:55,seoudi:48,gourmet:65,spinneys:68,hyperone:50},
+        {id:'pasta',name:'مكرونة',nameEn:'Pasta',unit:'pack 400g',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'grains',metro:38,seoudi:33,gourmet:45,spinneys:48,hyperone:35},
+        {id:'banana',name:'موز',nameEn:'Banana',unit:'kg',qty:'1 medium (120g)',qtyAr:'حبة متوسطة (120 جم)',category:'fruits',metro:42,seoudi:36,gourmet:50,spinneys:53,hyperone:38}
       ]
     },
     'meal_plans.json': buildMealPlans(),
@@ -2154,7 +2208,7 @@ app.get(`${BASE}/api/weekly-summary`, auth, (req, res) => {
 // MEAL PLAN API
 // Shared by /api/meal-plan and /api/meal-plan/swap so a static-plan meal and
 // an AI-generated one get priced through the exact same logic.
-const INGREDIENT_KEYWORD_MAP = {'فراخ':'chicken','دجاج':'chicken','صدر فراخ':'chicken','بيض':'eggs','سمك':'fish','بلطي':'fish','لحم':'beef','كندوز':'beef','مفروم':'beef','جبن':'cheese','قريش':'cheese','خضار':'veggies','كوسة':'veggies','أفوكادو':'avocado','زيتون':'olive_oil','مكسرات':'nuts','خيار':'cucumber','طماطم':'tomato'};
+const INGREDIENT_KEYWORD_MAP = {'فراخ':'chicken','دجاج':'chicken','صدر فراخ':'chicken','بيض':'eggs','سمك':'fish','بلطي':'fish','لحم':'beef','كندوز':'beef','مفروم':'beef','جبن':'cheese','قريش':'cheese','خضار':'veggies','كوسة':'veggies','أفوكادو':'avocado','زيتون':'olive_oil','مكسرات':'nuts','خيار':'cucumber','طماطم':'tomato','تونة':'tuna','جمبري':'shrimp','زبدة':'butter','بطاطس':'potato'};
 
 function findFoodItem(name, nameEn, foodPrices) {
   const items = foodPrices?.items || [];
@@ -2206,9 +2260,15 @@ function budgetTierFor(budget) {
   return 'mid';
 }
 
-function getMealOverride(userId, date, mealType) {
+function getMealOverride(userId, date, mealType, diet) {
   const all = load('meal_overrides.json') || {};
-  return all[userId]?.[date]?.[mealType] || null;
+  const entry = all[userId]?.[date]?.[mealType] || null;
+  // An override generated under a different diet (e.g. the user swapped a
+  // meal while on keto, then switched their plan to atkins) is stale for
+  // this diet - treat it as if it never existed rather than serving a meal
+  // that doesn't match the diet actually being requested.
+  if (entry && entry.diet !== diet) return null;
+  return entry;
 }
 
 function saveMealOverride(userId, date, mealType, entry) {
@@ -2243,6 +2303,38 @@ const DIET_STYLE_LABELS = {
   kids: 'healthy kids (balanced growth nutrition, kid-friendly, no severe restriction)',
 };
 
+// Each diet's real nutritional definition already lives in its hand-authored
+// week of static meals (dailyCalories/dailyCarbs/dailyProtein/dailyFat on the
+// plan, verified to match the actual per-day sums) - but that definition was
+// never consulted by the AI-generation path, which only got a qualitative
+// label like "Ketogenic (very low-carb, high-fat)" with no numbers. That let
+// a generated "keto" swap be keto by vibes only, not by the diet's actual
+// macro targets. This derives a real per-meal-type numeric target by
+// averaging that same static week's meals for the given slot, so a
+// generated breakfast is held to what this diet's real breakfasts look like.
+function parseGramsField(v) { return parseFloat(v) || 0; }
+
+function getMealTypeMacroTarget(dietStyle, mealType) {
+  const plans = load('meal_plans.json');
+  const plan = plans?.[dietStyle];
+  if (!plan) return null;
+  const matches = [];
+  for (const day of plan.week || []) {
+    for (const m of day.meals || []) {
+      const key = m.typeEn ? m.typeEn.toLowerCase() : m.type;
+      if (key === mealType) matches.push(m);
+    }
+  }
+  if (!matches.length) return null;
+  const avg = (fn) => Math.round(matches.reduce((s, m) => s + fn(m), 0) / matches.length);
+  return {
+    cal: avg(m => m.cal || 0),
+    protein: avg(m => parseGramsField(m.protein)),
+    carbs: avg(m => parseGramsField(m.carbs)),
+    fat: avg(m => parseGramsField(m.fat)),
+  };
+}
+
 async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices) {
   const label = MEAL_TYPE_LABELS[mealType] || MEAL_TYPE_LABELS.snack;
   const items = foodPrices?.items || [];
@@ -2255,8 +2347,13 @@ async function generateMealAlternative(dietStyle, mealType, budgetTier, preferen
     mid: '',
   }[budgetTier] || '';
   const preferenceInstruction = preference ? `The user specifically asked for: "${preference}". Reflect that in the meal choice.` : '';
+  const target = getMealTypeMacroTarget(dietStyle, mealType);
+  const macroInstruction = target
+    ? `This must genuinely match the ${DIET_STYLE_LABELS[dietStyle] || dietStyle} diet's real macro targets for a ${mealType}, based on this diet's actual plan: approximately ${target.cal} kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fat}g fat (stay within about 20% of each). Do not just pick diet-sounding ingredients — the macros must actually land in range.`
+    : '';
 
   const prompt = `Suggest one ${DIET_STYLE_LABELS[dietStyle] || dietStyle} ${mealType} meal for an Egyptian meal-planning app. ${tierInstruction} ${preferenceInstruction}
+${macroInstruction}
 
 You MUST only use ingredients from this exact list (reference them by "id"):
 ${ingredientCatalog}
@@ -2304,11 +2401,23 @@ Return ONLY valid JSON, no other text, in this exact shape:
     .filter(Boolean);
   if (!ingredients.length) return null;
 
+  // The AI occasionally hallucinates a wildly wrong calorie count (seen live:
+  // 3 modest ingredients reported as 4044 kcal for one meal) even though the
+  // ingredient list and prompt were otherwise fine. Rather than caching and
+  // serving that as this diet's "real" meal, reject anything too far outside
+  // the diet's own actual range (derived above from its real static week) and
+  // let the caller fall back to the always-correct static plan instead.
+  const cal = parsed.cal || 0;
+  if (target && (cal < target.cal * 0.4 || cal > target.cal * 2.2)) {
+    console.error(`[generateMealAlternative] rejected implausible ${cal} kcal for ${dietStyle}/${mealType} (target ~${target.cal})`);
+    return null;
+  }
+
   return {
     type: label.ar, typeEn: label.en, time: label.time,
     name: parsed.name || label.ar, nameEn: parsed.nameEn || label.en,
     ingredients,
-    cal: parsed.cal || 0, protein: parsed.protein || '0g', carbs: parsed.carbs || '0g', fat: parsed.fat || '0g',
+    cal, protein: parsed.protein || '0g', carbs: parsed.carbs || '0g', fat: parsed.fat || '0g',
   };
 }
 
@@ -2337,23 +2446,26 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
       let mealTypeKey = null;
       if (dayIdx === 0) {
         mealTypeKey = meal.typeEn ? meal.typeEn.toLowerCase() : meal.type;
-        const override = getMealOverride(req.user.id, date, mealTypeKey);
+        const override = getMealOverride(req.user.id, date, mealTypeKey, diet);
         if (override && override.manualSwap) {
           // The user's explicit "change this meal" choice always wins over
           // the budget slider, regardless of which tier it was generated at.
+          // (getMealOverride already discards it if it was swapped under a
+          // different diet than the one being requested now.)
           effectiveMeal = override.meal;
           swapsUsed = override.swapsUsed;
         } else if (override && override.tier === budgetTier) {
           effectiveMeal = override.meal;
         } else if (budgetTier !== 'mid') {
-          // No override yet, or one exists but for a different tier than
-          // currently requested (e.g. slider moved from low to high) -
-          // regenerate for the tier actually being asked for.
+          // No override yet (or one exists but for a different tier/diet
+          // than currently requested, e.g. slider moved from low to high, or
+          // the user switched diets) - regenerate for what's actually being
+          // asked for.
           try {
             const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd);
             if (generated) {
               effectiveMeal = priceMeal(generated, pd);
-              saveMealOverride(req.user.id, date, mealTypeKey, { meal: effectiveMeal, tier: budgetTier, swapsUsed: 0, manualSwap: false });
+              saveMealOverride(req.user.id, date, mealTypeKey, { meal: effectiveMeal, tier: budgetTier, diet, swapsUsed: 0, manualSwap: false });
             }
           } catch (e) {
             console.error('[meal-plan] tier generation failed, falling back to static plan:', e.message);
@@ -2382,13 +2494,15 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
   if (!date || !mealType) return res.status(400).json({ error: 'date and mealType required' });
   if (preference && !MEAL_SWAP_PREFERENCES[preference]) return res.status(400).json({ error: 'Invalid preference' });
 
-  const existing = getMealOverride(req.user.id, date, mealType);
+  const diet = sanitize(req.query.diet) || req.userObj?.profile?.diet || 'atkins';
+  const existing = getMealOverride(req.user.id, date, mealType, diet);
+  // A swap count from a different diet doesn't carry over - it's a fresh
+  // set of 3 swaps for this diet's version of the meal.
   const swapsUsed = existing?.manualSwap ? existing.swapsUsed : 0;
   if (swapsUsed >= MEAL_SWAP_LIMIT) {
     return res.status(403).json({ error: 'لقد استخدمت كل محاولات التغيير الثلاثة لهذه الوجبة اليوم · You have used all 3 swaps for this meal today' });
   }
 
-  const diet = sanitize(req.query.diet) || req.userObj?.profile?.diet || 'atkins';
   const budget = Math.min(Math.max(parseInt(req.userObj?.profile?.budget || 200), 50), 1000);
   const budgetTier = budgetTierFor(budget);
   const pd = load('food_prices.json');
@@ -2398,7 +2512,7 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
 
   const priced = priceMeal(generated, pd);
   const newSwapsUsed = swapsUsed + 1;
-  saveMealOverride(req.user.id, date, mealType, { meal: priced, tier: budgetTier, swapsUsed: newSwapsUsed, manualSwap: true });
+  saveMealOverride(req.user.id, date, mealType, { meal: priced, tier: budgetTier, diet, swapsUsed: newSwapsUsed, manualSwap: true });
   secLog('MEAL_SWAP', getIP(req), { userId: req.user.id, date, mealType, preference, swapsUsed: newSwapsUsed });
 
   res.json({ ok: true, meal: priced, swapsUsed: newSwapsUsed, swapsRemaining: MEAL_SWAP_LIMIT - newSwapsUsed });
