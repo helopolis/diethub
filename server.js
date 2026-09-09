@@ -2374,7 +2374,16 @@ function priceMeal(meal, foodPrices) {
   let total = 0;
   const ings = meal.ingredients.map(ing => {
     const item = findFoodItem(ing.item, ing.itemEn, foodPrices);
-    let price = 0, store = '';
+    // foodId added for API consistency (architecture audit Section 11) - a
+    // returned ingredient previously carried no reference a client could
+    // use to look the food up again by ID, only by re-matching the name
+    // string, the same fragile process the backend itself used to have.
+    // Renamed the local `bestStoreName` here (was `store`) because it
+    // previously shadowed the module-level `store` (db.js) for this
+    // function's whole scope, which is exactly what would have made
+    // calling store.resolveFood() here silently resolve to the wrong thing.
+    const foodId = store.resolveFood(ing.item)?.id ?? store.resolveFood(ing.itemEn)?.id ?? null;
+    let price = 0, bestStoreName = '';
     if (item) {
       // Previously hardcoded to only 4 of the 8 stores tracked in
       // food_prices.json (carrefour/metro/royal/talabat) - seoudi, gourmet,
@@ -2382,10 +2391,10 @@ function priceMeal(meal, foodPrices) {
       // so their prices (including the ones kept fresh automatically by
       // price_scraper.js) never reached the "cheapest store" a user sees.
       const ps = STORE_KEYS.map(s => ({s, p:item[s]})).filter(x=>x.p).sort((a,b)=>a.p-b.p);
-      if (ps.length) { price = Math.round((ps[0].p/1000)*ing.grams); store = ps[0].s; }
+      if (ps.length) { price = Math.round((ps[0].p/1000)*ing.grams); bestStoreName = ps[0].s; }
       total += price;
     }
-    return {...ing, price, bestStore: store};
+    return {...ing, price, bestStore: bestStoreName, foodId};
   });
   const adj = Math.round(total) || meal.price;
   return {...meal, price: adj, ingredients: ings};
@@ -2858,7 +2867,11 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const dailyCarbs = `${Math.round(scaledCarbs * (1 - cutRatio))}g`;
   const dailyProtein = `${Math.round(proteinTarget)}g`;
   const dailyFat = `${Math.round(scaledFat * (1 - cutRatio))}g`;
-  res.json({...plan,week,dailyCalories,dailyCarbs,dailyProtein,dailyFat,dailyCost,budget,withinBudget:dailyCost<=budget,labAdvisory});
+  // ok:true added for consistency with every other endpoint's success shape
+  // (architecture audit Section 11) - purely additive, the mobile client
+  // already consumes this whole object directly rather than unwrapping a
+  // nested `ok`/`data` field, so this is a safe, non-breaking addition.
+  res.json({ok:true,...plan,week,dailyCalories,dailyCarbs,dailyProtein,dailyFat,dailyCost,budget,withinBudget:dailyCost<=budget,labAdvisory});
 });
 
 const MEAL_SWAP_LIMIT = 3;
