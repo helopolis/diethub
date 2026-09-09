@@ -737,6 +737,115 @@ seedFoodAliases([
 ]);
 verifyFoodResolution();
 
+// ─── FOOD TAXONOMY (architecture audit Section 4) ──────────────────────────
+// foods.category (the old, unused column carried over from the FOOD_DB
+// migration - every row was NULL, since FOOD_DB never had a category field
+// at all) is deprecated in favor of a real 2-level hierarchy: a food has a
+// category_id, categories can have a parent_id. Confirmed and applied
+// deliberately, not just left flat: "protein" alone couldn't distinguish
+// poultry from red meat, which is exactly the gap the protein-boost
+// feature (built earlier this session) runs into - it currently treats
+// "boost a protein ingredient" the same way for chicken and beef, with no
+// way to prefer one over the other even though real macros differ a lot
+// (chicken breast ~165 kcal/31g protein vs ribeye ~291 kcal/24g protein).
+// This migration doesn't wire that preference in yet - it lays the real
+// data foundation a future pass could use for it.
+db.exec(`CREATE TABLE IF NOT EXISTS food_categories (
+  id         TEXT PRIMARY KEY,
+  name_en    TEXT NOT NULL,
+  name_ar    TEXT NOT NULL,
+  parent_id  TEXT REFERENCES food_categories(id),
+  created_at TEXT NOT NULL
+)`);
+// SQLite allows adding a column with a REFERENCES clause via ALTER TABLE
+// (unlike modifying an existing column's constraint, which requires a full
+// table rebuild) - real FK, enforced by the `PRAGMA foreign_keys = ON` set
+// at the top of this file, not just a naming convention.
+const hasCategoryId = db.prepare("SELECT 1 FROM pragma_table_info('foods') WHERE name='category_id'").get();
+if (!hasCategoryId) db.exec('ALTER TABLE foods ADD COLUMN category_id TEXT REFERENCES food_categories(id)');
+
+const insCategoryStmt = db.prepare(`INSERT INTO food_categories (id,name_en,name_ar,parent_id,created_at)
+  VALUES (@id,@name_en,@name_ar,@parent_id,@now) ON CONFLICT(id) DO NOTHING`);
+const setCategoryStmt = db.prepare('UPDATE foods SET category_id = ? WHERE name_en = ?');
+
+function seedFoodTaxonomy() {
+  const now = new Date().toISOString();
+  const categories = [
+    { id: 'protein', name_en: 'Protein', name_ar: 'بروتين', parent_id: null },
+    { id: 'poultry', name_en: 'Poultry', name_ar: 'دواجن', parent_id: 'protein' },
+    { id: 'red_meat', name_en: 'Red Meat', name_ar: 'لحوم حمراء', parent_id: 'protein' },
+    { id: 'fish', name_en: 'Fish', name_ar: 'أسماك', parent_id: 'protein' },
+    { id: 'shellfish', name_en: 'Shellfish', name_ar: 'محار وقشريات', parent_id: 'protein' },
+    { id: 'eggs', name_en: 'Eggs', name_ar: 'بيض', parent_id: 'protein' },
+    { id: 'organ_meat', name_en: 'Organ Meat', name_ar: 'أحشاء', parent_id: 'protein' },
+    { id: 'processed_meat', name_en: 'Processed Meat', name_ar: 'لحوم مصنعة', parent_id: 'protein' },
+    { id: 'dairy', name_en: 'Dairy', name_ar: 'ألبان', parent_id: null },
+    { id: 'vegetable', name_en: 'Vegetable', name_ar: 'خضروات', parent_id: null },
+    { id: 'fruit', name_en: 'Fruit', name_ar: 'فواكه', parent_id: null },
+    { id: 'grain', name_en: 'Grain', name_ar: 'حبوب', parent_id: null },
+    { id: 'legume', name_en: 'Legume', name_ar: 'بقوليات', parent_id: null },
+    { id: 'fat', name_en: 'Fat/Oil/Nuts', name_ar: 'دهون وزيوت ومكسرات', parent_id: null },
+    { id: 'bakery', name_en: 'Bakery', name_ar: 'مخبوزات', parent_id: null },
+    { id: 'condiment', name_en: 'Condiment/Spice', name_ar: 'بهارات وتوابل', parent_id: null },
+    { id: 'sweetener', name_en: 'Sweetener', name_ar: 'محليات', parent_id: null },
+    // Real, deliberate category, not a fallback bucket: a prepared composite
+    // dish (koshari, fattah, shawarma) genuinely isn't one ingredient, and
+    // forcing it into e.g. "grain" because its largest component happens to
+    // be rice would misrepresent what the food actually is.
+    { id: 'mixed_dish', name_en: 'Mixed/Prepared Dish', name_ar: 'طبق مُجهّز', parent_id: null },
+  ];
+  for (const c of categories) insCategoryStmt.run({ ...c, now });
+
+  // Every one of the 89 migrated foods, classified by hand against real
+  // nutritional/culinary convention (not guessed): nuts/avocado/coconut
+  // products go under fat (macro-dominant classification, standard
+  // nutrition-science practice, not a botanical one), legume-based dishes
+  // (hummus, falafel) under legume, and genuinely composite dishes under
+  // mixed_dish rather than forced into whichever single ingredient
+  // dominates them.
+  const assignments = {
+    poultry: ['grilled chicken breast', 'chicken thigh', 'whole roasted chicken', 'turkey breast, grilled', 'raw chicken breast'],
+    red_meat: ['beef, lean', 'ground beef, cooked', 'lamb', 'veal/lean beef cut', 'ribeye steak'],
+    fish: ['tilapia fish', 'tuna, canned in water', 'salmon', 'tuna, canned in oil, drained'],
+    shellfish: ['shrimp'],
+    eggs: ['boiled egg', 'egg white', 'whole egg'],
+    organ_meat: ['beef liver, cooked'],
+    processed_meat: ['beef bacon'],
+    dairy: ['plain yogurt', 'greek yogurt', 'whole milk', 'feta cheese', 'cottage cheese', 'white cheese',
+      'cooking/heavy cream', 'cheddar cheese', 'cream cheese', 'romano-style hard cheese',
+      'labneh (strained yogurt)', 'mozzarella cheese, whole milk'],
+    vegetable: ['boiled potato', 'fried potato', 'sweet potato', 'tomato', 'cucumber', 'green salad', 'molokhia',
+      'okra', 'spinach', 'zucchini', 'mixed vegetables', 'green bell pepper', 'carrot', 'broccoli', 'potato, raw'],
+    fruit: ['banana', 'apple', 'orange', 'mango', 'watermelon', 'dates', 'mixed berries'],
+    grain: ['white rice, cooked', 'brown rice, cooked', 'pasta, cooked', 'oats, dry', 'couscous, cooked', 'corn flakes'],
+    legume: ['foul medames', 'hummus', 'chickpeas, canned', 'cooked lentils', 'lentil soup (prepared)', 'falafel'],
+    fat: ['almonds', 'peanuts', 'olive oil', 'avocado', 'mixed nuts', 'butter', 'brazil nuts', 'coconut oil',
+      'shredded coconut, unsweetened', 'coconut cream'],
+    bakery: ['baladi bread', 'white bread', 'whole wheat bread'],
+    condiment: ['mayonnaise', 'tahini', "za'atar spice blend", 'cinnamon, ground', 'olives, green, canned'],
+    sweetener: ['honey'],
+    mixed_dish: ['grilled kofta', 'chicken shawarma', 'fattah', 'koshari'],
+  };
+  let assigned = 0;
+  const unassigned = [];
+  const allFoodNames = new Set(db.prepare('SELECT name_en FROM foods').all().map(r => r.name_en));
+  const claimed = new Set();
+  for (const [categoryId, names] of Object.entries(assignments)) {
+    for (const name of names) {
+      claimed.add(name);
+      const result = setCategoryStmt.run(categoryId, name);
+      if (result.changes > 0) assigned++;
+    }
+  }
+  for (const name of allFoodNames) if (!claimed.has(name)) unassigned.push(name);
+  if (unassigned.length) console.error('[db] seedFoodTaxonomy: foods with no category assignment:\n' + unassigned.join('\n'));
+  console.log(`[db] food taxonomy: ${assigned} foods categorized across ${categories.length} categories, ${unassigned.length} unassigned.`);
+}
+seedFoodTaxonomy();
+
+function listFoodCategories() { return db.prepare('SELECT * FROM food_categories ORDER BY parent_id IS NOT NULL, id').all(); }
+function listFoodsByCategory(categoryId) { return db.prepare('SELECT * FROM foods WHERE category_id = ? AND active = 1').all(categoryId); }
+
 // ─── DIETS (Phase 3 of the nutrition-architecture migration) ───────────────
 // DIET_META, DIET_STYLE_LABELS, and DIET_CONTRAINDICATIONS previously lived
 // as 3 separate JS object literals in health.js/server.js, each keyed by
@@ -1248,4 +1357,5 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   resolveFood, normalizeFoodName, verifyFoodResolution,
   listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
   seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity,
-  getMealOverrideRow, saveMealOverrideRow, deleteMealOverrideRow, deleteAllMealOverridesForUser };
+  getMealOverrideRow, saveMealOverrideRow, deleteMealOverrideRow, deleteAllMealOverridesForUser,
+  listFoodCategories, listFoodsByCategory };
