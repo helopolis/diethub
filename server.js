@@ -2261,6 +2261,8 @@ async function generateMealAlternative(dietStyle, mealType, budgetTier, preferen
 You MUST only use ingredients from this exact list (reference them by "id"):
 ${ingredientCatalog}
 
+The dish name must describe the food itself and must NOT contain the word "${mealType}" or any other meal-time word (breakfast/lunch/dinner/snack, in either language) — this meal's slot is already fixed as ${mealType}, the name should never repeat or contradict it.
+
 Return ONLY valid JSON, no other text, in this exact shape:
 {"name":"Arabic meal name","nameEn":"English meal name","ingredients":[{"ingredientId":"...", "grams":0}],"cal":0,"protein":"0g","carbs":"0g","fat":"0g"}`;
 
@@ -2292,7 +2294,12 @@ Return ONLY valid JSON, no other text, in this exact shape:
     .map(ing => {
       const item = items.find(i => i.id === ing.ingredientId);
       if (!item) return null; // drop any id Claude got wrong rather than fail the whole meal
-      return { item: item.name, itemEn: item.nameEn, qty: item.qtyAr || item.qty, grams: Number(ing.grams) || 100 };
+      // Keep qty/qtyAr as the two separate single-language strings the price
+      // catalog already provides — collapsing to one Arabic-preferring field
+      // (the previous `qty: item.qtyAr || item.qty`) meant the English UI
+      // showed Arabic text, and mixed-script text inside an LTR Text node
+      // rendered visibly reordered/garbled on the client.
+      return { item: item.name, itemEn: item.nameEn, qty: item.qty, qtyAr: item.qtyAr, grams: Number(ing.grams) || 100 };
     })
     .filter(Boolean);
   if (!ingredients.length) return null;
@@ -3432,8 +3439,8 @@ app.post(`${BASE}/api/chatbot`, auth, async (req, res) => {
           ? `{"title":"...", "days":[{"day":"اسم اليوم","activity":"وصف النشاط","estCalBurn":0}]}`
           : `{"title":"...", "days":[{"day":"day name","activity":"activity description","estCalBurn":0}]}`);
     const planPrompt = isAr
-      ? `أنت مساعد غذائي في DietHub. الملف الصحي للمستخدم:\n${summary}\n\nطلب المستخدم: "${lastUserMsg}"\n\nابنِ ${generatePlan === 'meals' ? 'خطة وجبات أسبوعية (حتى 7 أيام)' : 'خطة نشاط أسبوعية (حتى 7 أيام)'} حقيقية تناسب أهدافه وأرقامه الفعلية. أرجع فقط JSON صالح بدون أي نص إضافي أو علامات كود، بالشكل التالي بالضبط:\n${schema}`
-      : `You are DietHub's nutrition assistant. The user's health profile:\n${summary}\n\nUser's request: "${lastUserMsg}"\n\nBuild a real ${generatePlan === 'meals' ? 'weekly meal plan (up to 7 days)' : 'weekly activity plan (up to 7 days)'} suited to their real goals and numbers. Return ONLY valid JSON, no extra text or code fences, in exactly this shape:\n${schema}`;
+      ? `أنت مساعد غذائي في Health Pace. الملف الصحي للمستخدم:\n${summary}\n\nطلب المستخدم: "${lastUserMsg}"\n\nابنِ ${generatePlan === 'meals' ? 'خطة وجبات أسبوعية (حتى 7 أيام)' : 'خطة نشاط أسبوعية (حتى 7 أيام)'} حقيقية تناسب أهدافه وأرقامه الفعلية. أرجع فقط JSON صالح بدون أي نص إضافي أو علامات كود، بالشكل التالي بالضبط:\n${schema}`
+      : `You are Health Pace's nutrition assistant. The user's health profile:\n${summary}\n\nUser's request: "${lastUserMsg}"\n\nBuild a real ${generatePlan === 'meals' ? 'weekly meal plan (up to 7 days)' : 'weekly activity plan (up to 7 days)'} suited to their real goals and numbers. Return ONLY valid JSON, no extra text or code fences, in exactly this shape:\n${schema}`;
     try {
       // A full 7-day structured plan is a lot of JSON for a model to get
       // perfectly right every time — verified live that the exact same
@@ -3486,8 +3493,8 @@ app.post(`${BASE}/api/chatbot`, auth, async (req, res) => {
   // "always speaks Arabic"), permanently true regardless of the requester.
   // Now it's ai_language.js's own composed layer, resolved per-request.
   const productInstructions = isAr
-    ? `أنت "دايت بوت"، مساعد متابعة صحي وغذائي ذكي داخل تطبيق DietHub. تتحدث بأسلوب ودود ومشجع وموجز.`
-    : `You are "Diet Bot," an intelligent health and nutrition coaching assistant inside the DietHub app. You speak in a friendly, encouraging, and concise style.`;
+    ? `أنت مساعد Health Pace، مساعد متابعة صحي وغذائي ذكي داخل تطبيق Health Pace. تتحدث بأسلوب ودود ومشجع وموجز.`
+    : `You are the Health Pace Assistant, an intelligent health and nutrition coaching assistant inside the Health Pace app. You speak in a friendly, encouraging, and concise style.`;
   const safetyInstructions = isAr
     ? `إرشادات مهمة:
 - استخدم الملف الصحي أدناه لتخصيص كل رد.
