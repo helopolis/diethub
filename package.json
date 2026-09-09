@@ -3,14 +3,53 @@
   "version": "3.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "jest --forceExit",
+    "test:coverage": "jest --forceExit --coverage"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/tests/jest.setup.js"
+    ],
+    "testMatch": [
+      "<rootDir>/tests/**/*.test.js"
+    ],
+    "testTimeout": 15000,
+    "collectCoverageFrom": [
+      "server.js",
+      "health.js",
+      "ai_language.js",
+      "ai.js",
+      "db.js",
+      "daily_brief.js",
+      "push.js",
+      "reminders.js"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/tests/"
+    ]
   },
   "dependencies": {
+    "@apple/app-store-server-library": "^3.1.0",
+    "@googleapis/androidpublisher": "^37.0.0",
     "better-sqlite3": "^11.10.0",
     "express": "^5.2.1",
-    "nodemailer": "^8.0.11",
-    "multer": "^2.0.0",
+    "firebase-admin": "^13.0.0",
     "google-auth-library": "^10.9.0",
+    "multer": "^2.0.0",
+    "nodemailer": "^9.0.5",
+    "sharp": "^0.35.4",
     "svix": "^1.98.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "eslint": "^10.8.1",
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2",
+    "wait-on": "^9.1.0"
   }
 }
