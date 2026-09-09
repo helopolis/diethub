@@ -37,6 +37,22 @@ function normalizeGoalType(v) {
   return GOAL_TYPES.includes(v) ? v : 'lose_weight';
 }
 
+// Hoisted to module scope (previously redeclared inside buildHealthProfile
+// on every call) so db.js's verifyLookupTablesMatch() can compare the real,
+// live values against the new goals table without a second, easily-drifting
+// copy of the numbers - and so buildHealthProfile isn't reallocating the
+// same two objects on every single request.
+// lose_fat/gain_muscle use a gentler percentage than the generic
+// lose_weight/gain_weight ones - real cutting/lean-bulk guidance favors a
+// smaller deficit/surplus (protects muscle while cutting, limits fat gain
+// while bulking) precisely because the protein bump below is doing the
+// real work of preserving/building lean mass, not the calorie delta.
+const DEFICIT_PCT = { lose_weight: -0.18, lose_fat: -0.15, maintain: 0, gain_weight: 0.12, gain_muscle: 0.10 };
+// lose_fat/gain_muscle get a real protein boost on top of the diet's own
+// baseline - the actual mechanism that makes them different goals rather
+// than just a different calorie number.
+const GOAL_PROTEIN_BOOST_PER_KG = { lose_fat: 0.3, gain_muscle: 0.3 };
+
 // Real, scoped contraindication/caution notes — not an exhaustive clinical
 // database, just the specific combinations this app can currently detect
 // from medicalConditions and should not stay silent about. 'contraindicated'
@@ -232,12 +248,6 @@ function buildHealthProfile(store, userId) {
   // -500 landed at ~18% for a typical TDEE, which real-world testing here
   // had already validated as a sensible moderate deficit — this just makes
   // that same ratio scale correctly instead of staying a flat number.
-  // lose_fat/gain_muscle use a gentler percentage than the generic
-  // lose_weight/gain_weight ones - real cutting/lean-bulk guidance favors a
-  // smaller deficit/surplus (protects muscle while cutting, limits fat gain
-  // while bulking) precisely because the protein bump below is doing the
-  // real work of preserving/building lean mass, not the calorie delta.
-  const DEFICIT_PCT = { lose_weight: -0.18, lose_fat: -0.15, maintain: 0, gain_weight: 0.12, gain_muscle: 0.10 };
   let recommendedCalorieTarget = null;
   if (tdee) {
     if (goalSafetyOverride) {
@@ -322,7 +332,6 @@ function buildHealthProfile(store, userId) {
   // calorie number: preserving muscle while cutting or building it while
   // bulking both come down to hitting real protein, standard sports-
   // nutrition range being ~1.8-2.2g/kg once that's the explicit goal.
-  const GOAL_PROTEIN_BOOST_PER_KG = { lose_fat: 0.3, gain_muscle: 0.3 };
   const effectiveProteinPerKg = Math.min((dietMeta.proteinPerKg || 1.4) + (GOAL_PROTEIN_BOOST_PER_KG[effectiveGoalType] || 0), 2.2);
   // Protein need scales with the tissue that actually uses it (muscle),
   // not total body weight — real sports-nutrition practice once lean mass
@@ -500,4 +509,4 @@ function coachSummary(hp, lang = 'ar') {
   return lines.join('\n');
 }
 
-module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType };
+module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG };
