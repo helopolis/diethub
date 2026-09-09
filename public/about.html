@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" class="hp-light">
+<head>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#F2EFE4">
+<title>About | Health Pace</title>
+<meta name="description" content="What Health Pace is, and how to reach us.">
+<link rel="stylesheet" href="/theme.css">
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@700;900&family=Readex+Pro:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
+<style>
+body { font-family: 'IBM Plex Sans','Readex Pro',sans-serif; max-width: 760px; margin: 0 auto; padding: 2rem; color: var(--text); background: var(--card); line-height: 1.8; }
+h1 { color: var(--green); border-bottom: 2px solid var(--green); padding-bottom: 0.5rem; }
+h2 { color: var(--green); margin-top: 2rem; font-size: 1.05rem; }
+a { color: var(--green); }
+.links { display: flex; gap: 1.2rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.ar { direction: rtl; text-align: right; font-family: 'Readex Pro','IBM Plex Sans Arabic', Tahoma, sans-serif; }
+.lang-toggle { display: flex; justify-content: flex-end; gap: 0.4rem; margin-bottom: 1rem; }
+.lang-toggle button { border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 999px; padding: 0.3rem 0.9rem; font-size: 0.85rem; cursor: pointer; font-weight: 600; }
+.lang-toggle button.active { background: var(--green); color: #fff; border-color: var(--green); }
+</style>
+</head>
+<body>
+
+<div class="lang-toggle">
+  <button id="btnEn" onclick="setPageLang('en')">EN</button>
+  <button id="btnAr" onclick="setPageLang('ar')">عربي</button>
+</div>
+
+<div id="content-en">
+<h1>About Health Pace</h1>
+<p>Health Pace is a bilingual (Arabic/English) health and nutrition platform, built by Talabatito. It combines AI-powered coaching, personalized meal planning, nutrition and weight tracking, wearable device integration, and lab-result tracking into one connected app for the web and mobile (Android and iOS).</p>
+
+<h2>What's in the app</h2>
+<p>A daily AI-generated health briefing, an AI coach you can chat with, photo-based food logging with allergen warnings, weight and progress trends, wearable device sync, lab-result tracking with plain-language flags, and localized grocery price intelligence — all built on one shared backend, so what you log in one place shows up everywhere else it matters.</p>
+
+<h2>Legal</h2>
+<div class="links">
+  <a href="/privacy-policy.html">Privacy Policy</a>
+  <a href="/terms-of-service.html">Terms of Service</a>
+  <a href="/support.html">Support</a>
+</div>
+
+<h2>Contact</h2>
+<p>Questions, feedback, or support requests: <a href="mailto:info@talabatito.com">info@talabatito.com</a></p>
+</div>
+
+<div id="content-ar" class="ar" style="display:none">
+<h1>عن Health Pace</h1>
+<p>Health Pace منصة صحة وتغذية ثنائية اللغة (عربي/إنجليزي)، من تطوير Talabatito. تجمع بين المتابعة الذكية بالذكاء الاصطناعي، وتخطيط الوجبات المخصص، وتتبع التغذية والوزن، وربط الأجهزة القابلة للارتداء، وتتبع نتائج التحاليل، كل ذلك في تطبيق واحد متكامل للويب والجوال (أندرويد وآيفون).</p>
+
+<h2>ما الذي يقدمه التطبيق</h2>
+<p>ملخص صحي يومي مولّد بالذكاء الاصطناعي، ومساعد ذكي يمكنك محادثته، وتسجيل الطعام بالصور مع تحذيرات الحساسية، واتجاهات الوزن والتقدم، ومزامنة الأجهزة القابلة للارتداء، وتتبع نتائج التحاليل بعلامات مبسّطة، وذكاء أسعار البقالة المحلية — كل ذلك مبني على قاعدة بيانات واحدة مشتركة، بحيث يظهر ما تسجّله في مكان واحد في كل مكان آخر يهمّ.</p>
+
+<h2>قانوني</h2>
+<div class="links">
+  <a href="/privacy-policy.html">سياسة الخصوصية</a>
+  <a href="/terms-of-service.html">شروط الخدمة</a>
+  <a href="/support.html">الدعم الفني</a>
+</div>
+
+<h2>تواصل معنا</h2>
+<p>الأسئلة أو الملاحظات أو طلبات الدعم: <a href="mailto:info@talabatito.com">info@talabatito.com</a></p>
+</div>
+
+<script>
+function setPageLang(lang) {
+  const isAr = lang === 'ar';
+  document.documentElement.setAttribute('lang', lang);
+  document.documentElement.setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  document.getElementById('content-en').style.display = isAr ? 'none' : '';
+  document.getElementById('content-ar').style.display = isAr ? '' : 'none';
+  document.getElementById('btnEn').classList.toggle('active', !isAr);
+  document.getElementById('btnAr').classList.toggle('active', isAr);
+}
+setPageLang(new URLSearchParams(location.search).get('lang') === 'ar' ? 'ar' : 'en');
+</script>
+</body>
+</html>

@@ -4741,7 +4741,7 @@ const MANUAL_WATCH_SOURCES = {
   wear_os: { icon: '⌚', name: 'Wear OS' },
   galaxy_watch: { icon: '⌚', name: 'Galaxy Watch' },
   honor_watch: { icon: '⌚', name: 'Honor Watch' },
-  manual: { icon: '✍️', name: 'Manual Entry' },
+  manual: { icon: '✍️', name: 'Manual Entry', nameAr: 'إدخال يدوي' },
 };
 // Connected Health Platform Phase 1 — on-device SDK sources, distinct from
 // both OW_PROVIDERS (server-side OAuth) and MANUAL_WATCH_SOURCES (typed

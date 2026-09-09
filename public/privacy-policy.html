@@ -1,33 +1,151 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr" class="hp-light">
 <head>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Privacy Policy | DietHub</title>
+<meta name="theme-color" content="#F2EFE4">
+<title>Privacy Policy | Health Pace</title>
+<meta name="description" content="How Health Pace collects, uses, and protects your personal and health data.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Health Pace">
+<meta property="og:title" content="Privacy Policy | Health Pace">
+<meta property="og:description" content="How Health Pace collects, uses, and protects your personal and health data.">
+<meta property="og:image" content="https://diet.talabatito.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://diet.talabatito.com/diet/privacy-policy">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Privacy Policy | Health Pace">
+<meta name="twitter:image" content="https://diet.talabatito.com/og-image.png">
+<link rel="stylesheet" href="/theme.css">
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@700;900&family=Readex+Pro:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
 <style>
-body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: #333; line-height: 1.8; }
-h1 { color: #1d6f42; border-bottom: 2px solid #1d6f42; padding-bottom: 0.5rem; }
-h2 { color: #1d6f42; margin-top: 2rem; }
-a { color: #1d6f42; }
+body { font-family: 'IBM Plex Sans','Readex Pro',sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: var(--text); background: var(--card); line-height: 1.8; }
+h1 { color: var(--green); border-bottom: 2px solid var(--green); padding-bottom: 0.5rem; }
+h2 { color: var(--green); margin-top: 2rem; }
+a { color: var(--green); }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { border: 1px solid #ddd; padding: 0.6rem 0.8rem; text-align: left; font-size: 0.92rem; }
+th { background: var(--bg); }
+.ar { direction: rtl; text-align: right; font-family: 'Readex Pro','IBM Plex Sans Arabic', Tahoma, sans-serif; }
+.ar table th, .ar table td { text-align: right; }
+.lang-toggle { display: flex; justify-content: flex-end; gap: 0.4rem; margin-bottom: 1rem; }
+.lang-toggle button { border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 999px; padding: 0.3rem 0.9rem; font-size: 0.85rem; cursor: pointer; font-weight: 600; }
+.lang-toggle button.active { background: var(--green); color: #fff; border-color: var(--green); }
 </style>
 </head>
 <body>
+
+<div class="lang-toggle">
+  <button id="btnEn" onclick="setPageLang('en')">EN</button>
+  <button id="btnAr" onclick="setPageLang('ar')">عربي</button>
+</div>
+
+<div id="content-en">
 <h1>Privacy Policy</h1>
-<p>Last updated: June 2026</p>
-<p>DietHub (diet.talabatito.com) is a free Arabic health and nutrition platform. We respect your privacy and are committed to protecting your personal data.</p>
+<p>Last updated: August 2026</p>
+<p>Health Pace (diet.talabatito.com, and the Health Pace mobile app for Android and iOS) is a health and nutrition platform. We respect your privacy and are committed to protecting your personal data.</p>
+
 <h2>1. Information We Collect</h2>
-<p>When you register, we collect your name, email address, and health data you voluntarily provide such as weight, height, and nutrition goals. We do not collect any data without your explicit consent.</p>
+<p>When you register, we collect your username, email address, phone number, and health data you voluntarily provide such as weight, height, age, gender, body composition, and nutrition/activity goals. If you sign in with Google or Facebook, we receive your name, email, and profile photo from that provider. If you connect a wearable device, we receive the fitness/health data you authorize it to share (steps, heart rate, sleep, etc.). If you grant location permission, we use your approximate location only to show local weather and hydration recommendations.</p>
+
 <h2>2. How We Use Your Data</h2>
-<p>We use your data solely to provide your personalized meal plan and improve your experience. We do not sell or share your data with third parties or advertisers.</p>
-<h2>3. YouTube API Services</h2>
-<p>Our platform uses YouTube API Services to publish educational content on the DietHub Arabia channel. By using our services, you agree to YouTube Terms of Service at https://www.youtube.com/t/terms. You can review Google Privacy Policy at https://policies.google.com/privacy to understand how YouTube handles data. We use YouTube API data only for video publishing and do not store any YouTube user data.</p>
-<h2>4. Cookies</h2>
-<p>We use cookies only to maintain your login session and improve site performance.</p>
-<h2>5. Data Security</h2>
-<p>We apply high technical security standards to protect your data from unauthorized access, loss, or disclosure.</p>
-<h2>6. Your Rights</h2>
-<p>You may request to view, edit, or delete your data at any time by contacting us.</p>
-<h2>7. Contact Us</h2>
-<p>For any privacy-related questions: info@talabatito.com</p>
+<p>We use your data to provide your personalized meal plan, calorie/activity targets, AI coaching, and to improve the product. We do not sell your personal data.</p>
+
+<h2>3. Third-Party Services We Use</h2>
+<p>Unlike a platform with no external dependencies, Health Pace relies on the following third-party services, each of which processes a limited, specific slice of data as described:</p>
+<table>
+<tr><th>Service</th><th>Purpose</th><th>Data involved</th></tr>
+<tr><td>Google / Firebase</td><td>Push notifications, Google Sign-In</td><td>Device push token; name/email/photo if you use Google Sign-In</td></tr>
+<tr><td>Facebook</td><td>Facebook Sign-In</td><td>Name/email/photo if you use Facebook Sign-In</td></tr>
+<tr><td>Google Ads</td><td>Measuring which ad campaigns lead to signups</td><td>Ad click ID and page URL, only for visits that arrive from a Google ad — never for organic/direct visits. No health data is ever included.</td></tr>
+<tr><td>AI providers (Google Gemini, Groq, OpenRouter, Anthropic)</td><td>Powering the AI coach, chatbot, and AI-generated meal/activity plan suggestions</td><td>The specific message or profile data needed to generate that response (e.g. your goal, recent chat message). Not used to train these providers' models beyond their standard API terms.</td></tr>
+<tr><td>YouTube API Services</td><td>Publishing educational content on the DietHub Arabia channel</td><td>No Health Pace user data is sent to or stored via the YouTube API — see below.</td></tr>
+</table>
+<p>We do not sell your data, and we do not share it with data brokers or for third-party advertising unrelated to measuring our own ad campaigns.</p>
+
+<h2>4. YouTube API Services</h2>
+<p>Our platform uses YouTube API Services to publish educational content on the DietHub Arabia channel. By using our services, you agree to the <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>. You can review the <a href="https://policies.google.com/privacy">Google Privacy Policy</a> to understand how YouTube handles data. We use YouTube API data only for video publishing and do not store any YouTube user data.</p>
+
+<h2>5. Cookies &amp; Similar Technologies</h2>
+<p>We use cookies/local storage to maintain your login session, remember your language preference, and remember dismissed in-app banners. Google Ads' measurement tag is loaded only on visits that arrive from a Google ad click.</p>
+
+<h2>6. Data Security</h2>
+<p>We apply industry-standard technical security measures — including password hashing, rate limiting, and encrypted connections — to protect your data from unauthorized access, loss, or disclosure.</p>
+
+<h2>7. Data Retention</h2>
+<p>We retain your account data for as long as your account is active. You may delete your account at any time (see Section 9); we delete your personal data immediately upon a verified request, except where retention is required by law (see Section 9 for exactly what that covers).</p>
+
+<h2>8. Children's Privacy</h2>
+<p>Health Pace is not directed at children under 16, and we do not knowingly collect data from them.</p>
+
+<h2>9. Your Rights</h2>
+<p>You may view or edit your data at any time from the app's Settings/Profile screens. As of August 2026, you can delete your account yourself — Settings → Delete Account, after confirming your password — with no need to contact us first; it immediately removes your nutrition logs, weight history, lab results, wearable data, and AI suggestion history, and signs you out of every device. Two categories of records are kept regardless: payment/transaction history and security audit logs, retained for financial record-keeping and fraud-prevention purposes, not tied to your active account. You can also revoke Google/Facebook Sign-In access directly from your Google or Facebook account settings, or reach us at the contact below for anything the in-app tools don't cover.</p>
+
+<h2>10. Contact Us</h2>
+<p>For any privacy-related questions or data requests: <a href="mailto:info@talabatito.com">info@talabatito.com</a></p>
+</div>
+
+<div id="content-ar" class="ar" style="display:none">
+<h1>سياسة الخصوصية</h1>
+<p>آخر تحديث: أغسطس 2026</p>
+<p>Health Pace (‏diet.talabatito.com، وتطبيق Health Pace للجوال على أندرويد وآيفون) منصة صحة وتغذية. نحترم خصوصيتك ونلتزم بحماية بياناتك الشخصية.</p>
+
+<h2>1. المعلومات التي نجمعها</h2>
+<p>عند التسجيل، نجمع اسم المستخدم والبريد الإلكتروني ورقم الهاتف، والبيانات الصحية التي تقدّمها طواعيةً مثل الوزن والطول والعمر والجنس وتركيب الجسم وأهدافك الغذائية والرياضية. إذا سجّلت الدخول عبر Google أو Facebook، نستلم اسمك وبريدك الإلكتروني وصورة ملفك الشخصي من مزوّد الخدمة هذا. إذا ربطت جهازاً قابلاً للارتداء، نستلم بيانات اللياقة/الصحة التي تسمح له بمشاركتها (الخطوات، معدل ضربات القلب، النوم، إلخ). إذا منحت إذن الموقع، نستخدم موقعك التقريبي فقط لعرض توصيات الطقس والترطيب المحلية.</p>
+
+<h2>2. كيف نستخدم بياناتك</h2>
+<p>نستخدم بياناتك لتقديم خطة وجباتك المخصصة، وأهداف السعرات/النشاط، والمتابعة الذكية بالذكاء الاصطناعي، ولتحسين المنتج. نحن لا نبيع بياناتك الشخصية.</p>
+
+<h2>3. خدمات الطرف الثالث التي نستخدمها</h2>
+<p>على عكس منصة بلا اعتماديات خارجية، يعتمد Health Pace على خدمات الطرف الثالث التالية، وكل منها يعالج جزءاً محدوداً ومحدداً من البيانات كما هو موضح:</p>
+<table>
+<tr><th>الخدمة</th><th>الغرض</th><th>البيانات المعنية</th></tr>
+<tr><td>Google / Firebase</td><td>الإشعارات الفورية، تسجيل الدخول عبر Google</td><td>رمز إشعار الجهاز؛ الاسم/البريد الإلكتروني/الصورة إذا استخدمت تسجيل الدخول عبر Google</td></tr>
+<tr><td>Facebook</td><td>تسجيل الدخول عبر Facebook</td><td>الاسم/البريد الإلكتروني/الصورة إذا استخدمت تسجيل الدخول عبر Facebook</td></tr>
+<tr><td>Google Ads</td><td>قياس أي حملات إعلانية تؤدي إلى تسجيلات جديدة</td><td>معرّف نقرة الإعلان وعنوان الصفحة، فقط للزيارات القادمة من إعلان Google — أبداً للزيارات المباشرة أو الطبيعية. لا تُضمَّن أي بيانات صحية إطلاقاً.</td></tr>
+<tr><td>مزودو الذكاء الاصطناعي (Google Gemini، Groq، OpenRouter، Anthropic)</td><td>تشغيل المساعد الذكي، والمحادثة الذكية، واقتراحات خطط الوجبات/النشاط المولّدة بالذكاء الاصطناعي</td><td>الرسالة أو بيانات الملف الشخصي المحددة اللازمة لتوليد ذلك الرد (مثل هدفك، آخر رسالة محادثة). لا تُستخدم لتدريب نماذج هؤلاء المزودين خارج شروط الـ API القياسية الخاصة بهم.</td></tr>
+<tr><td>خدمات YouTube API</td><td>نشر محتوى تثقيفي على قناة DietHub Arabia</td><td>لا تُرسل أو تُخزَّن أي بيانات مستخدمي Health Pace عبر YouTube API — انظر أدناه.</td></tr>
+</table>
+<p>نحن لا نبيع بياناتك، ولا نشاركها مع سماسرة البيانات أو لأغراض إعلانية من طرف ثالث لا علاقة لها بقياس حملاتنا الإعلانية الخاصة.</p>
+
+<h2>4. خدمات YouTube API</h2>
+<p>تستخدم منصتنا خدمات YouTube API لنشر محتوى تثقيفي على قناة DietHub Arabia. باستخدامك خدماتنا، فإنك توافق على <a href="https://www.youtube.com/t/terms">شروط خدمة YouTube</a>. يمكنك مراجعة <a href="https://policies.google.com/privacy">سياسة خصوصية Google</a> لفهم كيفية تعامل YouTube مع البيانات. نستخدم بيانات YouTube API فقط لنشر الفيديوهات ولا نخزّن أي بيانات مستخدمي YouTube.</p>
+
+<h2>5. ملفات تعريف الارتباط والتقنيات المشابهة</h2>
+<p>نستخدم ملفات تعريف الارتباط/التخزين المحلي للحفاظ على جلسة تسجيل دخولك، وتذكّر تفضيل لغتك، وتذكّر البانرات التي أغلقتها داخل التطبيق. لا يتم تحميل وسم قياس Google Ads إلا في الزيارات القادمة من نقرة على إعلان Google.</p>
+
+<h2>6. أمن البيانات</h2>
+<p>نطبّق إجراءات أمان تقنية بمعايير الصناعة — بما في ذلك تشفير كلمات المرور، وتحديد معدل الطلبات، والاتصالات المشفّرة — لحماية بياناتك من الوصول غير المصرح به أو الفقدان أو الإفصاح.</p>
+
+<h2>7. الاحتفاظ بالبيانات</h2>
+<p>نحتفظ ببيانات حسابك طالما كان حسابك نشطاً. يمكنك حذف حسابك في أي وقت (انظر القسم 9)؛ نحذف بياناتك الشخصية فوراً عند طلب موثّق، باستثناء ما يقتضي القانون الاحتفاظ به (انظر القسم 9 لمعرفة ما يشمله ذلك بالضبط).</p>
+
+<h2>8. خصوصية الأطفال</h2>
+<p>Health Pace غير موجّه للأطفال دون سن 16 عاماً، ولا نجمع بياناتهم عن علم.</p>
+
+<h2>9. حقوقك</h2>
+<p>يمكنك عرض بياناتك أو تعديلها في أي وقت من شاشات الإعدادات/الملف الشخصي في التطبيق. اعتباراً من أغسطس 2026، يمكنك حذف حسابك بنفسك — الإعدادات ← حذف الحساب، بعد تأكيد كلمة المرور — دون الحاجة لمراسلتنا أولاً؛ وهذا يحذف فوراً سجلات تغذيتك وتاريخ وزنك ونتائج تحاليلك وبيانات جهازك القابل للارتداء وسجل اقتراحات الذكاء الاصطناعي، ويسجّل خروجك من كل الأجهزة. تُحفظ فئتان من السجلات بغض النظر عن ذلك: سجل المدفوعات/المعاملات المالية وسجلات التدقيق الأمني، وذلك لأغراض حفظ السجلات المالية ومنع الاحتيال، غير مرتبطة بحسابك النشط. يمكنك أيضاً إلغاء صلاحية تسجيل الدخول عبر Google/Facebook مباشرة من إعدادات حسابك في Google أو Facebook، أو مراسلتنا على العنوان أدناه لأي شيء لا تغطيه أدوات التطبيق.</p>
+
+<h2>10. تواصل معنا</h2>
+<p>لأي أسئلة تتعلق بالخصوصية أو طلبات بيانات: <a href="mailto:info@talabatito.com">info@talabatito.com</a></p>
+</div>
+
+<script>
+function setPageLang(lang) {
+  const isAr = lang === 'ar';
+  document.documentElement.setAttribute('lang', lang);
+  document.documentElement.setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  document.getElementById('content-en').style.display = isAr ? 'none' : '';
+  document.getElementById('content-ar').style.display = isAr ? '' : 'none';
+  document.getElementById('btnEn').classList.toggle('active', !isAr);
+  document.getElementById('btnAr').classList.toggle('active', isAr);
+}
+setPageLang(new URLSearchParams(location.search).get('lang') === 'ar' ? 'ar' : 'en');
+</script>
 </body>
 </html>

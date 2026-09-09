@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html id="htmlRoot" lang="ar" dir="rtl" class="hp-editorial">
+<head>
+<!-- Google tag (gtag.js) — same ad-attribution-only gate as login.html.
+     Ported here (previously absent, since the pilot only had a login tab
+     and never called gtag) because fireSignupConversion() below needs it
+     to fire a real conversion event on successful registration — preserving
+     analytics behavior, not adding a new capability. -->
+<script>
+(function() {
+  var p = new URLSearchParams(location.search);
+  var fromAd = p.has('gclid') || p.get('utm_source') === 'google' || p.get('utm_medium') === 'cpc';
+  if (!fromAd) return;
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  window.gtag = gtag;
+  gtag('js', new Date());
+  gtag('config', 'AW-16708579290');
+  var s = document.createElement('script');
+  s.async = true;
+  s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-16708579290';
+  document.head.appendChild(s);
+})();
+</script>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="theme-color" content="#FAF7F2">
+<title>Health Pace — دخول / تسجيل</title>
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/hpds.css">
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@700;900&family=Readex+Pro:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
+<meta name="description" content="رفيقك الذكي للصحة الشخصية — خطط غذائية، أسعار حقيقية للسوق، ومدرب ذكاء اصطناعي.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Health Pace">
+<meta property="og:title" content="Health Pace — دخول / تسجيل">
+<meta property="og:image" content="https://diet.talabatito.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<style>
+body{overflow:hidden;position:relative}
+
+/* Ambient blobs — real CSS blur (web can afford this, unlike the mobile
+   opacity-only approximation), retinted to Editorial Calm sage/olive/accent
+   in place of the earlier Oasis Wellness teal/gold/coral. */
+.blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:0.30;animation:float 8s ease-in-out infinite;pointer-events:none}
+.blob-1{width:300px;height:300px;background:var(--e-primary);top:-80px;right:-80px}
+.blob-2{width:280px;height:280px;background:var(--e-secondary);bottom:-60px;left:-60px;animation-delay:-3s}
+.blob-3{width:180px;height:180px;background:var(--e-accent);top:40%;left:10%;animation-delay:-5s}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(6px,-6px) scale(1.02)}66%{transform:translate(-5px,5px) scale(0.98)}}
+.food-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.food-icon{position:absolute;opacity:0.09;animation:drift linear infinite}
+@keyframes drift{from{transform:translateY(100vh) rotate(0)}to{transform:translateY(-150px) rotate(360deg)}}
+
+#heroBanner{position:fixed;top:16px;left:50%;transform:translateX(-50%);width:min(92vw,460px);aspect-ratio:1200/675;border-radius:var(--e-radius);overflow:hidden;z-index:1000;box-shadow:var(--e-shadow-lg);cursor:pointer;background:linear-gradient(135deg,var(--e-primary),var(--e-accent));direction:ltr}
+#heroBannerTrack{display:flex;direction:ltr;height:100%;width:max-content;animation:heroTicker 35s linear infinite}
+#heroBannerTrack.ltr{animation-direction:reverse}
+#heroBannerTrack img,#heroBannerTrack .hero-slide-text{width:min(92vw,460px);height:100%;flex-shrink:0}
+#heroBannerTrack img{object-fit:cover;display:block}
+@keyframes heroTicker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+#heroBannerTrack .hero-slide-text{background:var(--e-primary-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px 28px;color:#fff;box-sizing:border-box}
+#heroBannerTrack .hero-slide-icon{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:10px}
+#heroBannerTrack .hero-slide-title{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif;font-weight:900;font-size:1.15rem;margin-bottom:6px}
+#heroBannerTrack .hero-slide-sub{font-size:0.78rem;font-weight:600;color:rgba(255,255,255,0.8);line-height:1.4}
+#heroBanner:hover #heroBannerTrack{animation-play-state:paused}
+@media(prefers-reduced-motion:reduce){#heroBannerTrack{animation:none}.blob{animation:none}.food-icon{animation:none}}
+
+body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;padding:20px;padding-top:291px;box-sizing:border-box;min-height:100vh}
+.banner-col{position:relative;z-index:5;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:20px 12px;overflow:hidden;height:100vh;max-height:780px}
+.banner-track{display:flex;flex-direction:column;gap:14px;animation:scrollUp 28s linear infinite}
+.banner-track-rev{display:flex;flex-direction:column;gap:14px;animation:scrollDown 32s linear infinite}
+@keyframes scrollUp{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+@keyframes scrollDown{from{transform:translateY(-50%)}to{transform:translateY(0)}}
+.banner-col:hover .banner-track,.banner-col:hover .banner-track-rev{animation-play-state:paused}
+.feat-card{background:var(--e-surface);border:1px solid var(--e-line);border-radius:var(--e-radius);padding:16px 14px;width:220px;flex-shrink:0;box-shadow:var(--e-shadow-sm);transition:transform var(--e-motion-fast) var(--e-ease)}
+.feat-card:hover{transform:scale(1.03)}
+.feat-icon{font-size:1.8rem;margin-bottom:8px}
+.feat-title{font-size:0.82rem;font-weight:700;color:var(--e-ink);margin-bottom:4px;line-height:1.3}
+.feat-desc{font-size:0.72rem;color:var(--e-ink-soft);line-height:1.5}
+.feat-tag{display:inline-block;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:8px;margin-top:6px}
+.tag-primary{background:var(--e-primary-soft);color:var(--e-primary-ink)}
+.tag-accent{background:var(--e-accent-soft);color:var(--e-accent-ink)}
+.tag-error{background:var(--e-error-soft);color:var(--e-error-ink)}
+@media(max-width:1100px){.banner-col{display:none}body{display:flex;align-items:center;justify-content:center}}
+
+.login-card-slot{position:relative;z-index:10;justify-self:center;width:100%}
+.hpds-auth-divider-label{padding:0 4px}
+</style>
+</head>
+<body>
+<div id="heroBanner" onclick="heroBannerClick()"><img src="/assets/banners/out_ai_briefing.png" alt="ابدأ يومك بملخص صحي ذكي" style="width:100%;height:100%;object-fit:cover;display:block"></div>
+<div class="hpds-auth-lang-toggle">
+  <button class="hpds-auth-lang-btn active" id="lBtnAr" onclick="setLoginLang('ar')">عربي</button>
+  <button class="hpds-auth-lang-btn" id="lBtnEn" onclick="setLoginLang('en')">EN</button>
+</div>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+<div class="food-bg" id="foodBg"></div>
+<div class="banner-col"><div class="banner-track-rev" id="leftTrack"></div></div>
+
+<div class="login-card-slot hpds-auth-card">
+  <div class="hpds-auth-logo">
+    <img src="/mark-dark.svg" alt="Health Pace">
+    <h1>Health Pace</h1>
+    <p id="subText">رفيقك الذكي للصحة الشخصية</p>
+  </div>
+
+  <div class="hpds-auth-tabs">
+    <button class="hpds-auth-tab active" id="tabLogin" onclick="switchAuth('login')">تسجيل الدخول</button>
+    <button class="hpds-auth-tab" id="tabReg" onclick="switchAuth('register')">حساب جديد 🆓</button>
+  </div>
+
+  <div class="hpds-auth-panel active" id="fLogin">
+    <div class="hpds-field" id="loginErrWrap" style="display:none">
+      <div class="hpds-auth-msg error show" id="loginErr"></div>
+    </div>
+
+    <div id="googleSignInBox" style="min-height:44px;margin-bottom:10px;visibility:hidden">
+      <div id="googleSignInBtn" style="display:flex;justify-content:center"></div>
+    </div>
+    <div id="facebookSignInBox" style="min-height:44px;margin-bottom:14px;visibility:hidden">
+      <button type="button" class="hpds-btn hpds-btn-md" onclick="fbLogin()" style="background:#1877F2;color:#fff;gap:10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M22.675 0h-21.35c-.732 0-1.325.593-1.325 1.325v21.351c0 .731.593 1.324 1.325 1.324h11.495v-9.294h-3.128v-3.622h3.128v-2.671c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12v9.293h6.116c.73 0 1.323-.593 1.323-1.325v-21.35c0-.732-.593-1.325-1.325-1.325z"/></svg>
+        <span id="fbBtnText">المتابعة باستخدام فيسبوك</span>
+      </button>
+    </div>
+    <div class="hpds-auth-divider" id="socialDivider" style="visibility:hidden">
+      <span></span><span class="hpds-auth-divider-label" id="orDivider">أو</span><span></span>
+    </div>
+
+    <div class="hpds-field">
+      <label class="hpds-field-label" for="lUsr" id="lUsrLabel">اسم المستخدم</label>
+      <input class="hpds-input" type="text" id="lUsr" placeholder="أدخل اسم المستخدم" autocomplete="username">
+    </div>
+    <div class="hpds-field">
+      <label class="hpds-field-label" for="lPwd" id="lPwdLabel">كلمة المرور</label>
+      <div class="hpds-input-wrap">
+        <input class="hpds-input" type="password" id="lPwd" data-has-eye="end" placeholder="أدخل كلمة المرور" autocomplete="current-password">
+        <button type="button" class="hpds-input-eye" data-side="end" onclick="hpdsToggleInputSecure('lPwd','loginEye')" aria-label="إظهار كلمة المرور">
+          <svg id="loginEye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <button class="hpds-btn hpds-btn-primary hpds-btn-md" id="loginBtn" onclick="doLogin()">دخول ←</button>
+    <div style="text-align:center;margin-top:12px"><a href="/forgot-password-pilot.html" id="forgotLink" style="color:var(--e-ink-soft);font-size:0.85rem">نسيت كلمة المرور؟</a></div>
+    <div style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--e-line-soft)">
+      <span id="noAccountText" style="color:var(--e-ink-soft);font-size:0.85rem">ليس لديك حساب؟</span>
+      <a href="#" onclick="switchAuth('register');return false" id="registerLink" style="color:var(--e-primary-ink);font-weight:700;font-size:0.85rem">سجّل الآن 🆓</a>
+    </div>
+    <div style="text-align:center;margin-top:10px"><a href="/diet/demo" id="demoLink" style="color:var(--e-ink-faint);font-size:0.8rem">👁️ عرض تجريبي بدون تسجيل</a></div>
+  </div>
+
+  <div class="hpds-auth-panel" id="fReg">
+    <div class="hpds-trial-pill" id="trialPill">تجربة مجانية <span>14 يوم</span> — بدون بطاقة ائتمان</div>
+    <div class="hpds-field" id="regErrWrap" style="display:none">
+      <div class="hpds-auth-msg error show" id="regErr"></div>
+    </div>
+    <div class="hpds-field" id="regOkWrap" style="display:none">
+      <div class="hpds-auth-msg success show" id="regOk"></div>
+    </div>
+    <div class="hpds-reg-scroll">
+      <div class="hpds-reg-divider" id="dietDivider">🎯 النظام الغذائي والهدف</div>
+      <div class="hpds-field-row">
+        <div class="hpds-field"><label class="hpds-field-label" id="rDietLabel">النظام الغذائي</label><select class="hpds-select" id="rDiet"></select></div>
+        <div class="hpds-field"><label class="hpds-field-label" id="rGenderLabel">الجنس</label><select class="hpds-select" id="rGender"></select></div>
+      </div>
+      <div class="hpds-field">
+        <label class="hpds-field-label" id="rBudgetLabel">الميزانية اليومية للطعام</label>
+        <input class="hpds-range" type="range" min="100" max="500" value="200" step="25" id="rBudget" oninput="updateBudgetVal()">
+        <div class="hpds-range-val" id="rBudgetVal">200 جنيه/يوم</div>
+      </div>
+      <div class="hpds-reg-divider" id="measureDivider">📏 القياسات الجسدية (InBody)</div>
+      <div class="hpds-field-3">
+        <div class="hpds-field"><label class="hpds-field-label" id="rWeightLabel">الوزن (كجم)</label><input class="hpds-input" type="number" id="rWeight" placeholder="85" min="30" max="250" oninput="calcBMIField()"></div>
+        <div class="hpds-field"><label class="hpds-field-label" id="rHeightLabel">الطول (سم)</label><input class="hpds-input" type="number" id="rHeight" placeholder="170" min="100" max="230" oninput="calcBMIField()"></div>
+        <div class="hpds-field"><label class="hpds-field-label" id="rAgeLabel">العمر</label><input class="hpds-input" type="number" id="rAge" placeholder="30" min="15" max="90"></div>
+      </div>
+      <div class="hpds-bmi-box" id="bmiBox"><div class="hpds-bmi-num" id="bmiNum">—</div><div class="hpds-bmi-cat" id="bmiCat">مؤشر كتلة الجسم BMI</div></div>
+      <div class="hpds-field-row">
+        <div class="hpds-field"><label class="hpds-field-label" id="rFatLabel">نسبة الدهون % (اختياري)</label><input class="hpds-input" type="number" id="rFat" placeholder="مثال: 28" min="5" max="60" step="0.1"></div>
+        <div class="hpds-field"><label class="hpds-field-label" id="rMuscleLabel">كتلة العضلات كجم (اختياري)</label><input class="hpds-input" type="number" id="rMuscle" placeholder="مثال: 35" min="10" max="100" step="0.1"></div>
+      </div>
+      <div class="hpds-hint-box" id="measureHint">💡 القياسات تساعدنا في حساب احتياجاتك الدقيقة. يمكن الحصول عليها من جهاز InBody في الصيدلية أو النادي الرياضي.</div>
+      <div class="hpds-field-row" style="margin-top:16px">
+        <div class="hpds-field"><label class="hpds-field-label" id="rUsrLabel">اسم المستخدم *</label><input class="hpds-input" type="text" id="rUsr" placeholder="username"></div>
+        <div class="hpds-field">
+          <label class="hpds-field-label" id="rPwdLabel">كلمة المرور *</label>
+          <div class="hpds-input-wrap">
+            <input class="hpds-input" type="password" id="rPwd" data-has-eye="end" placeholder="MyDiet2026!" oninput="hpdsCheckPwdStrength(this.value,'pwdBar','pwdHint',_loginLang==='ar')">
+            <button type="button" class="hpds-input-eye" data-side="end" onclick="hpdsToggleInputSecure('rPwd','regEye')" aria-label="إظهار كلمة المرور">
+              <svg id="regEye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="hpds-pwd-track"><div class="hpds-pwd-bar" id="pwdBar"></div></div>
+      <div class="hpds-pwd-hint" id="pwdHint"></div>
+      <div class="hpds-hint-box" id="pwdRequirements">
+        🔒 كلمة المرور يجب أن تحتوي على: حرف كبير (A-Z) + حرف صغير (a-z) + رقم (0-9) + رمز (!@#$%)<br>
+        <span style="color:var(--e-primary-ink)">مثال صحيح: MyDiet2026!</span>
+      </div>
+      <div class="hpds-field"><label class="hpds-field-label" id="rEmailLabel">البريد الإلكتروني</label><input class="hpds-input" type="email" id="rEmail" placeholder="email@example.com"></div>
+      <div class="hpds-field"><label class="hpds-field-label" id="rPhoneLabel">رقم الهاتف</label><input class="hpds-input" type="tel" id="rPhone" placeholder="01XXXXXXXXX"></div>
+    </div>
+    <button class="hpds-btn hpds-btn-primary hpds-btn-md" id="regBtn" onclick="doRegister()">ابدأ تجربتك المجانية ←</button>
+    <div style="text-align:center;margin-top:12px"><a href="/diet/demo" id="demoLink2" style="color:var(--e-ink-faint);font-size:0.8rem">👁️ عرض تجريبي أولاً</a></div>
+    <div style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--e-line-soft)">
+      <span style="color:var(--e-ink-soft);font-size:0.85rem" id="haveAccountText">لديك حساب بالفعل؟</span>
+      <a href="#" onclick="switchAuth('login');return false" style="color:var(--e-primary-ink);font-weight:700;font-size:0.85rem" id="loginLinkFromReg">سجّل الدخول</a>
+    </div>
+  </div>
+</div>
+
+<div class="banner-col"><div class="banner-track" id="rightTrack"></div></div>
+
+<script src="/hpds.js"></script>
+<script>
+let _loginLang = 'ar';
+const STR = {
+  ar: { sub:'رفيقك الذكي للصحة الشخصية', usr:'اسم المستخدم', usrPh:'أدخل اسم المستخدم', pwd:'كلمة المرور', pwdPh:'أدخل كلمة المرور',
+    login:'دخول ←', loggingIn:'جاري الدخول...', forgot:'نسيت كلمة المرور؟', noAccount:'ليس لديك حساب؟', register:'سجّل الآن 🆓',
+    demo:'👁️ عرض تجريبي بدون تسجيل', or:'أو', fb:'المتابعة باستخدام فيسبوك',
+    fillBoth:'يرجى ملء جميع الحقول', badCreds:'اسم المستخدم أو كلمة المرور غير صحيحة', genericErr:'حدث خطأ، حاول مرة أخرى',
+    tabLogin:'تسجيل الدخول', tabReg:'حساب جديد 🆓', regBtn:'ابدأ تجربتك المجانية ←', regBtnBusy:'جاري الإنشاء...',
+    trialPill:'تجربة مجانية <span>14 يوم</span> — بدون بطاقة ائتمان',
+    rUsrLabel:'اسم المستخدم *', rPwdLabel:'كلمة المرور *',
+    pwdReq:'🔒 كلمة المرور يجب أن تحتوي على: حرف كبير (A-Z) + حرف صغير (a-z) + رقم (0-9) + رمز (!@#$%)<br><span style="color:var(--e-primary-ink)">مثال صحيح: MyDiet2026!</span>',
+    rEmailLabel:'البريد الإلكتروني', rPhoneLabel:'رقم الهاتف',
+    dietDivider:'🎯 النظام الغذائي والهدف', rDietLabel:'النظام الغذائي', rGenderLabel:'الجنس', rBudgetLabel:'الميزانية اليومية للطعام',
+    measureDivider:'📏 القياسات الجسدية (InBody)', rWeightLabel:'الوزن (كجم)', rHeightLabel:'الطول (سم)', rAgeLabel:'العمر',
+    rFatLabel:'نسبة الدهون % (اختياري)', rMuscleLabel:'كتلة العضلات كجم (اختياري)',
+    rFatPh:'مثال: 28', rMusclePh:'مثال: 35',
+    measureHint:'💡 القياسات تساعدنا في حساب احتياجاتك الدقيقة. يمكن الحصول عليها من جهاز InBody في الصيدلية أو النادي الرياضي.',
+    demo2:'👁️ عرض تجريبي أولاً', haveAccount:'لديك حساب بالفعل؟', loginNow:'سجّل الدخول', bmiLabel:'مؤشر كتلة الجسم BMI',
+    usrPwdRequired:'اسم المستخدم وكلمة المرور مطلوبان', pwdTooShort:'كلمة المرور يجب أن تكون 6 أحرف على الأقل',
+    regGenericErr:'حدث خطأ في إنشاء الحساب', regSuccessVerify:'✅ تم إنشاء الحساب! تحقق من بريدك الإلكتروني للتفعيل',
+    regSuccessToken:'✅ تم إنشاء الحساب! جاري التحويل...',
+    bmiUnder:'⚠️ نقص في الوزن', bmiNormal:'✅ وزن طبيعي', bmiOver:'⚠️ زيادة وزن', bmiObese:'🔴 سمنة' },
+  en: { sub:'Your personal health intelligence companion', usr:'Username', usrPh:'Enter your username', pwd:'Password', pwdPh:'Enter your password',
+    login:'Login →', loggingIn:'Signing in...', forgot:'Forgot password?', noAccount:"Don't have an account?", register:'Register free 🆓',
+    demo:'👁️ Try demo without signing up', or:'or', fb:'Continue with Facebook',
+    fillBoth:'Please fill in all fields', badCreds:'Incorrect username or password', genericErr:'An error occurred, please try again',
+    tabLogin:'Login', tabReg:'New Account 🆓', regBtn:'Start your free trial →', regBtnBusy:'Creating...',
+    trialPill:'Free trial <span>14 days</span> — no credit card',
+    rUsrLabel:'Username *', rPwdLabel:'Password *',
+    pwdReq:'🔒 Password must contain: uppercase (A-Z) + lowercase (a-z) + number (0-9) + symbol (!@#$%)<br><span style="color:var(--e-primary-ink)">Valid example: MyDiet2026!</span>',
+    rEmailLabel:'Email', rPhoneLabel:'Phone Number',
+    dietDivider:'🎯 Diet & Goal', rDietLabel:'Diet Type', rGenderLabel:'Gender', rBudgetLabel:'Daily Food Budget',
+    measureDivider:'📏 Body Measurements (InBody)', rWeightLabel:'Weight (kg)', rHeightLabel:'Height (cm)', rAgeLabel:'Age',
+    rFatLabel:'Body Fat % (optional)', rMuscleLabel:'Muscle Mass kg (optional)',
+    rFatPh:'e.g. 28', rMusclePh:'e.g. 35',
+    measureHint:'💡 These measurements help us calculate your precise needs. You can get them from an InBody machine at a pharmacy or gym.',
+    demo2:'👁️ Try demo first', haveAccount:'Already have an account?', loginNow:'Login', bmiLabel:'Body Mass Index BMI',
+    usrPwdRequired:'Username and password are required', pwdTooShort:'Password must be at least 6 characters',
+    regGenericErr:'An error occurred creating the account', regSuccessVerify:'✅ Account created! Check your email to verify it',
+    regSuccessToken:'✅ Account created! Redirecting...',
+    bmiUnder:'⚠️ Underweight', bmiNormal:'✅ Normal', bmiOver:'⚠️ Overweight', bmiObese:'🔴 Obese' },
+};
+const DIET_OPTIONS=[
+  {value:'atkins',ar:'أتكينز',en:'Atkins'},{value:'keto',ar:'كيتو',en:'Keto'},
+  {value:'mediterranean',ar:'متوسطي',en:'Mediterranean'},{value:'diabetic',ar:'مرضى السكري',en:'Diabetic'},
+  {value:'women',ar:'المرأة',en:'Women'},{value:'women_40',ar:'المرأة فوق الأربعين',en:'Women Over 40'},
+  {value:'men',ar:'الرجل',en:'Men'},{value:'men_40',ar:'الرجل فوق الأربعين',en:'Men Over 40'},
+  {value:'kids',ar:'الأطفال',en:'Kids'},
+];
+const GENDER_OPTIONS=[{value:'male',ar:'ذكر',en:'Male'},{value:'female',ar:'أنثى',en:'Female'}];
+
+function setLoginLang(lang) {
+  _loginLang = lang;
+  const s = STR[lang]; const isAr = lang === 'ar';
+  document.getElementById('htmlRoot').setAttribute('lang', lang);
+  document.getElementById('htmlRoot').setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  document.getElementById('lBtnAr').classList.toggle('active', isAr);
+  document.getElementById('lBtnEn').classList.toggle('active', !isAr);
+  document.getElementById('subText').textContent = s.sub;
+  document.getElementById('lUsrLabel').textContent = s.usr;
+  document.getElementById('lUsr').placeholder = s.usrPh;
+  document.getElementById('lPwdLabel').textContent = s.pwd;
+  document.getElementById('lPwd').placeholder = s.pwdPh;
+  document.getElementById('loginBtn').textContent = s.login;
+  document.getElementById('loginBtn').dataset.hpdsLabel = s.login;
+  document.getElementById('forgotLink').textContent = s.forgot;
+  document.getElementById('noAccountText').textContent = s.noAccount;
+  document.getElementById('registerLink').textContent = s.register;
+  document.getElementById('demoLink').textContent = s.demo;
+  document.getElementById('orDivider').textContent = s.or;
+  document.getElementById('fbBtnText').textContent = s.fb;
+  renderFeatureCards(isAr);
+  renderGoogleButton();
+  if (_heroBanners.length) renderHeroBanner();
+
+  // ── Register tab ──
+  document.getElementById('tabLogin').textContent = s.tabLogin;
+  document.getElementById('tabReg').textContent = s.tabReg;
+  document.getElementById('trialPill').innerHTML = s.trialPill;
+  document.getElementById('rUsrLabel').textContent = s.rUsrLabel;
+  document.getElementById('rPwdLabel').textContent = s.rPwdLabel;
+  document.getElementById('pwdRequirements').innerHTML = s.pwdReq;
+  document.getElementById('rEmailLabel').textContent = s.rEmailLabel;
+  document.getElementById('rPhoneLabel').textContent = s.rPhoneLabel;
+  document.getElementById('dietDivider').textContent = s.dietDivider;
+  document.getElementById('rDietLabel').textContent = s.rDietLabel;
+  document.getElementById('rGenderLabel').textContent = s.rGenderLabel;
+  document.getElementById('rBudgetLabel').textContent = s.rBudgetLabel;
+  renderSelectOptions('rDiet', DIET_OPTIONS, isAr);
+  renderSelectOptions('rGender', GENDER_OPTIONS, isAr);
+  updateBudgetVal();
+  document.getElementById('measureDivider').textContent = s.measureDivider;
+  document.getElementById('rWeightLabel').textContent = s.rWeightLabel;
+  document.getElementById('rHeightLabel').textContent = s.rHeightLabel;
+  document.getElementById('rAgeLabel').textContent = s.rAgeLabel;
+  document.getElementById('rFatLabel').textContent = s.rFatLabel;
+  document.getElementById('rMuscleLabel').textContent = s.rMuscleLabel;
+  document.getElementById('rFat').placeholder = s.rFatPh;
+  document.getElementById('rMuscle').placeholder = s.rMusclePh;
+  document.getElementById('measureHint').textContent = s.measureHint;
+  document.getElementById('bmiCat').textContent = s.bmiLabel;
+  document.getElementById('demoLink2').textContent = s.demo2;
+  document.getElementById('haveAccountText').textContent = s.haveAccount;
+  document.getElementById('loginLinkFromReg').textContent = s.loginNow;
+  const regBtnEl = document.getElementById('regBtn');
+  if (regBtnEl && !regBtnEl.disabled) { regBtnEl.textContent = s.regBtn; regBtnEl.dataset.hpdsLabel = s.regBtn; }
+  calcBMIField();
+  hpdsCheckPwdStrength(document.getElementById('rPwd').value, 'pwdBar', 'pwdHint', isAr);
+}
+window.setLoginLang = setLoginLang;
+
+function switchAuth(tab) {
+  document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+  document.getElementById('tabReg').classList.toggle('active', tab === 'register');
+  document.getElementById('fLogin').classList.toggle('active', tab === 'login');
+  document.getElementById('fReg').classList.toggle('active', tab === 'register');
+}
+window.switchAuth = switchAuth;
+function renderSelectOptions(selectId, options, isAr) {
+  const sel = document.getElementById(selectId); if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = options.map(o => `<option value="${o.value}">${isAr ? o.ar : o.en}</option>`).join('');
+  if (prev) sel.value = prev;
+}
+function updateBudgetVal() {
+  const isAr = _loginLang === 'ar';
+  const v = document.getElementById('rBudget').value;
+  document.getElementById('rBudgetVal').textContent = v + (isAr ? ' جنيه/يوم' : ' EGP/day');
+}
+function calcBMIField() {
+  const s = STR[_loginLang];
+  const result = hpdsCalcBMI(document.getElementById('rWeight').value, document.getElementById('rHeight').value);
+  if (!result) return;
+  const catLabel = { under: s.bmiUnder, normal: s.bmiNormal, over: s.bmiOver, obese: s.bmiObese }[result.category];
+  document.getElementById('bmiNum').textContent = result.bmi;
+  document.getElementById('bmiCat').textContent = catLabel;
+  document.getElementById('bmiBox').style.display = 'block';
+}
+function fireSignupConversion() {
+  if (typeof gtag === 'function') { gtag('event', 'conversion', { 'send_to': 'AW-16708579290/5cKkCNjjrt0cENrfop8-' }); }
+}
+async function doRegister() {
+  const usr = document.getElementById('rUsr').value.trim();
+  const pwd = document.getElementById('rPwd').value;
+  const s = STR[_loginLang];
+  if (!usr || !pwd) { showRegErr(s.usrPwdRequired); return; }
+  if (pwd.length < 6) { showRegErr(s.pwdTooShort); return; }
+  const body = {
+    username: usr, password: pwd,
+    email: document.getElementById('rEmail').value.trim(),
+    phone: document.getElementById('rPhone').value.trim(),
+    diet: document.getElementById('rDiet').value,
+    gender: document.getElementById('rGender').value,
+    budget: document.getElementById('rBudget').value,
+    weight: document.getElementById('rWeight').value,
+    height: document.getElementById('rHeight').value,
+    age: document.getElementById('rAge').value,
+    bodyFat: document.getElementById('rFat').value,
+    muscleMass: document.getElementById('rMuscle').value,
+  };
+  const btn = document.getElementById('regBtn');
+  hideRegErr();
+  hpdsSetButtonLoading(btn, true, s.regBtnBusy);
+  try {
+    const r = await fetch('/diet/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.ok) fireSignupConversion();
+    if (d.ok && d.requiresVerification) {
+      showRegOk(s.regSuccessVerify);
+      setTimeout(() => window.location.href = '/verify-pending-pilot.html?lang=' + _loginLang, 1800);
+    } else if (d.ok && d.token) {
+      showRegOk(s.regSuccessToken);
+      
+      setTimeout(() => window.location.href = '/dashboard-pilot.html', 1200);
+    } else {
+      showRegErr(d.error || s.regGenericErr);
+      hpdsSetButtonLoading(btn, false);
+    }
+  } catch {
+    showRegErr(s.genericErr);
+    hpdsSetButtonLoading(btn, false);
+  }
+}
+function showRegErr(msg) { hideRegOk(); document.getElementById('regErrWrap').style.display = 'block'; document.getElementById('regErr').textContent = msg; document.getElementById('regErrWrap').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+function hideRegErr() { document.getElementById('regErrWrap').style.display = 'none'; }
+function showRegOk(msg) { hideRegErr(); document.getElementById('regOkWrap').style.display = 'block'; document.getElementById('regOk').textContent = msg; }
+function hideRegOk() { document.getElementById('regOkWrap').style.display = 'none'; }
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (document.getElementById('fReg').classList.contains('active')) doRegister();
+});
+
+async function doLogin() {
+  const usr = document.getElementById('lUsr').value.trim();
+  const pwd = document.getElementById('lPwd').value;
+  const s = STR[_loginLang];
+  const btn = document.getElementById('loginBtn');
+  if (!usr || !pwd) { showLoginErr(s.fillBoth); return; }
+  hideLoginErr();
+  hpdsSetButtonLoading(btn, true, s.loggingIn);
+  try {
+    const r = await fetch('/diet/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: usr, password: pwd }) });
+    const d = await r.json();
+    if (d.token) {
+      
+      window.location.href = '/diet/dashboard';
+    } else {
+      showLoginErr(d.error || s.badCreds);
+      hpdsSetButtonLoading(btn, false);
+    }
+  } catch {
+    showLoginErr(s.genericErr);
+    hpdsSetButtonLoading(btn, false);
+  }
+}
+function showLoginErr(msg) { document.getElementById('loginErrWrap').style.display = 'block'; document.getElementById('loginErr').textContent = msg; document.getElementById('loginErrWrap').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+function hideLoginErr() { document.getElementById('loginErrWrap').style.display = 'none'; }
+document.getElementById('lPwd').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('lUsr').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+// ─── Google / Facebook — identical real logic to login.html, deferred until
+//    after first paint (measured ~260ms main-thread cost otherwise). ──────
+let _googleLoaded = false;
+function renderGoogleButton() {
+  if (!_googleLoaded) return;
+  document.getElementById('googleSignInBtn').innerHTML = '';
+  google.accounts.id.renderButton(document.getElementById('googleSignInBtn'), { theme: 'outline', size: 'large', width: 320, text: 'continue_with', locale: _loginLang });
+}
+function showSocialDividerIfNeeded() {
+  const anySocial = document.getElementById('googleSignInBox').style.visibility === 'visible' || document.getElementById('facebookSignInBox').style.visibility === 'visible';
+  document.getElementById('socialDivider').style.visibility = anySocial ? 'visible' : 'hidden';
+}
+function collapseSocialBox(id) { const el = document.getElementById(id); el.style.minHeight = '0'; el.style.margin = '0'; }
+function loadSocialLogin() {
+  fetch('/diet/api/config').then(r => r.json()).then(cfg => {
+    if (cfg.googleClientId) {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client'; script.async = true;
+      script.onload = () => {
+        google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: handleGoogleCredential });
+        document.getElementById('googleSignInBox').style.visibility = 'visible';
+        _googleLoaded = true; renderGoogleButton(); showSocialDividerIfNeeded();
+      };
+      document.head.appendChild(script);
+    } else collapseSocialBox('googleSignInBox');
+    if (cfg.facebookAppId) {
+      window.fbAsyncInit = function () {
+        FB.init({ appId: cfg.facebookAppId, cookie: false, xfbml: false, version: 'v19.0' });
+        document.getElementById('facebookSignInBox').style.visibility = 'visible';
+        showSocialDividerIfNeeded();
+      };
+      const script = document.createElement('script');
+      script.src = 'https://connect.facebook.net/en_US/sdk.js'; script.async = true;
+      document.head.appendChild(script);
+    } else collapseSocialBox('facebookSignInBox');
+  }).catch(() => { collapseSocialBox('googleSignInBox'); collapseSocialBox('facebookSignInBox'); });
+}
+if ('requestIdleCallback' in window) requestIdleCallback(loadSocialLogin, { timeout: 2000 });
+else setTimeout(loadSocialLogin, 300);
+
+async function handleGoogleCredential(response) {
+  try {
+    const r = await fetch('/diet/api/auth/google', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ credential: response.credential }) });
+    const d = await r.json();
+    if (d.token) { window.location.href = '/diet/dashboard'; }
+    else showLoginErr(d.error || (_loginLang === 'ar' ? 'حدث خطأ أثناء تسجيل الدخول بجوجل' : 'An error occurred signing in with Google'));
+  } catch { showLoginErr(STR[_loginLang].genericErr); }
+}
+function fbLogin() {
+  if (typeof FB === 'undefined') return;
+  FB.login(function (response) {
+    if (response.authResponse) {
+      fetch('/diet/api/auth/facebook', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ accessToken: response.authResponse.accessToken }) })
+        .then(r => r.json()).then(d => {
+          if (d.token) { window.location.href = '/diet/dashboard'; }
+          else showLoginErr(d.error || STR[_loginLang].genericErr);
+        }).catch(() => showLoginErr(STR[_loginLang].genericErr));
+    }
+  }, { scope: 'email' });
+}
+
+// ─── Feature-card side columns (desktop only, ≥1100px) — same real
+//    bilingual content as login.html, verbatim, retinted to Editorial Calm
+//    semantic tag colors instead of the old lime/orange/coral rgba tints. ──
+const LEFT_FEATS=[
+  {icon:'🥗',titleAr:'خطط وجبات أسبوعية',titleEn:'Weekly Meal Plans',descAr:'خطط مخصصة لنظامك الغذائي: أتكينز، كيتو، متوسطي، سكري',descEn:'Custom plans for your diet: Atkins, Keto, Mediterranean, Diabetic',tagAr:'مخصص',tagEn:'Custom',tagClass:'tag-primary'},
+  {icon:'💰',titleAr:'أسعار السوق المصري',titleEn:'Egyptian Market Prices',descAr:'مقارنة أسعار 8 متاجر محدثة أسبوعياً في مكان واحد',descEn:'Compare prices across 8 stores, updated weekly, in one place',tagAr:'توفير',tagEn:'Savings',tagClass:'tag-accent'},
+  {icon:'🧬',titleAr:'تحليل InBody',titleEn:'InBody Analysis',descAr:'أدخل قياساتك واحصل على توصيات دقيقة لجسمك',descEn:'Enter your measurements and get precise recommendations for your body',tagAr:'دقيق',tagEn:'Precise',tagClass:'tag-primary'},
+  {icon:'🔬',titleAr:'دليل تحاليل المعمل',titleEn:'Lab Test Guide',descAr:'اعرف أي تحاليل تحتاجها ومتى، مع مقارنة أسعار المعامل',descEn:'Know which lab tests you need and when, with price comparisons',tagAr:'صحة',tagEn:'Health',tagClass:'tag-error'},
+  {icon:'🤖',titleAr:'مساعد ذكي بالعربي',titleEn:'Smart AI Assistant',descAr:'مساعد Health Pace يجاوبك على أسئلتك الغذائية فوراً',descEn:'The Health Pace Assistant answers your nutrition questions instantly',tagAr:'مميز',tagEn:'VIP',tagClass:'tag-accent'},
+  {icon:'📊',titleAr:'تتبع التقدم',titleEn:'Progress Tracking',descAr:'راقب وزنك ونسبة الدهون وكتلة العضلات أسبوعياً',descEn:'Track your weight, body fat and muscle mass weekly',tagAr:'تتبع',tagEn:'Tracking',tagClass:'tag-primary'},
+  {icon:'⚡',titleAr:'14 يوم مجاناً',titleEn:'14 Days Free',descAr:'جرب كل الميزات بدون بطاقة ائتمان. لا التزامات.',descEn:'Try every feature with no credit card. No commitment.',tagAr:'مجاني',tagEn:'Free',tagClass:'tag-error'},
+  {icon:'🏆',titleAr:'أنظمة غذائية متعددة',titleEn:'Multiple Diet Plans',descAr:'أتكينز، كيتو، متوسطي، ونظام السكري كلها في مكان واحد',descEn:'Atkins, Keto, Mediterranean and Diabetic, all in one place',tagAr:'تنوع',tagEn:'Variety',tagClass:'tag-primary'},
+];
+const RIGHT_FEATS=[
+  {icon:'📅',titleAr:'خطة 7 أيام كاملة',titleEn:'Full 7-Day Plan',descAr:'وجبات الإفطار والغداء والعشاء والسناك لكل يوم في الأسبوع',descEn:'Breakfast, lunch, dinner and snack meals for every day of the week',tagAr:'شامل',tagEn:'Complete',tagClass:'tag-primary'},
+  {icon:'🛒',titleAr:'قائمة تسوق ذكية',titleEn:'Smart Shopping List',descAr:'اعرف احتاج إيه وامتين تشتريه وفين بأرخص سعر',descEn:"Know what you need, when to buy it, and where it's cheapest",tagAr:'توفير',tagEn:'Savings',tagClass:'tag-accent'},
+  {icon:'💊',titleAr:'توصيات المكملات',titleEn:'Supplement Recommendations',descAr:'فيتامينات ومكملات موصى بها حسب نظامك الغذائي',descEn:'Vitamins and supplements recommended for your specific diet',tagAr:'صحة',tagEn:'Health',tagClass:'tag-primary'},
+  {icon:'🔥',titleAr:'حساب السعرات',titleEn:'Calorie Calculator',descAr:'معرفة دقيقة بالسعرات والبروتين والكارب والدهون لكل وجبة',descEn:'Precise calories, protein, carbs and fat for every meal',tagAr:'دقيق',tagEn:'Precise',tagClass:'tag-error'},
+  {icon:'📱',titleAr:'يعمل على موبايلك',titleEn:'Works on Your Phone',descAr:'صُمم بالكامل للهواتف المصرية. سريع وسهل الاستخدام.',descEn:'Fully designed for Egyptian phones. Fast and easy to use.',tagAr:'موبايل',tagEn:'Mobile',tagClass:'tag-primary'},
+  {icon:'🔒',titleAr:'خصوصية تامة',titleEn:'Complete Privacy',descAr:'بياناتك محمية بتشفير عالي المستوى ولا تُشارك مع أحد',descEn:'Your data is protected with high-level encryption, never shared',tagAr:'آمن',tagEn:'Secure',tagClass:'tag-accent'},
+  {icon:'🌍',titleAr:'عربي وإنجليزي',titleEn:'Arabic & English',descAr:'واجهة كاملة بالعربية والإنجليزية. اختار اللغة اللي تريحك',descEn:'Fully bilingual interface. Choose whichever language you prefer',tagAr:'ثنائي',tagEn:'Bilingual',tagClass:'tag-primary'},
+  {icon:'📈',titleAr:'نتائج حقيقية',titleEn:'Real Results',descAr:'آلاف المستخدمين حققوا أهدافهم مع Health Pace',descEn:'Thousands of users have reached their goals with Health Pace',tagAr:'مثبت',tagEn:'Proven',tagClass:'tag-error'},
+];
+function buildCards(data, isAr) { return data.map(f => `<div class="feat-card"><div class="feat-icon">${f.icon}</div><div class="feat-title">${isAr ? f.titleAr : f.titleEn}</div><div class="feat-desc">${isAr ? f.descAr : f.descEn}</div><span class="feat-tag ${f.tagClass}">${isAr ? f.tagAr : f.tagEn}</span></div>`).join(''); }
+function renderFeatureCards(isAr) { document.getElementById('leftTrack').innerHTML = buildCards(LEFT_FEATS, isAr) + buildCards(LEFT_FEATS, isAr); document.getElementById('rightTrack').innerHTML = buildCards(RIGHT_FEATS, isAr) + buildCards(RIGHT_FEATS, isAr); }
+renderFeatureCards(true);
+
+const foods = ['🥑','🥦','🍋','🫐','🥕','🍎','🫚','🥚','🥩','🐟','🥗','🍅','🌿','🥜'];
+foods.forEach(f => { const el = document.createElement('div'); el.className = 'food-icon'; el.textContent = f; el.style.cssText = `left:${Math.random()*100}%;font-size:${1.5+Math.random()*2}rem;animation-duration:${8+Math.random()*12}s;animation-delay:-${Math.random()*20}s`; document.getElementById('foodBg').appendChild(el); });
+
+// ─── Hero banner — real content from /api/banners?placement=landing. The
+//    register CTA now switches to the real in-page register tab (Identity
+//    Phase 2) instead of the earlier interim link out to the legacy page. ──
+let _heroBanners = [];
+async function loadHeroBanner() {
+  try {
+    const r = await fetch('/diet/api/banners?placement=landing');
+    if (!r.ok) return;
+    _heroBanners = await r.json();
+    if (_heroBanners.length) renderHeroBanner();
+  } catch (e) { /* promotional only — never worth surfacing an error for */ }
+}
+function renderHeroBanner() {
+  if (!_heroBanners.length) return;
+  const isAr = _loginLang === 'ar';
+  const el = document.getElementById('heroBanner');
+  const imgField = isAr ? 'image' : 'image_en';
+  const withImages = _heroBanners.filter(b => b[imgField]);
+  const dirClass = isAr ? '' : 'ltr';
+  if (withImages.length) {
+    const slides = withImages.concat(withImages).map(b => `<img src="${b[imgField]}" alt="${isAr ? b.title_ar : b.title_en}" draggable="false">`).join('');
+    el.innerHTML = `<div id="heroBannerTrack" class="${dirClass}">${slides}</div>`;
+  } else {
+    const set = _heroBanners.concat(_heroBanners).map(b => `<div class="hero-slide-text"><div class="hero-slide-icon">${b.icon}</div><div class="hero-slide-title">${isAr ? b.title_ar : b.title_en}</div><div class="hero-slide-sub">${isAr ? b.subtitle_ar : b.subtitle_en}</div></div>`).join('');
+    el.innerHTML = `<div id="heroBannerTrack" class="${dirClass}">${set}</div>`;
+  }
+  el.removeAttribute('style');
+  el.dataset.cta = 'register';
+}
+function heroBannerClick() { switchAuth('register'); }
+loadHeroBanner();
+if (new URLSearchParams(window.location.search).get('tab') === 'register') switchAuth('register');
+// Populates the register tab's <select> options (rDiet/rGender) and applies
+// ?lang= on load — a real gap in the Phase 1 login-only pilot (nothing
+// there depended on setLoginLang running before a user clicked the toggle);
+// Register's dynamically-built <select> elements need it to run once up
+// front, matching login.html's own real always-call-on-load behavior.
+setLoginLang(new URLSearchParams(window.location.search).get('lang') === 'en' ? 'en' : 'ar');
+</script>
+</body>
+</html>

@@ -302,6 +302,8 @@ function setPageLang(lang) {
   document.querySelector('html').setAttribute('dir', isAr ? 'rtl' : 'ltr');
   document.getElementById('lBtnAr').classList.toggle('active', isAr);
   document.getElementById('lBtnEn').classList.toggle('active', !isAr);
+  const backBtn = document.getElementById('dhBackBtn');
+  if (backBtn) { backBtn.setAttribute('title', isAr ? 'رجوع' : 'Back'); backBtn.setAttribute('aria-label', isAr ? 'رجوع' : 'Back'); }
 
   document.getElementById('loadingText').textContent = s.loading;
   document.getElementById('logoutLink').textContent = s.logout;

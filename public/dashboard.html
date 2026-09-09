@@ -617,6 +617,9 @@ function setLang(lang) {
   const lBudget = document.getElementById('lBudget'); if(lBudget) lBudget.textContent = t('budgetLabel');
   const lCal = document.getElementById('lCal'); if(lCal) lCal.textContent = t('calLabel');
   const lLabs = document.getElementById('lLabs'); if(lLabs) lLabs.textContent = t('labsLabel');
+  const lBmi = document.getElementById('lBmi'); if(lBmi) lBmi.textContent = lang==='ar'?'مؤشر كتلة الجسم · BMI':'BMI';
+  const lBmr = document.getElementById('lBmr'); if(lBmr) lBmr.textContent = lang==='ar'?'الأيض الأساسي · BMR':'BMR';
+  const ltHealth = document.getElementById('ltHealth'); if(ltHealth) ltHealth.textContent = lang==='ar'?'🧬 ملفك الصحي':'🧬 Your Health Profile';
   const lsDiet = document.getElementById('lsDiet'); if(lsDiet) lsDiet.textContent = t('dietLabel');
   const lsCal = document.getElementById('lsCal'); if(lsCal) lsCal.textContent = t('calLabel');
   const lsLabs = document.getElementById('lsLabs'); if(lsLabs) lsLabs.textContent = t('labsLabel');
@@ -630,7 +633,7 @@ function setLang(lang) {
   // Alert messages
   const aLipid = document.getElementById('aLipid'); if(aLipid) aLipid.textContent = lang==='ar'?'موعد تحليل دهون الدم الشهري اقترب':'Monthly lipid test is due soon';
   const aMeal = document.getElementById('aMeal'); if(aMeal) aMeal.textContent = lang==='ar'?'خطة الوجبات محدثة بأحدث أسعار السوق':'Meal plan updated with latest market prices';
-  const aTip = document.getElementById('aTip'); if(aTip) aTip.textContent = lang==='ar'?'اشرب 2.5 لتر ماء يومياً مع نظام Atkins':'Drink 2.5L of water daily on Atkins diet';
+  const aTip = document.getElementById('aTip'); if(aTip) aTip.textContent = lang==='ar'?'اشرب 2.5 لتر ماء يومياً مع نظام أتكينز':'Drink 2.5L of water daily on Atkins diet';
   const cpTitle = document.getElementById('chatbot-popup-title'); if(cpTitle) cpTitle.textContent = lang==='ar'?'وقت المتابعة الغذائية 🥗':'Nutrition Check-in 🥗';
   const cpText = document.getElementById('chatbot-popup-text'); if(cpText) cpText.textContent = lang==='ar'?'لديك أسئلة متابعة جديدة من مساعدك الغذائي الذكي':'You have new follow-up questions from your AI nutrition assistant';
   const cpBtn = document.getElementById('chatbot-popup-btn'); if(cpBtn) cpBtn.textContent = lang==='ar'?'فتح المساعد ←':'Open Assistant →';
@@ -641,6 +644,12 @@ function setLang(lang) {
   // Activity section
   const aTitle = document.getElementById('aTitle'); if(aTitle) aTitle.textContent = lang==='ar'?'🏋️ البرنامج التدريبي اليومي':'🏋️ Daily Training Program';
   updateDietBadges();
+  // renderHealthProfile() reads currentLang (set above) at render time, but
+  // this card's HTML is otherwise only (re)generated on page load — without
+  // this, toggling the language left the whole Daily Calorie Target widget,
+  // creatine checkbox, and health alerts stuck in whichever language they
+  // were first rendered in until a full page reload.
+  if (typeof loadHealthProfile === 'function') loadHealthProfile();
   // Rating form
   const rFormTitle = document.getElementById('rFormTitle'); if(rFormTitle) rFormTitle.textContent = lang==='ar'?'شاركنا رأيك':'Share Your Feedback';
   const rFormSub = document.getElementById('rFormSub'); if(rFormSub) rFormSub.textContent = lang==='ar'?'تقييمك يساعدنا في تحسين الخدمة':'Your rating helps us improve the service';

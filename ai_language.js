@@ -16,16 +16,34 @@
 const SUPPORTED_LANGUAGES = ['ar', 'en'];
 const DEFAULT_LANGUAGE = 'en';
 
-// Resolution order, matching the mandated fallback chain exactly:
-// 1. The authenticated user's own stored preference (req.userObj.lang) —
-//    the real single source of truth once an account has one.
-// 2. The client's current UI language, sent along on the request — covers
+// Resolution order (reversed 2026-09-09 — see below):
+// 1. The client's current UI language, sent along on the request — this is
+//    the freshest, most specific signal of what the user wants to read
+//    *right now*, for *this* response.
+// 2. The authenticated user's own stored preference (req.userObj.lang) —
+//    falls back to this when a caller doesn't send appLang at all (covers
 //    accounts created before `lang` existed on the user record, or any
-//    other case where the stored preference is genuinely absent.
+//    other caller that never had a live UI language to send).
 // 3. English, only if neither of the above resolved to a supported code.
+//
+// Originally userLang won outright, reasoning it was "the real single
+// source of truth once an account has one." That fixed the bug it was
+// built for (chatbot always replying in Arabic regardless of any stored
+// preference), but created a new one: toggling the in-app language relies
+// on a fire-and-forget sync (updateLang() in the mobile client, awaited
+// with only a 1200ms timeout) to update the stored value before it takes
+// effect — and whenever that sync lags or fails, EVERY AI-generated
+// response silently reverts to the stale stored language, indefinitely,
+// with no visible sign anything's wrong. Verified live: an explicit
+// `lang: 'en'` in a chatbot request was ignored in favor of a stale stored
+// 'ar', while the exact same request correctly returned English the
+// moment the stored value was corrected. Prioritizing the live per-request
+// language fixes this without reintroducing the original bug — userLang is
+// still consulted, just as the fallback for callers that have no live
+// signal to send, not as an override of one that's actually present.
 function resolveLanguage({ userLang, appLang } = {}) {
-  if (SUPPORTED_LANGUAGES.includes(userLang)) return userLang;
   if (SUPPORTED_LANGUAGES.includes(appLang)) return appLang;
+  if (SUPPORTED_LANGUAGES.includes(userLang)) return userLang;
   return DEFAULT_LANGUAGE;
 }
 

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html id="htmlRoot" lang="ar" dir="rtl" class="hp-editorial">
+<head>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="theme-color" content="#FAF7F2">
+<title>Health Pace — الاشتراك والفوترة</title>
+<link rel="stylesheet" href="/theme.css">
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@700;900&family=Readex+Pro:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="/hpds.css">
+<style>
+  .sub-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--e-line)}
+  .sub-row:first-of-type{border-top:none}
+  .sub-row-label{font-size:13px;color:var(--e-ink-soft)}
+  .sub-row-value{font-size:13.5px;font-weight:700;color:var(--e-ink)}
+  .sub-plan-name{font-family:var(--e-font-display,inherit);font-size:22px;font-weight:800;color:var(--e-ink);margin-bottom:8px}
+  .notice-box{background:var(--e-bg-raised);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--e-ink-soft);line-height:1.6;margin-top:12px}
+  .history-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--e-line)}
+  .history-row:first-child{border-top:none}
+  .history-plan{font-weight:700;font-size:13.5px;color:var(--e-ink)}
+  .history-meta{font-size:12px;color:var(--e-ink-faint);margin-top:2px}
+  .history-status{font-size:12px;color:var(--e-ink-soft)}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <aside class="rail">
+    <svg class="rail-logo" viewBox="0 0 1254 950"><defs><linearGradient id="railGrad" x1="0" y1="0" x2="12540" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#003F54"/><stop offset="22%" stop-color="#028DA0"/><stop offset="52%" stop-color="#0E8D5A"/><stop offset="78%" stop-color="#4CAE18"/><stop offset="100%" stop-color="#99DC05"/></linearGradient></defs><g transform="translate(0,1254) scale(0.1,-0.1)" fill="url(#railGrad)"><path d="M10405 12039 c-204 -75 -473 -190 -605 -257 -228 -117 -340 -195 -494 -342 -252 -242 -392 -527 -462 -940 -21 -126 -33 -770 -14 -770 7 0 53 14 104 31 50 17 159 50 241 74 483 141 677 233 861 407 353 335 508 827 491 1558 -3 129 -8 243 -12 253 -9 22 -15 21 -110 -14z M7516 11563 c-36 -180 -43 -627 -13 -783 53 -273 173 -496 345 -647 131 -114 239 -176 430 -249 109 -41 469 -154 493 -154 8 0 10 94 6 348 -4 369 -11 434 -61 598 -46 149 -59 178 -138 296 -60 89 -98 135 -156 184 -113 96 -256 180 -437 254 -49 21 -167 69 -262 109 -94 39 -178 71 -187 71 -8 0 -17 -12 -20 -27z M1199 10571 l-24 -19 -3 -3349 c-2 -2344 1 -3369 8 -3418 29 -189 168 -336 356 -375 34 -7 203 -10 490 -8 434 3 440 3 489 26 63 29 119 83 153 147 l27 50 6 1060 c3 583 8 1067 12 1076 11 22 188 136 273 175 159 74 379 120 638 134 314 18 576 -5 1056 -90 585 -105 1080 -120 1483 -45 443 83 842 303 1142 632 236 259 424 560 635 1018 61 132 129 278 151 325 134 279 324 466 568 558 148 57 149 57 986 57 708 0 776 -1 847 -18 95 -22 254 -100 330 -161 131 -105 250 -300 290 -476 32 -141 32 -379 -1 -505 -50 -192 -163 -382 -295 -495 -244 -209 -567 -278 -893 -189 -70 19 -85 28 -143 83 -85 82 -147 123 -250 167 -143 61 -205 73 -385 73 -183 1 -260 -12 -446 -74 -381 -126 -718 -407 -919 -763 -18 -32 -30 -60 -28 -62 3 -3 30 13 61 35 211 148 459 254 677 291 111 19 348 15 437 -8 l72 -18 -80 -150 c-309 -579 -369 -688 -527 -950 -270 -449 -522 -775 -893 -1159 -158 -163 -481 -453 -681 -609 -27 -22 -47 -41 -45 -44 11 -10 376 116 507 175 36 16 94 42 130 57 77 33 262 129 375 195 463 271 826 589 1240 1088 5 6 623 -107 677 -124 15 -4 13 -11 -12 -52 -15 -26 -64 -108 -107 -182 -44 -74 -111 -189 -150 -255 -39 -66 -116 -199 -171 -295 -55 -96 -126 -220 -158 -275 -76 -130 -177 -325 -172 -330 6 -6 175 124 317 245 68 58 140 118 160 135 54 44 289 265 420 395 109 108 203 210 362 390 75 86 193 255 221 317 24 55 26 138 4 181 -19 37 -81 85 -143 112 -51 23 -525 178 -758 249 -38 11 -76 25 -84 30 -11 7 2 31 58 114 39 58 78 111 87 118 12 9 52 8 200 -6 204 -20 579 -17 704 5 260 46 380 85 585 186 549 270 918 820 984 1463 61 592 -112 1183 -457 1566 -213 236 -534 417 -858 483 -198 41 -265 43 -1109 39 -865 -4 -867 -4 -1090 -57 -120 -28 -293 -93 -415 -155 -384 -197 -671 -487 -914 -925 -32 -58 -73 -130 -91 -160 -18 -30 -44 -78 -58 -106 -36 -71 -161 -278 -205 -339 -263 -363 -547 -557 -932 -636 -127 -26 -216 -28 -935 -18 -350 4 -433 -2 -680 -52 -575 -116 -1060 -430 -1438 -930 -141 -186 -334 -518 -487 -836 -29 -62 -55 -112 -56 -110 -9 9 69 342 112 482 132 422 383 803 723 1094 173 148 348 264 542 359 363 178 717 265 1179 288 72 4 126 10 118 14 -19 11 -280 77 -373 95 -227 43 -561 70 -770 62 -387 -16 -708 -90 -1004 -233 -74 -35 -136 -62 -139 -59 -3 2 -4 553 -3 1222 1 840 -2 1249 -9 1318 -23 200 -93 348 -234 493 -70 72 -111 104 -176 140 -198 108 -281 122 -731 122 -317 0 -338 -1 -360 -19z M5202 10518 c-14 -17 -20 -410 -33 -1937 -8 -941 -8 -1276 1 -1285 7 -7 90 -11 263 -11 227 0 261 3 345 23 93 22 241 76 317 114 170 87 344 272 424 452 l28 62 4 1010 c3 927 2 1014 -14 1076 -65 258 -271 445 -542 493 -109 19 -777 21 -793 3z M9875 7858 c-88 -16 -186 -71 -248 -138 -178 -192 -182 -465 -8 -653 99 -107 195 -149 342 -148 150 1 268 54 358 162 97 116 136 248 114 388 -15 99 -52 171 -125 248 -117 121 -272 172 -433 141z M6492 5828 c-67 -30 -293 -85 -432 -105 -148 -21 -631 -24 -795 -5 -54 6 -100 10 -101 9 -1 -1 -3 -468 -5 -1037 -4 -974 -3 -1038 14 -1087 24 -69 85 -136 155 -170 l57 -28 444 -3 c423 -3 448 -2 512 18 81 24 156 89 191 165 l23 50 3 1108 c2 892 0 1107 -10 1106 -7 0 -32 -10 -56 -21z"/><path d="M8825 9509 c-102 -11 -252 -37 -310 -53 -43 -12 111 -14 1153 -15 661 -1 1202 1 1202 3 0 8 -186 47 -295 61 -89 12 -259 14 -895 13 -432 0 -816 -4 -855 -9z"/></g></svg>
+    <a class="rail-item" href="/dashboard-pilot.html" id="railHome" aria-label="Home / الرئيسية">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h14V10"/></svg>
+      <span data-ar="الرئيسية" data-en="Home" aria-hidden="true">الرئيسية</span>
+    </a>
+    <a class="rail-item" href="/diet/dashboard" id="railFull" aria-label="Full App / التطبيق الكامل">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      <span data-ar="التطبيق الكامل" data-en="Full App" aria-hidden="true">التطبيق الكامل</span>
+    </a>
+    <a class="rail-item" href="/diet/settings" id="railSettings" aria-label="Settings / الإعدادات">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span data-ar="الإعدادات" data-en="Settings" aria-hidden="true">الإعدادات</span>
+    </a>
+    <div class="rail-spacer"></div>
+    <a class="rail-item" href="/diet/logout" id="railLogout" aria-label="Logout / خروج">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      <span data-ar="خروج" data-en="Logout" aria-hidden="true">خروج</span>
+    </a>
+  </aside>
+
+  <div class="main-col">
+    <nav class="topnav">
+      <div>
+        <div class="topnav-greeting" data-ar="الاشتراك والفوترة" data-en="Subscription & Billing">الاشتراك والفوترة</div>
+        <div class="topnav-sub" data-ar="خطتك، مزود الدفع، والتجديد" data-en="Your plan, provider, and renewal">خطتك، مزود الدفع، والتجديد</div>
+      </div>
+      <div class="topnav-right">
+        <div class="lang-toggle">
+          <button id="btnAr" class="active" onclick="setLang('ar')">عربي</button>
+          <button id="btnEn" onclick="setLang('en')">EN</button>
+        </div>
+        <div class="avatar" id="avatarInitial" aria-hidden="true">—</div>
+      </div>
+    </nav>
+
+    <main class="content" style="max-width:640px">
+      <div id="subRoot"></div>
+    </main>
+  </div>
+</div>
+
+<script src="/hpds.js"></script>
+<script>
+let currentLang = 'ar';
+let subData = null;
+
+const STR = {
+  ar: {
+    loadError: 'تعذر التحميل — تحقق من الاتصال', retry: 'أعد المحاولة',
+    noSub: 'لا يوجد اشتراك نشط', noSubBody: 'أنت حالياً على الفترة التجريبية أو بدون خطة مدفوعة',
+    subscribeNow: 'اشترك الآن', currentPlan: 'خطتك الحالية', provider: 'مزود الدفع',
+    status: 'الحالة', renewalType: 'نوع التجديد', autoRenewOn: 'التجديد التلقائي مفعّل',
+    autoRenewOff: 'التجديد التلقائي غير مفعّل', autoRenewUnknown: 'حالة التجديد التلقائي غير معروفة',
+    fixedDuration: 'مدة ثابتة — بدون تجديد تلقائي', expiresOn: 'ينتهي في', remainingDays: (n) => `${n} يوم متبقي`,
+    manage: 'إدارة الاشتراك', renew: 'جدد الاشتراك',
+    manageAppleBody: 'هذا الاشتراك عبر Apple App Store — يمكن إدارته أو إلغاؤه فقط من إعدادات جهاز iPhone الخاص بك (الإعدادات ← [اسمك] ← الاشتراكات).',
+    manageGoogleBody: 'هذا الاشتراك عبر Google Play — يمكن إدارته أو إلغاؤه فقط من تطبيق Google Play على جهاز Android الخاص بك.',
+    manageKashierBody: 'اشتراكك عبر الموقع له مدة ثابتة ولا يتجدد تلقائياً — جدده يدوياً قبل انتهائه لتجنب انقطاع الوصول.',
+    history: 'سجل الفوترة', historyEmpty: 'لا يوجد سجل فوترة سابق',
+    active: 'نشط', expired: 'منتهي', grace_period: 'فترة سماح', on_hold: 'معلّق', revoked: 'ملغى',
+    apple: 'Apple App Store', google: 'Google Play', kashier: 'الموقع الإلكتروني (Kashier)',
+  },
+  en: {
+    loadError: 'Could not load — check your connection', retry: 'Try again',
+    noSub: 'No active subscription', noSubBody: "You're currently on the trial period or have no paid plan",
+    subscribeNow: 'Subscribe Now', currentPlan: 'Current Plan', provider: 'Billing Provider',
+    status: 'Status', renewalType: 'Renewal Type', autoRenewOn: 'Auto-renew is on',
+    autoRenewOff: 'Auto-renew is off', autoRenewUnknown: 'Auto-renew status unknown',
+    fixedDuration: 'Fixed duration — no automatic renewal', expiresOn: 'Expires on', remainingDays: (n) => `${n} day${n === 1 ? '' : 's'} left`,
+    manage: 'Manage Subscription', renew: 'Renew Subscription',
+    manageAppleBody: 'This subscription is billed through the Apple App Store — it can only be managed or cancelled from your iPhone Settings → [your name] → Subscriptions.',
+    manageGoogleBody: 'This subscription is billed through Google Play — it can only be managed or cancelled from the Google Play app on your Android device.',
+    manageKashierBody: "Your web subscription has a fixed duration and doesn't renew automatically — renew it manually before it ends to avoid losing access.",
+    history: 'Billing History', historyEmpty: 'No past billing history',
+    active: 'Active', expired: 'Expired', grace_period: 'Grace period', on_hold: 'On hold', revoked: 'Revoked',
+    apple: 'Apple App Store', google: 'Google Play', kashier: 'Website (Kashier)',
+  },
+};
+function tf(key, ...args) { const v = STR[currentLang][key]; return typeof v === 'function' ? v(...args) : v; }
+
+function setLang(lang) {
+  currentLang = lang;
+  // hpdsApplyLangToDOM (hpds.js) is the shared helper that applies every
+  // [data-ar]/[data-en] element on the page — including the sidebar nav and
+  // topnav header, which have those attributes set but were never actually
+  // being read, since this function set htmlRoot's lang/dir by hand instead
+  // of calling the shared helper settings-pilot.html already uses for the
+  // identical sidebar/topnav markup.
+  hpdsApplyLangToDOM(lang);
+  document.getElementById('btnAr').classList.toggle('active', lang==='ar');
+  document.getElementById('btnEn').classList.toggle('active', lang==='en');
+  fetch('/diet/api/profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lang }) });
+  if (subData) render(subData);
+}
+
+function planLabel(plan) { return plan.charAt(0).toUpperCase() + plan.slice(1); }
+
+function render(data) {
+  subData = data;
+  const root = document.getElementById('subRoot');
+  const { current, history = [] } = data;
+
+  if (!current) {
+    root.innerHTML = `<div class="card" style="text-align:center;padding:32px 16px">
+      <div style="font-size:15px;font-weight:700;color:var(--e-ink);margin-bottom:6px">${STR[currentLang].noSub}</div>
+      <div style="font-size:13px;color:var(--e-ink-soft);margin-bottom:16px">${STR[currentLang].noSubBody}</div>
+      <a class="modal-submit" style="display:inline-block;text-decoration:none;padding:12px 24px" href="/diet/payment">${STR[currentLang].subscribeNow}</a>
+    </div>`;
+    return;
+  }
+
+  const renewalText = current.renewalType === 'auto'
+    ? (current.autoRenewing === true ? STR[currentLang].autoRenewOn : current.autoRenewing === false ? STR[currentLang].autoRenewOff : STR[currentLang].autoRenewUnknown)
+    : STR[currentLang].fixedDuration;
+
+  const noticeBody = current.provider === 'apple' ? STR[currentLang].manageAppleBody
+    : current.provider === 'google' ? STR[currentLang].manageGoogleBody
+    : STR[currentLang].manageKashierBody;
+
+  const actionHTML = current.provider === 'kashier'
+    ? `<a class="modal-submit" style="display:inline-block;text-decoration:none;padding:12px 24px;margin-top:12px" href="/diet/payment">${STR[currentLang].renew}</a>`
+    : '';
+
+  const expiresRow = current.endDate
+    ? `<div class="sub-row"><span class="sub-row-label">${STR[currentLang].expiresOn}</span><span class="sub-row-value">${current.endDate} · ${tf('remainingDays', current.remainingDays)}</span></div>`
+    : '';
+
+  const historyRows = history.filter(h => !h.isCurrent);
+  const historyHTML = historyRows.length === 0
+    ? `<div style="font-size:13px;color:var(--e-ink-soft);text-align:center;padding:8px 0">${STR[currentLang].historyEmpty}</div>`
+    : historyRows.map(h => `
+      <div class="history-row">
+        <div>
+          <div class="history-plan">${planLabel(h.plan)} — ${STR[currentLang][h.provider] || h.provider}</div>
+          <div class="history-meta">${h.startDate} → ${h.endDate || '—'}</div>
+        </div>
+        <div class="history-status">${STR[currentLang][h.status] || h.status}</div>
+      </div>
+    `).join('');
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="section-title" style="margin-bottom:10px">${STR[currentLang].currentPlan}</div>
+      <div class="sub-plan-name">${planLabel(current.plan)}</div>
+      <div class="sub-row"><span class="sub-row-label">${STR[currentLang].provider}</span><span class="sub-row-value">${STR[currentLang][current.provider] || current.provider}</span></div>
+      <div class="sub-row"><span class="sub-row-label">${STR[currentLang].status}</span><span class="sub-row-value">${STR[currentLang][current.status] || current.status}</span></div>
+      <div class="sub-row"><span class="sub-row-label">${STR[currentLang].renewalType}</span><span class="sub-row-value">${renewalText}</span></div>
+      ${expiresRow}
+      <div class="notice-box">${noticeBody}</div>
+      ${actionHTML}
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="section-title" style="margin-bottom:10px">${STR[currentLang].history}</div>
+      ${historyHTML}
+    </div>
+  `;
+}
+
+async function loadSubscription() {
+  try {
+    const res = await fetch('/diet/api/subscription');
+    if (!res.ok) throw new Error('failed');
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    document.getElementById('subRoot').innerHTML = hpdsErrorStateHTML({ message: STR[currentLang].loadError, retryLabel: STR[currentLang].retry, onRetryFn: 'loadSubscription' });
+  }
+}
+
+(async function init() {
+  const meRes = await fetch('/diet/api/me');
+  if (!meRes.ok || meRes.redirected) { location.href = '/diet/login'; return; }
+  const me = await meRes.json();
+  document.getElementById('avatarInitial').textContent = (me.username || '?')[0]?.toUpperCase() || '?';
+  currentLang = me.lang || 'ar';
+  setLang(currentLang);
+  await loadSubscription();
+})();
+</script>
+</body>
+</html>

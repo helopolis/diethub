@@ -126,9 +126,9 @@ body{font-family:'Cairo',sans-serif;background:var(--dark);color:#fff;min-height
     <a href="/diet/login" class="btn-primary">ابدأ تجربتك المجانية ←</a>
     <a href="#demo-preview" class="btn-secondary">شاهد كيف يعمل</a>
   </div>
-  <div class="rating-preview">
-    <div class="rating-stars-p">⭐⭐⭐⭐⭐</div>
-    <div id="heroRating" style="font-size:0.85rem;opacity:0.8">4.8 من 5 · 120 تقييم</div>
+  <div class="rating-preview" id="ratingPreview" style="display:none">
+    <div class="rating-stars-p" id="ratingStars">⭐⭐⭐⭐⭐</div>
+    <div id="heroRating" style="font-size:0.85rem;opacity:0.8"></div>
   </div>
 </div>
 
@@ -273,11 +273,13 @@ async function loadRatings() {
 }
 function renderRating() {
   const d = window._ratingData;
-  if (!d) return;
+  if (!d) return; // no real ratings yet — stay hidden rather than show a placeholder number
   const isAr = window._demoLang !== 'en';
   document.getElementById('heroRating').textContent = isAr
     ? `${d.average} من 5 · ${d.total} تقييم`
     : `${d.average} of 5 · ${d.total} ratings`;
+  document.getElementById('ratingStars').textContent = '⭐'.repeat(Math.round(d.average)) + '☆'.repeat(5 - Math.round(d.average));
+  document.getElementById('ratingPreview').style.display = 'flex';
 }
 
 loadDemo();
@@ -419,11 +421,9 @@ const DEMO_STRINGS = {
     ],
     priceLabel: 'الأسعار', priceTitle: 'باقات لكل ميزانية', perMonth: 'جنيه / شهر',
     plans: [
-      {name:'Basic',price:99,feats:['✓ خطة وجبات','✓ 9 أنظمة']},
-      {name:'Standard',price:179,feats:['✓ + قائمة تسوق','✓ مقارنة أسعار']},
-      {name:'Premium ⭐',price:249,feats:['✓ + التحاليل','✓ المكملات']},
-      {name:'VIP',price:349,feats:['✓ + ميزانية','✓ تليجرام']},
-      {name:'Elite',price:449,feats:['✓ + نشاط يومي','✓ دعم خليجي']},
+      {name:'Essential',price:100,feats:['✓ خطة وجبات أسبوعية','✓ مقارنة أسعار ومساعد ذكي']},
+      {name:'Active',price:150,feats:['✓ كل Essential +','✓ مزامنة ومتابعة النشاط']},
+      {name:'Complete',price:500,feats:['✓ كل Active +','✓ ربط مباشر بالأجهزة الذكية']},
     ],
     regTitle: 'ابدأ <span>مجاناً</span> اليوم',
     regSub: 'أنشئ حسابك في دقيقة — 14 يوم تجربة مجانية كاملة',
@@ -465,11 +465,9 @@ const DEMO_STRINGS = {
     ],
     priceLabel: 'Pricing', priceTitle: 'Plans for every budget', perMonth: 'EGP / month',
     plans: [
-      {name:'Basic',price:99,feats:['✓ Meal plan','✓ 9 diet plans']},
-      {name:'Standard',price:179,feats:['✓ + Shopping list','✓ Price comparison']},
-      {name:'Premium ⭐',price:249,feats:['✓ + Lab tests','✓ Supplements']},
-      {name:'VIP',price:349,feats:['✓ + Budget tools','✓ Telegram']},
-      {name:'Elite',price:449,feats:['✓ + Daily activity','✓ Gulf support']},
+      {name:'Essential',price:100,feats:['✓ Weekly meal plan','✓ Price comparison & AI chatbot']},
+      {name:'Active',price:150,feats:['✓ Everything in Essential +','✓ Sync & activity tracking']},
+      {name:'Complete',price:500,feats:['✓ Everything in Active +','✓ Direct smartwatch connections']},
     ],
     regTitle: 'Start <span>Free</span> Today',
     regSub: 'Create your account in a minute — 14 days full free trial',
@@ -499,6 +497,7 @@ function setDemoLang(lang) {
   document.querySelector('html').setAttribute('dir', isAr ? 'rtl' : 'ltr');
   document.getElementById('dBtnAr').classList.toggle('active', isAr);
   document.getElementById('dBtnEn').classList.toggle('active', !isAr);
+  renderRating(); // re-localizes the star-rating line, which otherwise stayed in whatever language it first loaded in
 
   const badge = document.querySelector('.demo-badge');
   if (badge) badge.textContent = s.badge;
@@ -537,7 +536,7 @@ function setDemoLang(lang) {
   // Pricing section
   document.getElementById('priceLabel').textContent = s.priceLabel;
   document.getElementById('priceTitle').textContent = s.priceTitle;
-  document.getElementById('plansRow').innerHTML = s.plans.map((p,i)=>`<a href="/diet/login" class="plan-d${i===2?' popular-d':''}"><div class="plan-name-d">${p.name}</div><div class="plan-price-d">${p.price}</div><div class="plan-per-d">${s.perMonth}</div><div class="plan-feat-d">${p.feats[0]}</div><div class="plan-feat-d">${p.feats[1]}</div></a>`).join('');
+  document.getElementById('plansRow').innerHTML = s.plans.map((p,i)=>`<a href="/diet/login" class="plan-d${i===1?' popular-d':''}"><div class="plan-name-d">${p.name}</div><div class="plan-price-d">${p.price}</div><div class="plan-per-d">${s.perMonth}</div><div class="plan-feat-d">${p.feats[0]}</div><div class="plan-feat-d">${p.feats[1]}</div></a>`).join('');
 
   // Register CTA section
   document.getElementById('regTitle').innerHTML = s.regTitle;
