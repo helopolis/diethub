@@ -83,12 +83,16 @@ const TRIAL_DAYS = 14;
 // this database genuinely contains sesame-based foods (tahini, za'atar,
 // and hummus's own core recipe) with no way to flag them before this.
 const KNOWN_ALLERGENS = ['milk','eggs','fish','crustaceans','nuts','peanuts','gluten','soybeans','sesame'];
-// Self-reported conditions used to gate real safety logic (deficit goals,
-// diet contraindication warnings) — not a diagnosis, not a full medical
-// history. Deliberately small and scoped to what this app actually acts on
-// today; adding a condition here means also adding real gating logic for
-// it, not just collecting the label.
-const KNOWN_MEDICAL_CONDITIONS = ['type1_diabetes', 'type2_diabetes', 'pregnant', 'breastfeeding', 'ckd'];
+// Self-reported conditions — not a diagnosis, not a full medical history.
+// The first 5 (type1_diabetes through ckd) gate real safety logic (deficit-
+// goal overrides, diet contraindication warnings). The 5 added after launch
+// (prediabetes through liver_disease) are real, standard clinical
+// categories but deliberately trackable/self-reported only for now - no
+// diet-contraindication rules exist for them, since that requires real
+// clinical sourcing this app doesn't have ("never invent medical
+// knowledge"). Collecting the label without inventing the rule is the
+// honest middle ground until a clinician-reviewed rule set exists.
+const KNOWN_MEDICAL_CONDITIONS = ['type1_diabetes', 'type2_diabetes', 'pregnant', 'breastfeeding', 'ckd', 'prediabetes', 'gestational_diabetes', 'hypertension', 'hyperlipidemia', 'liver_disease'];
 
 // Phase 1 of the nutrition-architecture migration: these 4 short enums now
 // also live as real tables (db.js), seeded from these exact same constants.

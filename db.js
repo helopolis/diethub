@@ -350,6 +350,21 @@ function seedLookupTables() {
     { id: 'pregnant', name_en: 'Pregnant', name_ar: 'حامل' },
     { id: 'breastfeeding', name_en: 'Breastfeeding', name_ar: 'مرضعة' },
     { id: 'ckd', name_en: 'Chronic Kidney Disease', name_ar: 'مرض كلوي مزمن' },
+    // Added per the architecture audit's Section 7 finding: real, standard
+    // clinical categories (not invented terminology) that were previously
+    // impossible to select at all - someone with prediabetes or gestational
+    // diabetes had no accurate option and could only pick nothing or an
+    // incorrect existing condition. Deliberately NOT paired with any new
+    // diet_contraindications rules - which diets are actually contraindicated
+    // for hypertension/hyperlipidemia/liver disease requires real clinical
+    // sourcing this migration doesn't have ("never invent medical
+    // knowledge"), so these exist as trackable, self-reported data only
+    // until a clinician-reviewed rule set exists for them.
+    { id: 'prediabetes', name_en: 'Prediabetes', name_ar: 'ما قبل السكري' },
+    { id: 'gestational_diabetes', name_en: 'Gestational Diabetes', name_ar: 'سكري الحمل' },
+    { id: 'hypertension', name_en: 'Hypertension (High Blood Pressure)', name_ar: 'ضغط الدم المرتفع' },
+    { id: 'hyperlipidemia', name_en: 'High Cholesterol', name_ar: 'ارتفاع الكوليسترول' },
+    { id: 'liver_disease', name_en: 'Liver Disease', name_ar: 'أمراض الكبد' },
   ];
   const activityLevels = [
     { id: 'sedentary', name_en: 'Sedentary', name_ar: 'قليل الحركة', factor: 1.2 },
