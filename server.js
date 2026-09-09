@@ -5987,6 +5987,17 @@ app.use(`${BASE}/*path`,(req,res)=>res.status(404).json({error:'Not found'}));
 
 initData();
 
+// Phase 4 of the nutrition-architecture migration: meal_plans.json (seeded
+// by initData() just above) is the source seedMealsFromDietPlans() migrates
+// into the real meals/recipe_ingredients tables - must run AFTER initData(),
+// not at db.js's own module-load time, because meal_plans.json doesn't
+// exist yet on a fresh deployment until this exact line runs. Idempotent
+// (db.js checks for each meal's existence before inserting), safe on every
+// boot. Logs (and, going forward, should alert on) any unresolved
+// ingredient - Phase 2 already proved 100% coverage on this exact data, so
+// a failure here means meal_plans.json changed since that was verified.
+store.seedMealsFromDietPlans(load('meal_plans.json'));
+
 // Production hardening pass, Phase 4 (independent audit, DevOps F8.1 — zero
 // automated tests existed anywhere): tests need to import the real Express
 // `app` and drive it with supertest, without binding a real port (which

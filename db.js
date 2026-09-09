@@ -748,7 +748,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS diet_contraindications (
   message_ar   TEXT NOT NULL,
   created_at   TEXT NOT NULL
 )`);
-db.exec(`CREATE INDEX IF NOT EXISTS idx_diet_contra_diet_id ON diet_contraindications(diet_id)`);
+// Real bug, found live: this table originally had no uniqueness constraint
+// on (diet_id, condition_id), so insDietContraStmt's `ON CONFLICT DO
+// NOTHING` had nothing to conflict ON (the only unique column was the
+// autoincrement id, which is always new) - every container restart
+// silently re-inserted all 6 rows again. By the time this was caught (the
+// boot verification below correctly refused to start rather than serve
+// corrupted data), production had 24 rows where 6 were expected. This
+// dedup must run BEFORE the unique index below, which would otherwise fail
+// to create on top of existing duplicates.
+db.exec(`DELETE FROM diet_contraindications WHERE id NOT IN (
+  SELECT MIN(id) FROM diet_contraindications GROUP BY diet_id, condition_id
+)`);
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_diet_contra_unique ON diet_contraindications(diet_id, condition_id)`);
 
 const insDietStmt = db.prepare(`INSERT INTO diets (id,name_en,name_ar,protein_per_kg,low_carb,style_label_en,created_at)
   VALUES (@id,@name_en,@name_ar,@protein_per_kg,@low_carb,@style_label_en,@now) ON CONFLICT(id) DO NOTHING`);
@@ -847,6 +859,129 @@ function verifyDietTablesMatch({ dietMeta, dietStyleLabels, dietContraindication
   if (errors.length) throw new Error('[db] diet-table migration verification FAILED:\n' + errors.join('\n'));
   console.log(`[db] diet tables verified: ${listDiets().length} diets and ${totalDbRules} contraindication rules match production JS constants exactly.`);
 }
+
+// ─── MEALS & RECIPE INGREDIENTS (Phase 4 of the nutrition-architecture ────
+// migration) ─────────────────────────────────────────────────────────────
+// The other half of the audit's highest-value finding: meal_plans.json (9
+// diets x 7 days x 4 meals = 252 meals) lives as one giant unstructured
+// JSON blob, and every ingredient is a free-text name/qty pair with no
+// reference to any canonical food - "Never ingredient names" (the master
+// migration plan's own Phase 5 principle) was being violated by the single
+// largest content asset in the app. Worse: the audit found the blob's own
+// hand-typed cal/protein/carbs/fat numbers disagree with what the real
+// ingredients (now resolvable via the Phase 2 foods table) actually add up
+// to, for 27 of the 252 meals (10.7%), by as much as 69%.
+//
+// Real fix: every recipe_ingredients row references a food_id (Phase 2),
+// never a name string - and meal nutrition is COMPUTED from real per-
+// ingredient data via getMealNutrition(), never stored as a separately-
+// typed, driftable number. This is the actual generalization of "database
+// as single source of truth" for this app's single largest data asset.
+//
+// NOT seeded at module-load time like Phases 1-3: meal_plans.json is
+// itself seeded by server.js's initData(), which runs near the very end of
+// server.js (after all routes are defined, long after `require('./db')`
+// already finished running this file's own top-level code) - seeding meals
+// here unconditionally would silently do nothing on a fresh deployment
+// where meal_plans.json doesn't exist yet. seedMealsFromDietPlans() is
+// exported and must be called explicitly by server.js after initData().
+db.exec(`CREATE TABLE IF NOT EXISTS meals (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  diet_id    TEXT NOT NULL REFERENCES diets(id),
+  day_index  INTEGER NOT NULL,
+  day_en     TEXT NOT NULL,
+  day_ar     TEXT NOT NULL,
+  meal_type  TEXT NOT NULL,
+  type_ar    TEXT NOT NULL,
+  type_en    TEXT NOT NULL,
+  time       TEXT,
+  name_ar    TEXT NOT NULL,
+  name_en    TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_meals_diet_day ON meals(diet_id, day_index)`);
+db.exec(`CREATE TABLE IF NOT EXISTS recipe_ingredients (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  meal_id    INTEGER NOT NULL REFERENCES meals(id),
+  food_id    INTEGER NOT NULL REFERENCES foods(id),
+  grams      REAL NOT NULL,
+  qty_ar     TEXT,
+  qty_en     TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_meal_id ON recipe_ingredients(meal_id)`);
+
+const findExistingMealStmt = db.prepare('SELECT id FROM meals WHERE diet_id=? AND day_index=? AND meal_type=? AND name_ar=?');
+const insMealStmt = db.prepare(`INSERT INTO meals (diet_id,day_index,day_en,day_ar,meal_type,type_ar,type_en,time,name_ar,name_en,created_at)
+  VALUES (@diet_id,@day_index,@day_en,@day_ar,@meal_type,@type_ar,@type_en,@time,@name_ar,@name_en,@now)`);
+const insRecipeIngredientStmt = db.prepare(`INSERT INTO recipe_ingredients (meal_id,food_id,grams,qty_ar,qty_en,sort_order,created_at)
+  VALUES (@meal_id,@food_id,@grams,@qty_ar,@qty_en,@sort_order,@now)`);
+
+// Idempotent via the explicit existence check (no natural single-column
+// unique key on `meals`, so ON CONFLICT isn't available the way the other
+// seed functions use it) - safe to call on every boot. Returns the list of
+// (diet, meal) pairs whose ingredients couldn't ALL be resolved, so the
+// caller can decide whether that's acceptable (it shouldn't be, given
+// Phase 2 already proved 100% coverage on this exact data - a failure here
+// means the live meal_plans.json changed since that was verified).
+function seedMealsFromDietPlans(plans) {
+  if (!plans) return { seeded: 0, skipped: 0, unresolvedIngredients: [] };
+  const now = new Date().toISOString();
+  let seeded = 0, skipped = 0;
+  const unresolvedIngredients = [];
+  for (const dietId of Object.keys(plans)) {
+    const plan = plans[dietId];
+    if (!plan || !Array.isArray(plan.week)) continue;
+    if (!getDiet(dietId)) { console.error(`[db] seedMealsFromDietPlans: "${dietId}" is not in the diets table, skipping its meals`); continue; }
+    plan.week.forEach((day, dayIndex) => {
+      for (const meal of day.meals || []) {
+        const mealType = meal.typeEn ? meal.typeEn.toLowerCase() : meal.type;
+        if (findExistingMealStmt.get(dietId, dayIndex, mealType, meal.name)) { skipped++; continue; }
+        const info = insMealStmt.run({
+          diet_id: dietId, day_index: dayIndex, day_en: day.dayEn, day_ar: day.day,
+          meal_type: mealType, type_ar: meal.type, type_en: meal.typeEn, time: meal.time || null,
+          name_ar: meal.name, name_en: meal.nameEn, now,
+        });
+        const mealId = info.lastInsertRowid;
+        (meal.ingredients || []).forEach((ing, idx) => {
+          const food = resolveFood(ing.item) || resolveFood(ing.itemEn);
+          if (!food) {
+            unresolvedIngredients.push(`${dietId}/${day.dayEn}/${meal.typeEn}: "${ing.item}"/"${ing.itemEn}"`);
+            return;
+          }
+          insRecipeIngredientStmt.run({ meal_id: mealId, food_id: food.id, grams: ing.grams, qty_ar: ing.qtyAr || null, qty_en: ing.qty || null, sort_order: idx, now });
+        });
+        seeded++;
+      }
+    });
+  }
+  if (unresolvedIngredients.length) {
+    console.error(`[db] seedMealsFromDietPlans: ${unresolvedIngredients.length} ingredient(s) could not be resolved to a food:\n` + unresolvedIngredients.join('\n'));
+  }
+  console.log(`[db] meals seeded: ${seeded} new, ${skipped} already existed, ${unresolvedIngredients.length} unresolved ingredients.`);
+  return { seeded, skipped, unresolvedIngredients };
+}
+
+function getMeal(mealId) { return db.prepare('SELECT * FROM meals WHERE id = ?').get(mealId) || null; }
+function getMealIngredients(mealId) {
+  return db.prepare(`SELECT ri.*, f.name_ar as food_name_ar, f.name_en as food_name_en, f.cal_per_100g, f.protein_per_100g, f.carbs_per_100g, f.fat_per_100g
+    FROM recipe_ingredients ri JOIN foods f ON f.id = ri.food_id
+    WHERE ri.meal_id = ? ORDER BY ri.sort_order`).all(mealId);
+}
+// Computed from real per-ingredient data, never a separately-typed number
+// that can drift from what the recipe actually contains - the fix for the
+// 27-meal, up-to-69%-divergence finding in the architecture audit.
+function getMealNutrition(mealId) {
+  const rows = getMealIngredients(mealId);
+  return rows.reduce((acc, r) => ({
+    cal: acc.cal + (r.cal_per_100g * r.grams) / 100,
+    protein: acc.protein + (r.protein_per_100g * r.grams) / 100,
+    carbs: acc.carbs + (r.carbs_per_100g * r.grams) / 100,
+    fat: acc.fat + (r.fat_per_100g * r.grams) / 100,
+  }), { cal: 0, protein: 0, carbs: 0, fat: 0 });
+}
+function listMealsForDiet(dietId) { return db.prepare('SELECT * FROM meals WHERE diet_id = ? ORDER BY day_index').all(dietId); }
 
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
@@ -1001,4 +1136,5 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   listAllergens, listMedicalConditions, listActivityLevels, listGoals, getGoal, getActivityLevel,
   verifyLookupTablesMatch,
   resolveFood, normalizeFoodName, verifyFoodResolution,
-  listDiets, getDiet, getDietContraindications, verifyDietTablesMatch };
+  listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
+  seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet };
