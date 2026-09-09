@@ -2477,6 +2477,11 @@ function getMealTypeMacroTarget(dietStyle, mealType) {
 
 async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices, personalScale = 1, userAllergies = [], customAllergyText = '', proteinBoost = 1) {
   const label = MEAL_TYPE_LABELS[mealType] || MEAL_TYPE_LABELS.snack;
+  // Reads the diets table (Phase 3 migration) rather than DIET_STYLE_LABELS
+  // directly - the constant still exists and is exported, but only as the
+  // independent reference verifyDietTablesMatch checks the table against
+  // at boot.
+  const dietStyleLabel = store.getDiet(dietStyle)?.style_label_en || dietStyle;
   // Allergenic items are removed from the list the AI even sees, rather than
   // relying on a prompt instruction it might not follow - it genuinely
   // cannot suggest what isn't offered. sanitizeMealForAllergies() is still
@@ -2516,10 +2521,10 @@ async function generateMealAlternative(dietStyle, mealType, budgetTier, preferen
     target = { cal: target.cal, protein: newProtein, carbs: Math.round(target.carbs * (1 - cutRatio)), fat: Math.round(target.fat * (1 - cutRatio)) };
   }
   const macroInstruction = target
-    ? `This must genuinely match the ${DIET_STYLE_LABELS[dietStyle] || dietStyle} diet's real macro targets for a ${mealType}, sized for this specific user: approximately ${target.cal} kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fat}g fat (stay within about 20% of each). Do not just pick diet-sounding ingredients — the macros must actually land in range.`
+    ? `This must genuinely match the ${dietStyleLabel} diet's real macro targets for a ${mealType}, sized for this specific user: approximately ${target.cal} kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fat}g fat (stay within about 20% of each). Do not just pick diet-sounding ingredients — the macros must actually land in range.`
     : '';
 
-  const prompt = `Suggest one ${DIET_STYLE_LABELS[dietStyle] || dietStyle} ${mealType} meal for an Egyptian meal-planning app. ${tierInstruction} ${preferenceInstruction}
+  const prompt = `Suggest one ${dietStyleLabel} ${mealType} meal for an Egyptian meal-planning app. ${tierInstruction} ${preferenceInstruction}
 ${macroInstruction}
 
 You MUST only use ingredients from this exact list (reference them by "id"):

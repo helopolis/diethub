@@ -92,11 +92,13 @@ const DIET_CONTRAINDICATIONS = {
 // Bilingual objects, not a pre-resolved string — same pattern bmiCategory
 // already uses, since buildHealthProfile doesn't take a lang param; each
 // caller/UI picks ar/en itself.
-function checkDietContraindications(diet, medicalConditions) {
-  const rules = DIET_CONTRAINDICATIONS[diet] || [];
-  return rules
-    .filter(r => (medicalConditions || []).includes(r.condition))
-    .map(r => ({ condition: r.condition, severity: r.severity, ar: r.ar, en: r.en }));
+// Reads the diet_contraindications table (Phase 3 migration) rather than
+// DIET_CONTRAINDICATIONS directly - the constant still exists and is
+// exported, but only as the independent reference verifyDietTablesMatch
+// checks the table against at boot.
+function checkDietContraindications(store, diet, medicalConditions) {
+  return store.getDietContraindications(diet, medicalConditions)
+    .map(r => ({ condition: r.condition_id, severity: r.severity, ar: r.message_ar, en: r.message_en }));
 }
 
 // Infer activity level from average daily steps when the user hasn't set one.
@@ -336,7 +338,13 @@ function buildHealthProfile(store, userId) {
     calorieTarget = Math.min(Math.max(customCalorieTarget, calorieMin), calorieMax);
   }
 
-  const dietMeta = DIET_META[p.diet] || DIET_META.balanced;
+  // Reads the diets table (Phase 3 migration) rather than DIET_META
+  // directly - same external shape ({proteinPerKg, lowCarb}) so nothing
+  // downstream needed to change. DIET_META itself still exists and is
+  // exported, but only as the independent reference verifyDietTablesMatch
+  // checks the table against at boot.
+  const dietRow = store.getDiet(p.diet) || store.getDiet('balanced');
+  const dietMeta = { proteinPerKg: dietRow.protein_per_kg, lowCarb: !!dietRow.low_carb };
   // lose_fat/gain_muscle get a real protein boost on top of the diet's own
   // baseline (capped, not stacked without limit) - this is the actual
   // mechanism that makes them different goals rather than just a different
@@ -407,7 +415,7 @@ function buildHealthProfile(store, userId) {
     allergies: Array.isArray(p.allergies) ? p.allergies : [],
     customAllergyText: p.customAllergyText || '',
     medicalConditions: Array.isArray(p.medicalConditions) ? p.medicalConditions : [],
-    dietWarnings: checkDietContraindications(p.diet || 'atkins', p.medicalConditions),
+    dietWarnings: checkDietContraindications(store, p.diet || 'atkins', p.medicalConditions),
     targets: {
       bmr, bmrFormula, tdee, proteinTargetG, hydrationTargetL,
       calorieMode, calorieTarget, recommendedCalorieTarget,
