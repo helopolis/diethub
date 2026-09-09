@@ -264,6 +264,160 @@ function seedLabReferenceData() {
 }
 seedLabReferenceData();
 
+// ─── DOMAIN LOOKUP TABLES ───────────────────────────────────────────────────
+// Phase 1 of the nutrition-architecture migration (see the architecture
+// audit this came out of): the smallest, lowest-risk slice first — 4 short,
+// static enums that previously existed ONLY as JavaScript array/object
+// literals in server.js/health.js (KNOWN_ALLERGENS, KNOWN_MEDICAL_CONDITIONS,
+// GOAL_TYPES+DEFICIT_PCT+GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS) with no
+// database representation at all. These are real, normalized tables (not the
+// key→JSON `documents` blob store) — same reasoning as lab_tests above: this
+// is genuinely relational reference data, not a document.
+//
+// IDs are kept as the exact same strings already used everywhere else in the
+// app (users' stored allergies/goalType/activityLevel, the mobile UI's
+// option values) — changing these to surrogate integer keys would be a
+// breaking change to every existing user record and every installed mobile
+// build. "IDs over strings" in the broader migration plan applies to new
+// entities (foods) that never had a stable string identity; these four
+// already do, and preserving it is what makes this migration backward
+// compatible with zero adapter code needed.
+db.exec(`CREATE TABLE IF NOT EXISTS allergens (
+  id         TEXT PRIMARY KEY,
+  name_en    TEXT NOT NULL,
+  name_ar    TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS medical_conditions (
+  id         TEXT PRIMARY KEY,
+  name_en    TEXT NOT NULL,
+  name_ar    TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS activity_levels (
+  id         TEXT PRIMARY KEY,
+  name_en    TEXT NOT NULL,
+  name_ar    TEXT NOT NULL,
+  factor     REAL NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+// deficit_pct/protein_boost_per_kg are the exact real values already applied
+// in production (health.js DEFICIT_PCT / GOAL_PROTEIN_BOOST_PER_KG, verified
+// live this session: lose_weight -18%, lose_fat -15%+protein boost,
+// maintain 0%, gain_weight +12%, gain_muscle +10%+protein boost) - not new
+// numbers invented for this migration.
+db.exec(`CREATE TABLE IF NOT EXISTS goals (
+  id                   TEXT PRIMARY KEY,
+  name_en              TEXT NOT NULL,
+  name_ar              TEXT NOT NULL,
+  deficit_pct          REAL NOT NULL,
+  protein_boost_per_kg REAL NOT NULL DEFAULT 0,
+  created_at           TEXT NOT NULL
+)`);
+
+const upsertLookupStmts = {
+  allergens: db.prepare(`INSERT INTO allergens (id,name_en,name_ar,created_at) VALUES (@id,@name_en,@name_ar,@now)
+    ON CONFLICT(id) DO NOTHING`),
+  medical_conditions: db.prepare(`INSERT INTO medical_conditions (id,name_en,name_ar,created_at) VALUES (@id,@name_en,@name_ar,@now)
+    ON CONFLICT(id) DO NOTHING`),
+  activity_levels: db.prepare(`INSERT INTO activity_levels (id,name_en,name_ar,factor,created_at) VALUES (@id,@name_en,@name_ar,@factor,@now)
+    ON CONFLICT(id) DO NOTHING`),
+  goals: db.prepare(`INSERT INTO goals (id,name_en,name_ar,deficit_pct,protein_boost_per_kg,created_at) VALUES (@id,@name_en,@name_ar,@deficit_pct,@protein_boost_per_kg,@now)
+    ON CONFLICT(id) DO NOTHING`),
+};
+
+// Seed data migrated as-is from the app's own existing constants (mobile
+// RegisterScreen.js's ALLERGEN_OPTIONS/MEDICAL_CONDITION_OPTIONS, constants.js
+// GOAL_OPTIONS, health.js's ACTIVITY_AR/ACTIVITY_EN/ACTIVITY_FACTORS) - not
+// invented. ON CONFLICT DO NOTHING makes this safe to run on every boot,
+// same discipline as seedLabTest above.
+function seedLookupTables() {
+  const now = new Date().toISOString();
+  const allergens = [
+    { id: 'milk', name_en: 'Milk', name_ar: 'ألبان' },
+    { id: 'eggs', name_en: 'Eggs', name_ar: 'بيض' },
+    { id: 'fish', name_en: 'Fish', name_ar: 'سمك' },
+    { id: 'crustaceans', name_en: 'Crustaceans', name_ar: 'قشريات' },
+    { id: 'nuts', name_en: 'Tree Nuts', name_ar: 'مكسرات' },
+    { id: 'peanuts', name_en: 'Peanuts', name_ar: 'فول سوداني' },
+    { id: 'gluten', name_en: 'Gluten', name_ar: 'جلوتين' },
+    { id: 'soybeans', name_en: 'Soybeans', name_ar: 'صويا' },
+    { id: 'sesame', name_en: 'Sesame', name_ar: 'سمسم' },
+  ];
+  const medicalConditions = [
+    { id: 'type1_diabetes', name_en: 'Type 1 Diabetes', name_ar: 'سكري النوع الأول' },
+    { id: 'type2_diabetes', name_en: 'Type 2 Diabetes', name_ar: 'سكري النوع الثاني' },
+    { id: 'pregnant', name_en: 'Pregnant', name_ar: 'حامل' },
+    { id: 'breastfeeding', name_en: 'Breastfeeding', name_ar: 'مرضعة' },
+    { id: 'ckd', name_en: 'Chronic Kidney Disease', name_ar: 'مرض كلوي مزمن' },
+  ];
+  const activityLevels = [
+    { id: 'sedentary', name_en: 'Sedentary', name_ar: 'قليل الحركة', factor: 1.2 },
+    { id: 'light', name_en: 'Lightly Active', name_ar: 'نشاط خفيف', factor: 1.375 },
+    { id: 'moderate', name_en: 'Moderately Active', name_ar: 'نشاط متوسط', factor: 1.55 },
+    { id: 'active', name_en: 'Active', name_ar: 'نشيط', factor: 1.725 },
+    { id: 'very_active', name_en: 'Very Active', name_ar: 'نشيط جداً', factor: 1.9 },
+  ];
+  const goals = [
+    { id: 'lose_weight', name_en: 'Lose Weight', name_ar: 'إنقاص الوزن', deficit_pct: -0.18, protein_boost_per_kg: 0 },
+    { id: 'lose_fat', name_en: 'Lose Fat (preserve muscle)', name_ar: 'حرق الدهون (مع الحفاظ على العضلات)', deficit_pct: -0.15, protein_boost_per_kg: 0.3 },
+    { id: 'maintain', name_en: 'Maintain Weight', name_ar: 'الحفاظ على الوزن', deficit_pct: 0, protein_boost_per_kg: 0 },
+    { id: 'gain_weight', name_en: 'Gain Weight', name_ar: 'زيادة الوزن', deficit_pct: 0.12, protein_boost_per_kg: 0 },
+    { id: 'gain_muscle', name_en: 'Build Muscle', name_ar: 'بناء العضلات', deficit_pct: 0.10, protein_boost_per_kg: 0.3 },
+  ];
+  for (const r of allergens) upsertLookupStmts.allergens.run({ ...r, now });
+  for (const r of medicalConditions) upsertLookupStmts.medical_conditions.run({ ...r, now });
+  for (const r of activityLevels) upsertLookupStmts.activity_levels.run({ ...r, now });
+  for (const r of goals) upsertLookupStmts.goals.run({ ...r, now });
+}
+seedLookupTables();
+
+function listAllergens() { return db.prepare('SELECT * FROM allergens ORDER BY id').all(); }
+function listMedicalConditions() { return db.prepare('SELECT * FROM medical_conditions ORDER BY id').all(); }
+function listActivityLevels() { return db.prepare('SELECT * FROM activity_levels ORDER BY id').all(); }
+function listGoals() { return db.prepare('SELECT * FROM goals ORDER BY id').all(); }
+function getGoal(id) { return db.prepare('SELECT * FROM goals WHERE id = ?').get(id) || null; }
+function getActivityLevel(id) { return db.prepare('SELECT * FROM activity_levels WHERE id = ?').get(id) || null; }
+
+// Boot-time safety net: proves the newly-seeded tables are byte-identical to
+// the JavaScript constants every existing code path still reads from, before
+// anything is ever pointed at the database version. Throws loudly on boot
+// rather than silently letting a mismatch reach production - a migration
+// that can't prove equivalence shouldn't ship, per the "never silently
+// modify production behavior" constraint this migration was built under.
+// Callers pass in the live constants (not re-declared here) so this check
+// can never drift out of sync with whichever object server.js/health.js
+// actually still uses.
+function verifyLookupTablesMatch({ knownAllergens, knownMedicalConditions, activityFactors, goalDeficitPct, goalProteinBoost }) {
+  const errors = [];
+  const dbAllergenIds = listAllergens().map(r => r.id).sort();
+  if (JSON.stringify(dbAllergenIds) !== JSON.stringify([...knownAllergens].sort())) {
+    errors.push(`allergens mismatch: DB=${JSON.stringify(dbAllergenIds)} JS=${JSON.stringify(knownAllergens)}`);
+  }
+  const dbConditionIds = listMedicalConditions().map(r => r.id).sort();
+  if (JSON.stringify(dbConditionIds) !== JSON.stringify([...knownMedicalConditions].sort())) {
+    errors.push(`medical_conditions mismatch: DB=${JSON.stringify(dbConditionIds)} JS=${JSON.stringify(knownMedicalConditions)}`);
+  }
+  for (const level of listActivityLevels()) {
+    if (activityFactors[level.id] !== level.factor) {
+      errors.push(`activity_levels.${level.id}.factor mismatch: DB=${level.factor} JS=${activityFactors[level.id]}`);
+    }
+  }
+  for (const goal of listGoals()) {
+    if (goalDeficitPct[goal.id] !== goal.deficit_pct) {
+      errors.push(`goals.${goal.id}.deficit_pct mismatch: DB=${goal.deficit_pct} JS=${goalDeficitPct[goal.id]}`);
+    }
+    const jsBoost = goalProteinBoost[goal.id] || 0;
+    if (jsBoost !== goal.protein_boost_per_kg) {
+      errors.push(`goals.${goal.id}.protein_boost_per_kg mismatch: DB=${goal.protein_boost_per_kg} JS=${jsBoost}`);
+    }
+  }
+  if (errors.length) {
+    throw new Error('[db] lookup-table migration verification FAILED:\n' + errors.join('\n'));
+  }
+  console.log('[db] lookup-table migration verified: allergens/medical_conditions/activity_levels/goals all match production JS constants exactly.');
+}
+
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
 // events are high-volume and append-heavy — exactly the access pattern the
@@ -413,4 +567,6 @@ function backup(dest) {
 
 module.exports = { db, load, save, update, migrateFromJson, backup,
   logEvent, recentEvents, analytics, DB_PATH, DATA_DIR,
-  seedLabTest, getLabTest, listLabTests, getReferenceRanges, resolveReferenceRange };
+  seedLabTest, getLabTest, listLabTests, getReferenceRanges, resolveReferenceRange,
+  listAllergens, listMedicalConditions, listActivityLevels, listGoals, getGoal, getActivityLevel,
+  verifyLookupTablesMatch };
