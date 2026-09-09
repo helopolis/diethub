@@ -520,4 +520,4 @@ function coachSummary(hp, lang = 'ar') {
   return lines.join('\n');
 }
 
-module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG };
+module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, DIET_CONTRAINDICATIONS };

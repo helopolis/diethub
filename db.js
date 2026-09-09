@@ -722,6 +722,132 @@ seedFoodAliases([
 ]);
 verifyFoodResolution();
 
+// ─── DIETS (Phase 3 of the nutrition-architecture migration) ───────────────
+// DIET_META, DIET_STYLE_LABELS, and DIET_CONTRAINDICATIONS previously lived
+// as 3 separate JS object literals in health.js/server.js, each keyed by
+// the same diet id but never cross-checked against each other or against
+// what diets actually exist (buildMealPlans()'s 9 real, selectable diets).
+// One real table now holds what used to be scattered across three files.
+db.exec(`CREATE TABLE IF NOT EXISTS diets (
+  id             TEXT PRIMARY KEY,
+  name_en        TEXT NOT NULL,
+  name_ar        TEXT NOT NULL,
+  protein_per_kg REAL NOT NULL,
+  low_carb       INTEGER NOT NULL DEFAULT 0,
+  style_label_en TEXT,
+  created_at     TEXT NOT NULL
+)`);
+// condition_id FKs into the Phase 1 medical_conditions table - real FK, not
+// a string re-typed in a third place.
+db.exec(`CREATE TABLE IF NOT EXISTS diet_contraindications (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  diet_id      TEXT NOT NULL REFERENCES diets(id),
+  condition_id TEXT NOT NULL REFERENCES medical_conditions(id),
+  severity     TEXT NOT NULL,
+  message_en   TEXT NOT NULL,
+  message_ar   TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_diet_contra_diet_id ON diet_contraindications(diet_id)`);
+
+const insDietStmt = db.prepare(`INSERT INTO diets (id,name_en,name_ar,protein_per_kg,low_carb,style_label_en,created_at)
+  VALUES (@id,@name_en,@name_ar,@protein_per_kg,@low_carb,@style_label_en,@now) ON CONFLICT(id) DO NOTHING`);
+const insDietContraStmt = db.prepare(`INSERT INTO diet_contraindications (diet_id,condition_id,severity,message_en,message_ar,created_at)
+  VALUES (@diet_id,@condition_id,@severity,@message_en,@message_ar,@now) ON CONFLICT DO NOTHING`);
+
+// Real values migrated as-is from DIET_META/DIET_STYLE_LABELS (health.js/
+// server.js) - not new numbers. Two DIET_META keys are deliberately NOT
+// migrated: 'lowcarb' and 'highprotein' were confirmed by the architecture
+// audit to be orphan config - neither is a real, selectable diet anywhere
+// in buildMealPlans() or the mobile DIET_OPTIONS list, and grepping the
+// whole codebase found no other reference to either id. 'balanced' IS kept
+// despite also not being user-selectable, because it's load-bearing as
+// buildHealthProfile's actual fallback (`DIET_META[p.diet] || DIET_META.balanced`)
+// for any profile with an unrecognized diet value.
+function seedDiets() {
+  const now = new Date().toISOString();
+  const diets = [
+    { id: 'atkins', name_en: 'Atkins', name_ar: 'آتكينز', protein_per_kg: 1.9, low_carb: 1, style_label_en: 'Atkins (very low-carb)' },
+    { id: 'keto', name_en: 'Keto', name_ar: 'كيتو', protein_per_kg: 1.8, low_carb: 1, style_label_en: 'Ketogenic (very low-carb, high-fat)' },
+    { id: 'mediterranean', name_en: 'Mediterranean', name_ar: 'متوسطي', protein_per_kg: 1.4, low_carb: 0, style_label_en: 'Mediterranean' },
+    { id: 'diabetic', name_en: 'Diabetic', name_ar: 'مرضى السكري', protein_per_kg: 1.6, low_carb: 1, style_label_en: 'diabetic-friendly (low glycemic, controlled-carb)' },
+    { id: 'women', name_en: 'Women', name_ar: 'المرأة', protein_per_kg: 1.4, low_carb: 0, style_label_en: "general women's nutrition (balanced, iron and folate focused)" },
+    { id: 'women_40', name_en: 'Women Over 40', name_ar: 'المرأة فوق الأربعين', protein_per_kg: 1.6, low_carb: 0, style_label_en: 'women over 40 (bone health, muscle preservation, balanced)' },
+    { id: 'men', name_en: 'Men', name_ar: 'الرجل', protein_per_kg: 1.4, low_carb: 0, style_label_en: "general men's nutrition (higher protein and calories, balanced)" },
+    { id: 'men_40', name_en: 'Men Over 40', name_ar: 'الرجل فوق الأربعين', protein_per_kg: 1.6, low_carb: 0, style_label_en: 'men over 40 (heart-healthy, prostate-friendly, muscle preservation)' },
+    { id: 'kids', name_en: 'Kids', name_ar: 'الأطفال', protein_per_kg: 1.2, low_carb: 0, style_label_en: 'healthy kids (balanced growth nutrition, kid-friendly, no severe restriction)' },
+    { id: 'balanced', name_en: 'Balanced (fallback)', name_ar: 'متوازن (احتياطي)', protein_per_kg: 1.4, low_carb: 0, style_label_en: null },
+  ];
+  for (const d of diets) insDietStmt.run({ ...d, now });
+
+  const contraindications = [
+    { diet_id: 'keto', condition_id: 'type1_diabetes', severity: 'contraindicated',
+      message_ar: 'الكيتو يزيد من خطر الحماض الكيتوني السكري (DKA) عند مرضى السكري من النوع الأول. لا تبدأ هذا النظام إلا بإشراف طبيبك مباشرة.',
+      message_en: 'Keto carries a real risk of diabetic ketoacidosis (DKA) in Type 1 diabetes. Do not start this diet without direct physician supervision.' },
+    { diet_id: 'keto', condition_id: 'ckd', severity: 'caution',
+      message_ar: 'هذا النظام يحتوي على دهون عالية وقد لا يناسب حالات الكلى المزمنة. استشر طبيبك أولاً.',
+      message_en: 'This diet is high-fat and may not be appropriate with chronic kidney disease. Check with your doctor first.' },
+    { diet_id: 'atkins', condition_id: 'ckd', severity: 'caution',
+      message_ar: 'هذا النظام عالي البروتين، وقد لا يناسب حالات الكلى المزمنة التي تحتاج لتقليل البروتين. استشر طبيبك أولاً.',
+      message_en: 'This diet is high-protein, which may not suit chronic kidney disease (often managed with protein restriction). Check with your doctor first.' },
+    { diet_id: 'men', condition_id: 'ckd', severity: 'caution',
+      message_ar: 'هذا النظام عالي البروتين نسبياً. استشر طبيبك إذا كان لديك مرض كلوي مزمن.',
+      message_en: 'This diet is relatively high-protein. Check with your doctor if you have chronic kidney disease.' },
+    { diet_id: 'men_40', condition_id: 'ckd', severity: 'caution',
+      message_ar: 'هذا النظام عالي البروتين نسبياً. استشر طبيبك إذا كان لديك مرض كلوي مزمن.',
+      message_en: 'This diet is relatively high-protein. Check with your doctor if you have chronic kidney disease.' },
+    { diet_id: 'diabetic', condition_id: 'type1_diabetes', severity: 'caution',
+      message_ar: 'هذا النظام مصمم كتوجيه عام لسكري النوع الثاني ولا يأخذ في الاعتبار جرعات الأنسولين. إذا كان لديك سكري النوع الأول، احسب الكربوهيدرات مع طبيبك لمطابقة جرعة الأنسولين، ولا تعتمد على هذا الرقم وحده.',
+      message_en: "This plan is written as general Type 2 guidance and doesn't account for insulin dosing. If you have Type 1 diabetes, carb-count with your care team to match your insulin ratio — don't rely on this number alone." },
+  ];
+  for (const c of contraindications) insDietContraStmt.run({ ...c, now });
+}
+seedDiets();
+
+function listDiets() { return db.prepare('SELECT * FROM diets ORDER BY id').all(); }
+function getDiet(id) { return db.prepare('SELECT * FROM diets WHERE id = ?').get(id) || null; }
+function getDietContraindications(dietId, medicalConditions) {
+  if (!medicalConditions || !medicalConditions.length) return [];
+  const placeholders = medicalConditions.map(() => '?').join(',');
+  return db.prepare(`SELECT * FROM diet_contraindications WHERE diet_id = ? AND condition_id IN (${placeholders})`).all(dietId, ...medicalConditions);
+}
+
+// Boot-time proof this matches the real, live JS constants - same
+// discipline as Phase 1's verifyLookupTablesMatch. Deliberately does NOT
+// require DIET_META's full key set to match (see seedDiets' comment on the
+// 2 orphan keys dropped on purpose) - instead verifies every migrated
+// diet's values agree, and that dropping 'lowcarb'/'highprotein' was safe
+// by confirming neither string appears anywhere in server.js as a real
+// selectable value (checked once, by hand, during this migration - not
+// re-checked automatically here, since that would require this file to
+// read server.js's source, which is backwards).
+function verifyDietTablesMatch({ dietMeta, dietStyleLabels, dietContraindications }) {
+  const errors = [];
+  for (const diet of listDiets()) {
+    const meta = dietMeta[diet.id];
+    if (!meta) { errors.push(`diet ${diet.id} has no DIET_META entry`); continue; }
+    if (meta.proteinPerKg !== diet.protein_per_kg) errors.push(`diet ${diet.id} protein_per_kg mismatch: DB=${diet.protein_per_kg} JS=${meta.proteinPerKg}`);
+    if ((meta.lowCarb ? 1 : 0) !== diet.low_carb) errors.push(`diet ${diet.id} low_carb mismatch: DB=${diet.low_carb} JS=${meta.lowCarb}`);
+    const jsLabel = dietStyleLabels[diet.id] || null;
+    if (jsLabel !== diet.style_label_en) errors.push(`diet ${diet.id} style_label_en mismatch: DB=${JSON.stringify(diet.style_label_en)} JS=${JSON.stringify(jsLabel)}`);
+  }
+  let dbContraCount = 0;
+  for (const dietId of Object.keys(dietContraindications)) {
+    for (const rule of dietContraindications[dietId]) {
+      const dbRule = db.prepare('SELECT * FROM diet_contraindications WHERE diet_id = ? AND condition_id = ?').get(dietId, rule.condition);
+      if (!dbRule) { errors.push(`diet_contraindications missing: ${dietId}/${rule.condition}`); continue; }
+      dbContraCount++;
+      if (dbRule.severity !== rule.severity) errors.push(`diet_contraindications ${dietId}/${rule.condition} severity mismatch: DB=${dbRule.severity} JS=${rule.severity}`);
+      if (dbRule.message_en !== rule.en) errors.push(`diet_contraindications ${dietId}/${rule.condition} message_en mismatch`);
+      if (dbRule.message_ar !== rule.ar) errors.push(`diet_contraindications ${dietId}/${rule.condition} message_ar mismatch`);
+    }
+  }
+  const totalDbRules = db.prepare('SELECT COUNT(*) c FROM diet_contraindications').get().c;
+  if (totalDbRules !== dbContraCount) errors.push(`diet_contraindications row count mismatch: DB has ${totalDbRules}, JS accounted for ${dbContraCount}`);
+  if (errors.length) throw new Error('[db] diet-table migration verification FAILED:\n' + errors.join('\n'));
+  console.log(`[db] diet tables verified: ${listDiets().length} diets and ${totalDbRules} contraindication rules match production JS constants exactly.`);
+}
+
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
 // events are high-volume and append-heavy — exactly the access pattern the
@@ -874,4 +1000,5 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   seedLabTest, getLabTest, listLabTests, getReferenceRanges, resolveReferenceRange,
   listAllergens, listMedicalConditions, listActivityLevels, listGoals, getGoal, getActivityLevel,
   verifyLookupTablesMatch,
-  resolveFood, normalizeFoodName, verifyFoodResolution };
+  resolveFood, normalizeFoodName, verifyFoodResolution,
+  listDiets, getDiet, getDietContraindications, verifyDietTablesMatch };

@@ -17,7 +17,7 @@ const { Webhook } = require('svix');
 const { AppStoreServerAPIClient, SignedDataVerifier, Environment: AppleEnv, Status: AppleSubStatus } = require('@apple/app-store-server-library');
 const { androidpublisher } = require('@googleapis/androidpublisher');
 const store = require('./db');
-const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS } = require('./health');
+const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS, DIET_CONTRAINDICATIONS, DIET_META } = require('./health');
 const aiLanguage = require('./ai_language');
 const { runReminderCheck } = require('./reminders');
 const { buildDailyBrief, buildWeeklySummary } = require('./daily_brief');
@@ -2428,6 +2428,20 @@ const DIET_STYLE_LABELS = {
   men_40: 'men over 40 (heart-healthy, prostate-friendly, muscle preservation)',
   kids: 'healthy kids (balanced growth nutrition, kid-friendly, no severe restriction)',
 };
+
+// Phase 3 of the nutrition-architecture migration: DIET_META (health.js),
+// DIET_STYLE_LABELS (above), and DIET_CONTRAINDICATIONS (health.js) now
+// also live as real diets/diet_contraindications tables (db.js). This
+// proves byte-for-byte equivalence at boot, every boot, before either
+// source could be trusted to have silently drifted - fails loudly rather
+// than serving mismatched data. The JS constants remain what every
+// existing code path actually reads; this is verification only, matching
+// Phase 1/2's same discipline - the read-path cutover is a separate step.
+store.verifyDietTablesMatch({
+  dietMeta: DIET_META,
+  dietStyleLabels: DIET_STYLE_LABELS,
+  dietContraindications: DIET_CONTRAINDICATIONS,
+});
 
 // Each diet's real nutritional definition already lives in its hand-authored
 // week of static meals (dailyCalories/dailyCarbs/dailyProtein/dailyFat on the
