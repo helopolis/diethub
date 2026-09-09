@@ -621,6 +621,16 @@ function initData() {
         {id:'almonds',name:'لوز',nameEn:'Almonds',unit:'250g',qty:'30g per serving',qtyAr:'30 جم',category:'fats',metro:295,seoudi:213,gourmet:315,spinneys:320,hyperone:280},
         {id:'butter',name:'زبدة طبيعية',nameEn:'Natural Butter',unit:'200g',qty:'1 tbsp per serving',qtyAr:'ملعقة للوجبة',category:'fats',metro:62,seoudi:121,gourmet:66,spinneys:78,hyperone:120},
         {id:'brown_rice',name:'أرز بني',nameEn:'Brown Rice',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'grains',metro:58,seoudi:52,gourmet:65,spinneys:68,hyperone:55},
+        // Both added after a real bug was found live: "أرز أبيض" (White Rice)
+        // and "جبنة بيضاء" (White Cheese) both contain "بيض" (egg) as a
+        // substring of "أبيض"/"بيضاء" (white), so INGREDIENT_KEYWORD_MAP's
+        // naive substring match was silently resolving them to the `eggs`
+        // catalog entry - wrong price, and (once the protein-boost feature
+        // existed) wrongly treated as a protein-category ingredient. Exact
+        // catalog entries here mean findFoodItem's exact-match check finds
+        // these first and never reaches the buggy keyword fallback at all.
+        {id:'white_rice',name:'أرز أبيض',nameEn:'White Rice',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'grains',metro:42,seoudi:36,gourmet:48,spinneys:50,hyperone:38},
+        {id:'white_cheese',name:'جبنة بيضاء',nameEn:'White Cheese',unit:'kg',qty:'60g per serving',qtyAr:'60 جم',category:'dairy',metro:220,seoudi:195,gourmet:245,spinneys:255,hyperone:205},
         {id:'orange',name:'برتقال',nameEn:'Orange',unit:'kg',qty:'1 medium (200g)',qtyAr:'حبة متوسطة (200 جم)',category:'fruits',metro:32,seoudi:28,gourmet:38,spinneys:40,hyperone:30},
         {id:'potato',name:'بطاطس',nameEn:'Potato',unit:'kg',qty:'150g per serving',qtyAr:'150 جم للحصة',category:'vegetables',metro:24,seoudi:20,gourmet:30,spinneys:32,hyperone:22},
         {id:'apple',name:'تفاح',nameEn:'Apple',unit:'kg',qty:'1 medium (150g)',qtyAr:'حبة متوسطة (150 جم)',category:'fruits',metro:65,seoudi:58,gourmet:78,spinneys:82,hyperone:62},
@@ -2416,7 +2426,7 @@ function getMealTypeMacroTarget(dietStyle, mealType) {
   };
 }
 
-async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices, personalScale = 1, userAllergies = [], customAllergyText = '') {
+async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices, personalScale = 1, userAllergies = [], customAllergyText = '', proteinBoost = 1) {
   const label = MEAL_TYPE_LABELS[mealType] || MEAL_TYPE_LABELS.snack;
   // Allergenic items are removed from the list the AI even sees, rather than
   // relying on a prompt instruction it might not follow - it genuinely
@@ -2436,15 +2446,26 @@ async function generateMealAlternative(dietStyle, mealType, budgetTier, preferen
     mid: '',
   }[budgetTier] || '';
   const preferenceInstruction = preference ? `The user specifically asked for: "${preference}". Reflect that in the meal choice.` : '';
-  // personalScale (from getPersonalScale, derived from the user's real
+  // personalScale (from getPersonalTargets, derived from the user's real
   // calorie target in health.js) is applied to the diet's own average target
   // here too, so an AI-generated "today" swap is held to the same
   // personalized number the static week's meals get scaled to - not just
   // the diet's generic average for someone of unknown size and goal.
   const dietTarget = getMealTypeMacroTarget(dietStyle, mealType);
-  const target = dietTarget && personalScale !== 1
+  let target = dietTarget && personalScale !== 1
     ? { cal: Math.round(dietTarget.cal * personalScale), protein: Math.round(dietTarget.protein * personalScale), carbs: Math.round(dietTarget.carbs * personalScale), fat: Math.round(dietTarget.fat * personalScale) }
     : dietTarget;
+  // Same trade-off principle as scaleMeal's ingredient-level version (used
+  // for the static plan) - more protein, less carb/fat, same total calories
+  // - but here it's just adjusted target numbers in the prompt, since the AI
+  // picks its own ingredients rather than us reshaping a fixed list.
+  if (target && proteinBoost !== 1) {
+    const newProtein = Math.round(target.protein * proteinBoost);
+    const addedProteinCal = (newProtein - target.protein) * 4;
+    const otherCal = target.carbs * 4 + target.fat * 9;
+    const cutRatio = otherCal > 0 ? Math.min(addedProteinCal / otherCal, 0.6) : 0;
+    target = { cal: target.cal, protein: newProtein, carbs: Math.round(target.carbs * (1 - cutRatio)), fat: Math.round(target.fat * (1 - cutRatio)) };
+  }
   const macroInstruction = target
     ? `This must genuinely match the ${DIET_STYLE_LABELS[dietStyle] || dietStyle} diet's real macro targets for a ${mealType}, sized for this specific user: approximately ${target.cal} kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fat}g fat (stay within about 20% of each). Do not just pick diet-sounding ingredients — the macros must actually land in range.`
     : '';
@@ -2561,24 +2582,96 @@ function getWeekAvgDaily(plan) {
   return { cal: avg('cal'), protein: avg('protein'), carbs: avg('carbs'), fat: avg('fat') };
 }
 
-function getPersonalScale(userId, realDailyCalories) {
-  if (!realDailyCalories) return 1;
-  const personal = buildHealthProfile(store, userId)?.targets?.calorieTarget;
-  if (!personal) return 1;
-  return Math.min(Math.max(personal / realDailyCalories, 0.5), 2.0);
+// calScale: the existing calorie-based resize. proteinBoost: only >1 for the
+// lose_fat/gain_muscle goals (health.js gives them a real higher protein-
+// per-kg target, not just a calorie number) - measures how much MORE
+// protein is needed beyond what calScale alone already provides for this
+// diet's real week, so a diet that's already protein-heavy (e.g. Atkins)
+// correctly gets no extra boost.
+function getPersonalTargets(userId, weekAvg) {
+  const hp = buildHealthProfile(store, userId);
+  const personalCal = hp?.targets?.calorieTarget;
+  const calScale = (weekAvg.cal && personalCal) ? Math.min(Math.max(personalCal / weekAvg.cal, 0.5), 2.0) : 1;
+  let proteinBoost = 1;
+  const goalType = hp?.goals?.goalType;
+  if (goalType === 'lose_fat' || goalType === 'gain_muscle') {
+    const personalProtein = hp?.targets?.proteinTargetG;
+    const scaledProtein = weekAvg.protein * calScale;
+    if (personalProtein && scaledProtein) proteinBoost = Math.min(Math.max(personalProtein / scaledProtein, 1), 1.6);
+  }
+  return { calScale, proteinBoost };
 }
 
 function scaleGramsField(v, scale) { return `${Math.round((parseFloat(v) || 0) * scale)}g`; }
 
-function scaleMeal(meal, scale) {
-  if (scale === 1) return meal;
+// proteinBoost > 1 trades carbs/fat for protein within the SAME meal rather
+// than just adding food: protein-category ingredients (per food_prices.json
+// `category`) get bigger portions, and the meal's other ingredients shrink
+// to absorb those added calories, so total calories stay where calScale put
+// them while the composition genuinely shifts toward protein - matching
+// real cutting/lean-bulk practice (hit protein on a fixed calorie budget),
+// not just serving more food. Every ingredient across every diet's real week
+// was confirmed to resolve to a real per-100g macro entry before this
+// shipped, so the bottom-up recompute below is accurate, not estimated -
+// but the `resolved.some(r => !r.macro)` bail-out below still exists as a
+// real safety net (e.g. a future menu edit could add an untagged item), not
+// dead code: if even one ingredient can't be resolved, the whole trade-off
+// is skipped and the meal falls back to the plain calorie scale rather than
+// risk producing calorie-inaccurate numbers.
+function scaleMeal(meal, calScale, proteinBoost, foodPrices) {
+  if (calScale === 1 && proteinBoost === 1) return meal;
+  const baseIngredients = meal.ingredients.map(ing => ({ ...ing, grams: Math.round((ing.grams * calScale) / 5) * 5 }));
+  const plainScaled = () => ({
+    ...meal,
+    cal: Math.round((meal.cal || 0) * calScale),
+    protein: scaleGramsField(meal.protein, calScale),
+    carbs: scaleGramsField(meal.carbs, calScale),
+    fat: scaleGramsField(meal.fat, calScale),
+    ingredients: baseIngredients,
+  });
+  if (proteinBoost === 1) return plainScaled();
+
+  const resolved = baseIngredients.map(ing => ({
+    ing,
+    isProtein: findFoodItem(ing.item, ing.itemEn, foodPrices)?.category === 'protein',
+    macro: macroPer100g(ing.item, ing.itemEn),
+  }));
+  if (resolved.some(r => !r.macro)) return plainScaled();
+  const proteinItems = resolved.filter(r => r.isProtein);
+  const otherItems = resolved.filter(r => !r.isProtein);
+  if (!proteinItems.length || !otherItems.length) return plainScaled(); // nothing to trade off against
+
+  let addedCal = 0;
+  for (const r of proteinItems) {
+    const newGrams = Math.max(Math.round((r.ing.grams * proteinBoost) / 5) * 5, r.ing.grams);
+    addedCal += (newGrams - r.ing.grams) * (r.macro.cal / 100);
+    r.ing = { ...r.ing, grams: newGrams };
+  }
+
+  // Never cut a non-protein ingredient below 40% of its calorie-scaled
+  // grams - if fitting the full protein boost would need a deeper cut than
+  // that everywhere, the meal is allowed to run a little over on calories
+  // instead of shrinking the vegetables to almost nothing.
+  const otherCalTotal = otherItems.reduce((s, r) => s + r.ing.grams * (r.macro.cal / 100), 0);
+  const actualCut = Math.min(addedCal, otherCalTotal * 0.6);
+  const cutRatio = otherCalTotal > 0 ? actualCut / otherCalTotal : 0;
+  for (const r of otherItems) {
+    r.ing = { ...r.ing, grams: Math.max(Math.round((r.ing.grams * (1 - cutRatio)) / 5) * 5, 5) };
+  }
+
+  let cal = 0, protein = 0, carbs = 0, fat = 0;
+  for (const r of resolved) {
+    const factor = r.ing.grams / 100;
+    cal += r.macro.cal * factor; protein += r.macro.protein * factor;
+    carbs += r.macro.carbs * factor; fat += r.macro.fat * factor;
+  }
   return {
     ...meal,
-    cal: Math.round((meal.cal || 0) * scale),
-    protein: scaleGramsField(meal.protein, scale),
-    carbs: scaleGramsField(meal.carbs, scale),
-    fat: scaleGramsField(meal.fat, scale),
-    ingredients: meal.ingredients.map(ing => ({ ...ing, grams: Math.round((ing.grams * scale) / 5) * 5 })),
+    ingredients: resolved.map(r => r.ing),
+    cal: Math.round(cal),
+    protein: `${Math.round(protein)}g`,
+    carbs: `${Math.round(carbs)}g`,
+    fat: `${Math.round(fat)}g`,
   };
 }
 
@@ -2594,7 +2687,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   if (!plan) return res.json({error:'Plan not found'});
   const pd = load('food_prices.json');
   const weekAvg = getWeekAvgDaily(plan);
-  const personalScale = getPersonalScale(req.user.id, weekAvg.cal);
+  const { calScale: personalScale, proteinBoost } = getPersonalTargets(req.user.id, weekAvg);
   const userAllergies = req.userObj?.profile?.allergies || [];
   const customAllergyText = req.userObj?.profile?.customAllergyText || '';
 
@@ -2606,7 +2699,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
       // Only day 0 (today) carries per-user overrides - the rest of the week
       // is still the static plan preview, matching how the dashboard only
       // ever requests/edits "today" via date.
-      let effectiveMeal = scaleMeal(meal, personalScale);
+      let effectiveMeal = scaleMeal(meal, personalScale, proteinBoost, pd);
       let swapsUsed = 0;
       let mealTypeKey = null;
       if (dayIdx === 0) {
@@ -2627,7 +2720,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
           // the user switched diets) - regenerate for what's actually being
           // asked for.
           try {
-            const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd, personalScale, userAllergies, customAllergyText);
+            const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd, personalScale, userAllergies, customAllergyText, proteinBoost);
             if (generated) {
               effectiveMeal = priceMeal(generated, pd);
               saveMealOverride(req.user.id, date, mealTypeKey, { meal: effectiveMeal, tier: budgetTier, diet, swapsUsed: 0, manualSwap: false });
@@ -2660,9 +2753,19 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   // rather than the plan's own declared fields, which were found to be
   // stale/wrong for every diet in the live DB.
   const dailyCalories = Math.round(weekAvg.cal * personalScale);
-  const dailyCarbs = scaleGramsField(weekAvg.carbs, personalScale);
-  const dailyProtein = scaleGramsField(weekAvg.protein, personalScale);
-  const dailyFat = scaleGramsField(weekAvg.fat, personalScale);
+  // Same trade-off shown here as scaleMeal actually applies per-meal: more
+  // protein, less carb/fat, same total calories - so the headline numbers
+  // never imply a bigger calorie budget than what's really being served.
+  const scaledProtein = weekAvg.protein * personalScale;
+  const scaledCarbs = weekAvg.carbs * personalScale;
+  const scaledFat = weekAvg.fat * personalScale;
+  const proteinTarget = scaledProtein * proteinBoost;
+  const addedProteinCal = (proteinTarget - scaledProtein) * 4;
+  const otherCal = scaledCarbs * 4 + scaledFat * 9;
+  const cutRatio = otherCal > 0 ? Math.min(addedProteinCal / otherCal, 0.6) : 0;
+  const dailyCarbs = `${Math.round(scaledCarbs * (1 - cutRatio))}g`;
+  const dailyProtein = `${Math.round(proteinTarget)}g`;
+  const dailyFat = `${Math.round(scaledFat * (1 - cutRatio))}g`;
   res.json({...plan,week,dailyCalories,dailyCarbs,dailyProtein,dailyFat,dailyCost,budget,withinBudget:dailyCost<=budget,labAdvisory});
 });
 
@@ -2687,11 +2790,11 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
   const budgetTier = budgetTierFor(budget);
   const pd = load('food_prices.json');
   const dietPlan = load('meal_plans.json')?.[diet];
-  const personalScale = getPersonalScale(req.user.id, dietPlan ? getWeekAvgDaily(dietPlan).cal : 0);
+  const { calScale: personalScale, proteinBoost } = getPersonalTargets(req.user.id, dietPlan ? getWeekAvgDaily(dietPlan) : { cal: 0, protein: 0, carbs: 0, fat: 0 });
   const userAllergies = req.userObj?.profile?.allergies || [];
   const customAllergyText = req.userObj?.profile?.customAllergyText || '';
 
-  const generated = await generateMealAlternative(diet, mealType, budgetTier, MEAL_SWAP_PREFERENCES[preference] || null, pd, personalScale, userAllergies, customAllergyText);
+  const generated = await generateMealAlternative(diet, mealType, budgetTier, MEAL_SWAP_PREFERENCES[preference] || null, pd, personalScale, userAllergies, customAllergyText, proteinBoost);
   if (!generated) return res.status(502).json({ error: 'تعذر توليد بديل الآن، حاول تاني · Could not generate an alternative right now, try again' });
 
   const priced = priceMeal(sanitizeMealForAllergies(generated, userAllergies, customAllergyText, pd), pd);
