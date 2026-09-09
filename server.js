@@ -17,7 +17,7 @@ const { Webhook } = require('svix');
 const { AppStoreServerAPIClient, SignedDataVerifier, Environment: AppleEnv, Status: AppleSubStatus } = require('@apple/app-store-server-library');
 const { androidpublisher } = require('@googleapis/androidpublisher');
 const store = require('./db');
-const { buildHealthProfile, coachSummary, GOAL_TYPES } = require('./health');
+const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS } = require('./health');
 const aiLanguage = require('./ai_language');
 const { runReminderCheck } = require('./reminders');
 const { buildDailyBrief, buildWeeklySummary } = require('./daily_brief');
@@ -89,6 +89,26 @@ const KNOWN_ALLERGENS = ['milk','eggs','fish','crustaceans','nuts','peanuts','gl
 // today; adding a condition here means also adding real gating logic for
 // it, not just collecting the label.
 const KNOWN_MEDICAL_CONDITIONS = ['type1_diabetes', 'type2_diabetes', 'pregnant', 'breastfeeding', 'ckd'];
+
+// Phase 1 of the nutrition-architecture migration: these 4 short enums now
+// also live as real tables (db.js), seeded from these exact same constants.
+// This proves byte-for-byte equivalence at boot, every boot, before either
+// source could ever be trusted to have silently drifted from the other -
+// fails loudly (crashes on start) rather than serving mismatched data,
+// per the "never silently modify production behavior" constraint this
+// migration was scoped under. The JS constants above remain the values
+// every existing code path actually reads (KNOWN_ALLERGENS.includes(...),
+// DEFICIT_PCT[goalType], etc.) - this is verification only, not a cutover;
+// the read-path switch is a separate, later step once this has run clean
+// in production for a while.
+store.verifyLookupTablesMatch({
+  knownAllergens: KNOWN_ALLERGENS,
+  knownMedicalConditions: KNOWN_MEDICAL_CONDITIONS,
+  activityFactors: ACTIVITY_FACTORS,
+  goalDeficitPct: DEFICIT_PCT,
+  goalProteinBoost: GOAL_PROTEIN_BOOST_PER_KG,
+});
+
 const GMAIL_USER = process.env.GMAIL_USER || '';
 const GMAIL_PASS = process.env.GMAIL_APP_PASS || '';
 const GMAIL_AUTH = process.env.GMAIL_AUTH || GMAIL_USER;
