@@ -2222,6 +2222,84 @@ function findFoodItem(name, nameEn, foodPrices) {
   return item;
 }
 
+// Meal-plan allergy safety. Reuses FOOD_DB (defined further below in this
+// file, but already loaded by the time any request runs it) - the same real
+// per-food allergen tags already used to warn on manually-logged food - so
+// this can never disagree with that existing data. Previously nothing in
+// meal-plan generation checked allergies at all: a nut allergy could be
+// served almonds with zero warning, because the two features never shared
+// this lookup before now.
+function ingredientAllergens(itemAr, itemEn) {
+  const a = findFoodMatch(itemAr)?.allergens || [];
+  const b = findFoodMatch(itemEn)?.allergens || [];
+  return [...new Set([...a, ...b])];
+}
+
+function ingredientIsUnsafe(itemAr, itemEn, userAllergies, customAllergyText) {
+  if (userAllergies?.length && ingredientAllergens(itemAr, itemEn).some(a => userAllergies.includes(a))) return true;
+  if (allergyKeywordsMatch(itemAr, itemEn, customAllergyText)) return true;
+  return false;
+}
+
+function macroPer100g(itemAr, itemEn) {
+  const m = findFoodMatch(itemAr) || findFoodMatch(itemEn);
+  return m ? { cal: m.cal || 0, protein: m.protein || 0, carbs: m.carbs || 0, fat: m.fat || 0 } : null;
+}
+
+// Same-category swap first (keeps the meal nutritionally similar - a protein
+// stays a protein), any remaining safe catalog item as a last resort. Safety
+// comes before nutritional tidiness: an unsafe ingredient is never served
+// just because nothing matched its exact food group.
+function findSafeSubstitute(unsafeItem, foodPrices, userAllergies, customAllergyText, usedIds) {
+  const items = foodPrices?.items || [];
+  const isSafe = (it) => !ingredientIsUnsafe(it.name, it.nameEn, userAllergies, customAllergyText);
+  const candidates = items.filter(it => it.id !== unsafeItem?.id && !usedIds.has(it.id) && isSafe(it));
+  const sameCategory = unsafeItem?.category ? candidates.filter(it => it.category === unsafeItem.category) : [];
+  return sameCategory[0] || candidates[0] || null;
+}
+
+// Applied as the last step before pricing, to every meal on every day (not
+// just "today") and regardless of whether the meal came from the static
+// week, a cached tier override, or a fresh AI generation - a single
+// guaranteed checkpoint rather than one per source, so a stale cached
+// override (saved before this existed, or before the user added an
+// allergy) gets cleaned up automatically on the very next read instead of
+// needing a one-time migration.
+function sanitizeMealForAllergies(meal, userAllergies, customAllergyText, foodPrices) {
+  if ((!userAllergies || !userAllergies.length) && !customAllergyText) return meal;
+  let adjusted = false;
+  const usedIds = new Set(meal.ingredients.map(ing => findFoodItem(ing.item, ing.itemEn, foodPrices)?.id).filter(Boolean));
+  let calDelta = 0, proteinDelta = 0, carbsDelta = 0, fatDelta = 0;
+  const ingredients = meal.ingredients.map(ing => {
+    if (!ingredientIsUnsafe(ing.item, ing.itemEn, userAllergies, customAllergyText)) return ing;
+    adjusted = true;
+    const catalogItem = findFoodItem(ing.item, ing.itemEn, foodPrices);
+    const sub = findSafeSubstitute(catalogItem, foodPrices, userAllergies, customAllergyText, usedIds);
+    if (!sub) return null; // no safe substitute anywhere in the catalog - drop it rather than serve it
+    usedIds.add(sub.id);
+    const oldMacro = macroPer100g(ing.item, ing.itemEn);
+    const newMacro = macroPer100g(sub.name, sub.nameEn);
+    if (oldMacro && newMacro) {
+      const factor = ing.grams / 100;
+      calDelta += (newMacro.cal - oldMacro.cal) * factor;
+      proteinDelta += (newMacro.protein - oldMacro.protein) * factor;
+      carbsDelta += (newMacro.carbs - oldMacro.carbs) * factor;
+      fatDelta += (newMacro.fat - oldMacro.fat) * factor;
+    }
+    return { item: sub.name, itemEn: sub.nameEn, qty: sub.qty, qtyAr: sub.qtyAr, grams: ing.grams, allergySubstituted: true, originalItemEn: ing.itemEn };
+  }).filter(Boolean);
+  if (!adjusted) return meal;
+  return {
+    ...meal,
+    ingredients,
+    allergyAdjusted: true,
+    cal: Math.max(0, Math.round((meal.cal || 0) + calDelta)),
+    protein: `${Math.max(0, Math.round(parseGramsField(meal.protein) + proteinDelta))}g`,
+    carbs: `${Math.max(0, Math.round(parseGramsField(meal.carbs) + carbsDelta))}g`,
+    fat: `${Math.max(0, Math.round(parseGramsField(meal.fat) + fatDelta))}g`,
+  };
+}
+
 // All stores tracked per ingredient in food_prices.json - kept in one place
 // so adding/removing a tracked store is a one-line change, not a hunt
 // through every price-comparison call site. carrefour, royal and talabat
@@ -2335,9 +2413,17 @@ function getMealTypeMacroTarget(dietStyle, mealType) {
   };
 }
 
-async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices, personalScale = 1) {
+async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices, personalScale = 1, userAllergies = [], customAllergyText = '') {
   const label = MEAL_TYPE_LABELS[mealType] || MEAL_TYPE_LABELS.snack;
-  const items = foodPrices?.items || [];
+  // Allergenic items are removed from the list the AI even sees, rather than
+  // relying on a prompt instruction it might not follow - it genuinely
+  // cannot suggest what isn't offered. sanitizeMealForAllergies() is still
+  // applied to whatever comes back (defense in depth: catches an allergen
+  // the AI names in free text without using a listed id).
+  const allItems = foodPrices?.items || [];
+  const items = (userAllergies?.length || customAllergyText)
+    ? allItems.filter(i => !ingredientIsUnsafe(i.name, i.nameEn, userAllergies, customAllergyText))
+    : allItems;
   const cheapestOf = (i) => Math.min(...STORE_KEYS.map(s => i[s]).filter(p => p > 0));
   const ingredientCatalog = items.map(i => `${i.id} (${i.nameEn}/${i.name}, ~${cheapestOf(i)} EGP/${i.unit}, category: ${i.category})`).join('\n');
 
@@ -2506,6 +2592,8 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const pd = load('food_prices.json');
   const weekAvg = getWeekAvgDaily(plan);
   const personalScale = getPersonalScale(req.user.id, weekAvg.cal);
+  const userAllergies = req.userObj?.profile?.allergies || [];
+  const customAllergyText = req.userObj?.profile?.customAllergyText || '';
 
   const week = [];
   for (let dayIdx = 0; dayIdx < plan.week.length; dayIdx++) {
@@ -2536,7 +2624,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
           // the user switched diets) - regenerate for what's actually being
           // asked for.
           try {
-            const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd, personalScale);
+            const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd, personalScale, userAllergies, customAllergyText);
             if (generated) {
               effectiveMeal = priceMeal(generated, pd);
               saveMealOverride(req.user.id, date, mealTypeKey, { meal: effectiveMeal, tier: budgetTier, diet, swapsUsed: 0, manualSwap: false });
@@ -2546,6 +2634,11 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
           }
         }
       }
+      // Last checkpoint before pricing, regardless of which branch above
+      // produced effectiveMeal (static+scaled, cached override, or fresh AI
+      // generation) - see sanitizeMealForAllergies for why this single call
+      // site is deliberate.
+      effectiveMeal = sanitizeMealForAllergies(effectiveMeal, userAllergies, customAllergyText, pd);
       const priced = priceMeal(effectiveMeal, pd);
       meals.push({...priced, withinBudget: priced.price <= (budget/4), mealTypeKey, swapsUsed, swapsRemaining: MEAL_SWAP_LIMIT - swapsUsed});
     }
@@ -2592,11 +2685,13 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
   const pd = load('food_prices.json');
   const dietPlan = load('meal_plans.json')?.[diet];
   const personalScale = getPersonalScale(req.user.id, dietPlan ? getWeekAvgDaily(dietPlan).cal : 0);
+  const userAllergies = req.userObj?.profile?.allergies || [];
+  const customAllergyText = req.userObj?.profile?.customAllergyText || '';
 
-  const generated = await generateMealAlternative(diet, mealType, budgetTier, MEAL_SWAP_PREFERENCES[preference] || null, pd, personalScale);
+  const generated = await generateMealAlternative(diet, mealType, budgetTier, MEAL_SWAP_PREFERENCES[preference] || null, pd, personalScale, userAllergies, customAllergyText);
   if (!generated) return res.status(502).json({ error: 'تعذر توليد بديل الآن، حاول تاني · Could not generate an alternative right now, try again' });
 
-  const priced = priceMeal(generated, pd);
+  const priced = priceMeal(sanitizeMealForAllergies(generated, userAllergies, customAllergyText, pd), pd);
   const newSwapsUsed = swapsUsed + 1;
   saveMealOverride(req.user.id, date, mealType, { meal: priced, tier: budgetTier, diet, swapsUsed: newSwapsUsed, manualSwap: true });
   secLog('MEAL_SWAP', getIP(req), { userId: req.user.id, date, mealType, preference, swapsUsed: newSwapsUsed });
@@ -3817,6 +3912,15 @@ const FOOD_DB = [
   // Real hummus contains tahini (sesame paste) as a core recipe ingredient —
   // was missing the sesame tag entirely (audit finding).
   { ar:'حمص', en:'hummus', aliases:[], cal:166, protein:8, carbs:14, fat:9.6, allergens:['sesame'] },
+  // Plain chickpeas (the bean, e.g. canned) share the Arabic word "حمص" with
+  // hummus (the tahini-based dip) above, so a substring match against just
+  // "حمص" was wrongly tagging plain chickpeas as containing sesame - found
+  // while wiring meal-plan allergy filtering (food_prices.json's `chickpeas`
+  // catalog item was getting a false-positive sesame flag). The exact
+  // full-name match here (findFoodMatch prefers the longest matching
+  // candidate) resolves to this entry instead of the shorter, wrong one.
+  { ar:'حمص حب معلب', en:'chickpeas, canned', aliases:['حمص حب','chickpeas'], cal:139, protein:7.3, carbs:22.5, fat:2.6 },
+  { ar:'صدر ديك رومي', en:'turkey breast, grilled', aliases:['ديك رومي','turkey'], cal:135, protein:29, carbs:0, fat:1.6 },
   // Was labeled "lentil soup" but its values were actually plain cooked
   // lentils (matches USDA cooked-lentil reference almost exactly) — a real
   // prepared soup (with broth/oil/vegetables) reads differently per 100g.
@@ -5885,5 +5989,6 @@ module.exports = Object.assign(app, {
     validateProfileField,
     kashierVerify, kashierHash, kashierConfigured,
     hasActiveCoverage, calcBmiBmr,
+    FOOD_DB, findFoodMatch, allergyKeywordsMatch,
   },
 });
