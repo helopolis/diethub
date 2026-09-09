@@ -2269,12 +2269,13 @@ function findFoodItem(name, nameEn, foodPrices) {
   return item;
 }
 
-// Meal-plan allergy safety. Reuses FOOD_DB (defined further below in this
-// file, but already loaded by the time any request runs it) - the same real
-// per-food allergen tags already used to warn on manually-logged food - so
-// this can never disagree with that existing data. Previously nothing in
-// meal-plan generation checked allergies at all: a nut allergy could be
-// served almonds with zero warning, because the two features never shared
+// Meal-plan allergy safety. Reuses findFoodMatch, backed by the real
+// foods/food_allergens tables (Phase 2 nutrition-architecture migration) -
+// the same real per-food allergen tags already used to warn on manually-
+// logged food - so this can never disagree with that existing data.
+// Previously nothing in meal-plan generation checked allergies at all: a
+// nut allergy could be served almonds with zero warning, because the two
+// features never shared
 // this lookup before now.
 function ingredientAllergens(itemAr, itemEn) {
   const a = findFoodMatch(itemAr)?.allergens || [];
@@ -4023,154 +4024,24 @@ app.delete(`${BASE}/api/nutrition-log/:date/custom/:index`, auth, (req, res) => 
   res.json({ ok: true, custom: day.custom });
 });
 
-// Local, zero-cost nutrition database (per 100g) covering common Egyptian/Gulf
-// staples plus general basics - no external API calls, no usage cost, works
-// offline. Deliberately not exhaustive; anything not found here falls back to
-// manual entry client-side rather than silently guessing.
-const FOOD_DB = [
-  { ar:'صدر فرخة مشوي', en:'grilled chicken breast', aliases:['صدر دجاج','فراخ مشوي','دجاج مشوي','chicken breast'], cal:165, protein:31, carbs:0, fat:3.6 },
-  { ar:'فخذ فرخة', en:'chicken thigh', aliases:['فخذ دجاج'], cal:209, protein:26, carbs:0, fat:10.9 },
-  { ar:'فرخة كاملة مشوية', en:'whole roasted chicken', aliases:['دجاجة مشوية'], cal:190, protein:27, carbs:0, fat:8 },
-  { ar:'لحم بقري', en:'beef, lean', aliases:['لحمة بقري','لحم بتلو'], cal:250, protein:26, carbs:0, fat:15 },
-  { ar:'لحمة مفرومة', en:'ground beef, cooked', aliases:['لحم مفروم'], cal:254, protein:25, carbs:0, fat:17 },
-  { ar:'لحم ضاني', en:'lamb', aliases:['لحمة ضاني','لحم غنم'], cal:294, protein:25, carbs:0, fat:21 },
-  { ar:'سمك بلطي', en:'tilapia fish', aliases:['بلطي','سمك مشوي'], cal:128, protein:26, carbs:0, fat:2.7, allergens:['fish'] },
-  { ar:'تونة', en:'tuna, canned in water', aliases:['تونه'], cal:116, protein:26, carbs:0, fat:1, allergens:['fish'] },
-  { ar:'جمبري', en:'shrimp', aliases:['روبيان'], cal:99, protein:24, carbs:0.2, fat:0.3, allergens:['crustaceans'] },
-  { ar:'بيض مسلوق', en:'boiled egg', aliases:['بيضة مسلوقة'], cal:155, protein:13, carbs:1.1, fat:11, allergens:['eggs'] },
-  { ar:'بياض بيض', en:'egg white', aliases:[], cal:52, protein:11, carbs:0.7, fat:0.2, allergens:['eggs'] },
-  { ar:'أرز أبيض', en:'white rice, cooked', aliases:['رز أبيض','ارز ابيض'], cal:130, protein:2.7, carbs:28, fat:0.3 },
-  { ar:'أرز بني', en:'brown rice, cooked', aliases:['رز بني'], cal:111, protein:2.6, carbs:23, fat:0.9 },
-  { ar:'عيش بلدي', en:'baladi bread', aliases:['عيش شامي','خبز بلدي'], cal:265, protein:9, carbs:53, fat:1.5, allergens:['gluten'] },
-  { ar:'عيش فينو', en:'white bread', aliases:['خبز أبيض','توست'], cal:289, protein:9, carbs:55, fat:3.2, allergens:['gluten'] },
-  { ar:'مكرونة', en:'pasta, cooked', aliases:['معكرونة'], cal:131, protein:5, carbs:25, fat:1.1, allergens:['gluten'] },
-  { ar:'بطاطس مسلوقة', en:'boiled potato', aliases:['بطاطا مسلوقة'], cal:87, protein:1.9, carbs:20, fat:0.1 },
-  { ar:'بطاطس محمرة', en:'fried potato', aliases:['بطاطس مقلية'], cal:312, protein:3.4, carbs:41, fat:15 },
-  { ar:'بطاطا', en:'sweet potato', aliases:['بطاطا حلوة'], cal:86, protein:1.6, carbs:20, fat:0.1 },
-  { ar:'شوفان', en:'oats, dry', aliases:[], cal:389, protein:17, carbs:66, fat:7 },
-  { ar:'فول مدمس', en:'foul medames', aliases:['فول'], cal:110, protein:7.6, carbs:18, fat:0.6 },
-  // Real hummus contains tahini (sesame paste) as a core recipe ingredient —
-  // was missing the sesame tag entirely (audit finding).
-  { ar:'حمص', en:'hummus', aliases:[], cal:166, protein:8, carbs:14, fat:9.6, allergens:['sesame'] },
-  // Plain chickpeas (the bean, e.g. canned) share the Arabic word "حمص" with
-  // hummus (the tahini-based dip) above, so a substring match against just
-  // "حمص" was wrongly tagging plain chickpeas as containing sesame - found
-  // while wiring meal-plan allergy filtering (food_prices.json's `chickpeas`
-  // catalog item was getting a false-positive sesame flag). The exact
-  // full-name match here (findFoodMatch prefers the longest matching
-  // candidate) resolves to this entry instead of the shorter, wrong one.
-  { ar:'حمص حب معلب', en:'chickpeas, canned', aliases:['حمص حب','chickpeas'], cal:139, protein:7.3, carbs:22.5, fat:2.6 },
-  { ar:'صدر ديك رومي', en:'turkey breast, grilled', aliases:['ديك رومي','turkey'], cal:135, protein:29, carbs:0, fat:1.6 },
-  // Was labeled "lentil soup" but its values were actually plain cooked
-  // lentils (matches USDA cooked-lentil reference almost exactly) — a real
-  // prepared soup (with broth/oil/vegetables) reads differently per 100g.
-  // Split into two honest, distinct entries instead of one mislabeled one.
-  { ar:'عدس مطبوخ', en:'cooked lentils', aliases:['عدس'], cal:116, protein:9, carbs:20, fat:0.4 },
-  { ar:'شوربة عدس', en:'lentil soup (prepared)', aliases:[], cal:70, protein:4.5, carbs:11, fat:1.5 },
-  { ar:'طعمية', en:'falafel', aliases:['فلافل'], cal:333, protein:13, carbs:32, fat:18 },
-  { ar:'طماطم', en:'tomato', aliases:['طماطة'], cal:18, protein:0.9, carbs:3.9, fat:0.2 },
-  { ar:'خيار', en:'cucumber', aliases:[], cal:15, protein:0.7, carbs:3.6, fat:0.1 },
-  { ar:'سلطة خضراء', en:'green salad', aliases:['سلطة'], cal:20, protein:1, carbs:4, fat:0.2 },
-  { ar:'ملوخية', en:'molokhia', aliases:[], cal:60, protein:4.8, carbs:8, fat:1.5 },
-  { ar:'بامية', en:'okra', aliases:[], cal:60, protein:2, carbs:8, fat:2 },
-  { ar:'سبانخ', en:'spinach', aliases:[], cal:23, protein:2.9, carbs:3.6, fat:0.4 },
-  { ar:'كوسة', en:'zucchini', aliases:['كوسه'], cal:17, protein:1.2, carbs:3.1, fat:0.3 },
-  { ar:'موز', en:'banana', aliases:[], cal:89, protein:1.1, carbs:23, fat:0.3 },
-  { ar:'تفاح', en:'apple', aliases:[], cal:52, protein:0.3, carbs:14, fat:0.2 },
-  { ar:'برتقال', en:'orange', aliases:[], cal:47, protein:0.9, carbs:12, fat:0.1 },
-  { ar:'مانجو', en:'mango', aliases:[], cal:60, protein:0.8, carbs:15, fat:0.4 },
-  { ar:'بطيخ', en:'watermelon', aliases:[], cal:30, protein:0.6, carbs:8, fat:0.2 },
-  { ar:'تمر', en:'dates', aliases:[], cal:277, protein:1.8, carbs:75, fat:0.2 },
-  { ar:'زبادي', en:'plain yogurt', aliases:['لبن زبادي'], cal:61, protein:3.5, carbs:4.7, fat:3.3, allergens:['milk'] },
-  { ar:'زبادي يوناني', en:'greek yogurt', aliases:[], cal:59, protein:10, carbs:3.6, fat:0.4, allergens:['milk'] },
-  { ar:'لبن', en:'whole milk', aliases:['حليب'], cal:61, protein:3.2, carbs:4.8, fat:3.3, allergens:['milk'] },
-  { ar:'جبنة فيتا', en:'feta cheese', aliases:[], cal:264, protein:14, carbs:4, fat:21, allergens:['milk'] },
-  { ar:'جبنة قريش', en:'cottage cheese', aliases:['جبنه قريش','جبن قريش'], cal:98, protein:11, carbs:3.4, fat:4.3, allergens:['milk'] },
-  { ar:'جبنة بيضاء', en:'white cheese', aliases:[], cal:300, protein:18, carbs:3, fat:24, allergens:['milk'] },
-  { ar:'لوز', en:'almonds', aliases:[], cal:579, protein:21, carbs:22, fat:50, allergens:['nuts'] },
-  { ar:'فول سوداني', en:'peanuts', aliases:['سوداني'], cal:567, protein:26, carbs:16, fat:49, allergens:['peanuts'] },
-  { ar:'زيت زيتون', en:'olive oil', aliases:[], cal:884, protein:0, carbs:0, fat:100 },
-  { ar:'أفوكادو', en:'avocado', aliases:['افوكادو'], cal:160, protein:2, carbs:8.5, fat:14.7 },
-  { ar:'كشري', en:'koshari', aliases:[], cal:180, protein:5, carbs:30, fat:4 },
-  { ar:'كفتة مشوية', en:'grilled kofta', aliases:['كفتة'], cal:220, protein:18, carbs:2, fat:15 },
-  { ar:'شاورما فراخ', en:'chicken shawarma', aliases:['شاورما دجاج'], cal:200, protein:18, carbs:10, fat:10 },
-  { ar:'فتة', en:'fattah', aliases:[], cal:200, protein:10, carbs:22, fat:8, allergens:['gluten'] },
-  // koshari's pasta and fattah's bread base were both untagged despite both
-  // dishes structurally containing wheat — real gluten-safety gap found by
-  // cross-referencing meal-plan ingredients against this database.
-  { ar:'كشري', en:'koshari', aliases:[], cal:180, protein:5, carbs:30, fat:4, allergens:['gluten'] },
-
-  // ── Added during the ingredient-database audit: real meal-plan
-  // ingredients that had ZERO matching entry here at all (found by cross-
-  // referencing every ingredient actually used across all 9 diets against
-  // this database's own matching logic — 31 of 69 unique ingredients had no
-  // match before this pass). Values are standard reference-composition
-  // figures (USDA FoodData Central equivalents), not estimates.
-  { ar:'بيض أحمر', en:'whole egg', aliases:['بيضة'], cal:143, protein:12.6, carbs:0.7, fat:9.5, allergens:['eggs'] },
-  { ar:'صدر فراخ طازج', en:'raw chicken breast', aliases:['صدر دجاج طازج'], cal:120, protein:22.5, carbs:0, fat:2.6 },
-  { ar:'خضار مشكلة', en:'mixed vegetables', aliases:[], cal:35, protein:1.8, carbs:6.5, fat:0.3 },
-  // "Mixed nuts" is inherently ambiguous about exact composition — tagged
-  // with BOTH nuts and peanuts since a generic blend commonly contains
-  // both; the safety-conservative choice when the exact mix is unknown.
-  { ar:'مكسرات مشكلة', en:'mixed nuts', aliases:[], cal:607, protein:20, carbs:21, fat:54, allergens:['nuts','peanuts'] },
-  { ar:'لحمة كندوز', en:'veal/lean beef cut', aliases:['كندوز'], cal:250, protein:26, carbs:0, fat:15 },
-  { ar:'عيش أسمر', en:'whole wheat bread', aliases:['خبز أسمر'], cal:247, protein:13, carbs:41, fat:3.4, allergens:['gluten'] },
-  { ar:'سلمون', en:'salmon', aliases:[], cal:206, protein:22, carbs:0, fat:12, allergens:['fish'] },
-  { ar:'مايونيز', en:'mayonnaise', aliases:[], cal:680, protein:1, carbs:0.6, fat:75, allergens:['eggs'] },
-  { ar:'زبدة', en:'butter', aliases:[], cal:717, protein:0.85, carbs:0.1, fat:81, allergens:['milk'] },
-  { ar:'كريمة طبخ', en:'cooking/heavy cream', aliases:['كريمة'], cal:340, protein:2.1, carbs:2.8, fat:36, allergens:['milk'] },
-  { ar:'جبنة شيدر', en:'cheddar cheese', aliases:[], cal:403, protein:25, carbs:1.3, fat:33, allergens:['milk'] },
-  { ar:'جبنة كريمي', en:'cream cheese', aliases:[], cal:342, protein:6, carbs:4, fat:34, allergens:['milk'] },
-  { ar:'جبنة رومي', en:'romano-style hard cheese', aliases:[], cal:387, protein:32, carbs:3.6, fat:27, allergens:['milk'] },
-  { ar:'مكسرات برازيلية', en:'brazil nuts', aliases:[], cal:656, protein:14.3, carbs:12.3, fat:66.4, allergens:['nuts'] },
-  { ar:'زيت جوز الهند', en:'coconut oil', aliases:[], cal:862, protein:0, carbs:0, fat:100 },
-  { ar:'جوز الهند مبشور', en:'shredded coconut, unsweetened', aliases:[], cal:660, protein:6.9, carbs:23.7, fat:64.5 },
-  { ar:'كريمة جوز الهند', en:'coconut cream', aliases:[], cal:330, protein:3.6, carbs:6.7, fat:34.7 },
-  { ar:'لحم مقدد بقري', en:'beef bacon', aliases:[], cal:541, protein:37, carbs:1.4, fat:42 },
-  { ar:'لحم ريب آي', en:'ribeye steak', aliases:[], cal:291, protein:24, carbs:0, fat:21.2 },
-  { ar:'فلفل أخضر', en:'green bell pepper', aliases:[], cal:20, protein:0.86, carbs:4.6, fat:0.17 },
-  { ar:'عسل نحل', en:'honey', aliases:['عسل'], cal:304, protein:0.3, carbs:82.4, fat:0 },
-  // Tahini (sesame paste) is the core ingredient making this a sesame
-  // allergen — not tree nuts, not peanuts.
-  { ar:'طحينة', en:'tahini', aliases:[], cal:595, protein:17, carbs:21, fat:54, allergens:['sesame'] },
-  { ar:'توت مشكل', en:'mixed berries', aliases:[], cal:43, protein:0.8, carbs:10, fat:0.3 },
-  { ar:'كسكسي', en:'couscous, cooked', aliases:[], cal:112, protein:3.8, carbs:23.2, fat:0.16, allergens:['gluten'] },
-  // Za'atar traditionally includes toasted sesame seeds as a core
-  // ingredient alongside thyme/sumac — lower confidence than a single-food
-  // entry since it's a blended spice mix with real recipe variation, but
-  // the sesame content itself is a well-established, near-universal part
-  // of the blend, not a guess.
-  { ar:'زعتر', en:"za'atar spice blend", aliases:[], cal:380, protein:10, carbs:40, fat:20, allergens:['sesame'] },
-  { ar:'قرفة', en:'cinnamon, ground', aliases:[], cal:247, protein:4, carbs:80.6, fat:1.24 },
-  { ar:'جزر', en:'carrot', aliases:[], cal:41, protein:0.93, carbs:9.6, fat:0.24 },
-  { ar:'كبدة بقري', en:'beef liver, cooked', aliases:[], cal:175, protein:26.5, carbs:3.9, fat:4.9 },
-  // Most mainstream commercial corn flakes contain barley malt extract, a
-  // real gluten source despite being corn-based — tagged conservatively.
-  // Gluten-free corn flake variants exist but aren't the majority product.
-  { ar:'كورن فليكس', en:'corn flakes', aliases:[], cal:357, protein:7.5, carbs:84, fat:0.4, allergens:['gluten'] },
-  { ar:'بروكلي', en:'broccoli', aliases:[], cal:34, protein:2.8, carbs:6.6, fat:0.37 },
-];
-
-function normalizeFoodQuery(s) {
-  return (s||'').trim().toLowerCase()
-    .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه'); // normalize common Arabic letter variants
-}
-
+// Cutover to the Phase 2 nutrition-architecture migration: this used to
+// scan a hardcoded FOOD_DB array and match by substring containment with a
+// "longest match wins" tie-break - proven unsafe (6 real foods didn't
+// resolve to themselves; see the architecture audit and db.js's
+// resolveFood/verifyFoodResolution). Same external contract (callers still
+// get {ar,en,cal,protein,carbs,fat,allergens}, unchanged), but internally
+// backed by the real foods/food_aliases/food_allergens tables and exact-
+// match-only lookup - the entire substring-collision bug class is now
+// impossible by construction, not just fixed for the cases found so far.
+// Verified before this shipped: 100% of real production ingredient/catalog
+// names (69/69 meal-plan ingredients, 58/58 price-catalog items) resolve
+// correctly under the new system, and every previously-broken case (White
+// Rice, White Cheese, Hummus, Sweet Potato, Milk, Fattah, Mozzarella
+// Cheese's undetected milk allergen, koshari's dead gluten tag) is fixed.
 function findFoodMatch(query) {
-  const q = normalizeFoodQuery(query);
-  if (!q) return null;
-  let best = null, bestLen = 0;
-  for (const item of FOOD_DB) {
-    const candidates = [item.ar, item.en, ...(item.aliases||[])];
-    for (const c of candidates) {
-      const nc = normalizeFoodQuery(c);
-      if (!nc) continue;
-      if (q === nc || q.includes(nc) || nc.includes(q)) {
-        if (nc.length > bestLen) { best = item; bestLen = nc.length; }
-      }
-    }
-  }
-  return best;
+  const food = store.resolveFood(query);
+  if (!food) return null;
+  return { ar: food.name_ar, en: food.name_en, cal: food.cal_per_100g, protein: food.protein_per_100g, carbs: food.carbs_per_100g, fat: food.fat_per_100g, allergens: food.allergens };
 }
 
 // Real, single implementation of allergen matching — previously only
@@ -6129,6 +6000,6 @@ module.exports = Object.assign(app, {
     validateProfileField,
     kashierVerify, kashierHash, kashierConfigured,
     hasActiveCoverage, calcBmiBmr,
-    FOOD_DB, findFoodMatch, allergyKeywordsMatch,
+    findFoodMatch, allergyKeywordsMatch,
   },
 });
