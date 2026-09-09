@@ -2335,7 +2335,7 @@ function getMealTypeMacroTarget(dietStyle, mealType) {
   };
 }
 
-async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices) {
+async function generateMealAlternative(dietStyle, mealType, budgetTier, preference, foodPrices, personalScale = 1) {
   const label = MEAL_TYPE_LABELS[mealType] || MEAL_TYPE_LABELS.snack;
   const items = foodPrices?.items || [];
   const cheapestOf = (i) => Math.min(...STORE_KEYS.map(s => i[s]).filter(p => p > 0));
@@ -2347,9 +2347,17 @@ async function generateMealAlternative(dietStyle, mealType, budgetTier, preferen
     mid: '',
   }[budgetTier] || '';
   const preferenceInstruction = preference ? `The user specifically asked for: "${preference}". Reflect that in the meal choice.` : '';
-  const target = getMealTypeMacroTarget(dietStyle, mealType);
+  // personalScale (from getPersonalScale, derived from the user's real
+  // calorie target in health.js) is applied to the diet's own average target
+  // here too, so an AI-generated "today" swap is held to the same
+  // personalized number the static week's meals get scaled to - not just
+  // the diet's generic average for someone of unknown size and goal.
+  const dietTarget = getMealTypeMacroTarget(dietStyle, mealType);
+  const target = dietTarget && personalScale !== 1
+    ? { cal: Math.round(dietTarget.cal * personalScale), protein: Math.round(dietTarget.protein * personalScale), carbs: Math.round(dietTarget.carbs * personalScale), fat: Math.round(dietTarget.fat * personalScale) }
+    : dietTarget;
   const macroInstruction = target
-    ? `This must genuinely match the ${DIET_STYLE_LABELS[dietStyle] || dietStyle} diet's real macro targets for a ${mealType}, based on this diet's actual plan: approximately ${target.cal} kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fat}g fat (stay within about 20% of each). Do not just pick diet-sounding ingredients — the macros must actually land in range.`
+    ? `This must genuinely match the ${DIET_STYLE_LABELS[dietStyle] || dietStyle} diet's real macro targets for a ${mealType}, sized for this specific user: approximately ${target.cal} kcal, ${target.protein}g protein, ${target.carbs}g carbs, ${target.fat}g fat (stay within about 20% of each). Do not just pick diet-sounding ingredients — the macros must actually land in range.`
     : '';
 
   const prompt = `Suggest one ${DIET_STYLE_LABELS[dietStyle] || dietStyle} ${mealType} meal for an Egyptian meal-planning app. ${tierInstruction} ${preferenceInstruction}
@@ -2421,6 +2429,70 @@ Return ONLY valid JSON, no other text, in this exact shape:
   };
 }
 
+// The diet's own dailyCalories (e.g. Atkins 1471) is a generic reference
+// number, not this specific user's need — health.js's buildHealthProfile()
+// already computes a real personalized target from their actual TDEE and
+// goal (lose/maintain/gain, -18%/0/+12%, see health.js DEFICIT_PCT), it just
+// never reached the meal plan before now. One ratio derived from that real
+// number, applied to every meal's calories/macros/ingredient grams, keeps
+// the diet's style (its recipes, its carb/protein/fat balance) while sizing
+// portions to the person actually eating them. Ingredient grams are scaled
+// too (not just the displayed macro numbers) because priceMeal() prices
+// strictly off grams - scaling grams is what makes the price stay correct
+// automatically, with no separate pricing math needed.
+// Clamped to 0.5-2.0x: a real personalized target should never differ from
+// a reasonably-matched diet's baseline by more than 2x, so anything beyond
+// that clamp is treated as a data problem, not something to bake into a
+// recipe (e.g. quarter-sized or double-sized portions would stop looking
+// like real food).
+// health.js already forces goalType to "maintain" (no deficit/surplus) for
+// kids, pregnancy/breastfeeding, and underweight-and-losing profiles - that
+// safety guardrail is inherited for free since this reads the same
+// already-computed calorieTarget rather than re-deriving one.
+// The plan's own declared dailyCalories/dailyCarbs/etc header turned out to
+// be stale and badly wrong for every single diet when checked against the
+// live DB (e.g. Diabetic's header claims 1500 kcal, but its actual 7-day
+// week of meals averages only 1050 - a pre-existing bug, not something this
+// change introduced, discovered while building this feature). Using that
+// header as the personalization baseline would have scaled real meals
+// against a number that doesn't describe them. Deriving the baseline from
+// the real week data instead - the same "trust the actual meals, not a
+// declared field" approach already used by getMealTypeMacroTarget above -
+// fixes the header displayed to every user, not just personalized ones.
+function getWeekAvgDaily(plan) {
+  const days = plan.week || [];
+  if (!days.length) return { cal: 0, protein: 0, carbs: 0, fat: 0 };
+  const sums = days.map(d => (d.meals || []).reduce((acc, m) => ({
+    cal: acc.cal + (m.cal || 0),
+    protein: acc.protein + parseGramsField(m.protein),
+    carbs: acc.carbs + parseGramsField(m.carbs),
+    fat: acc.fat + parseGramsField(m.fat),
+  }), { cal: 0, protein: 0, carbs: 0, fat: 0 }));
+  const avg = (key) => Math.round(sums.reduce((s, d) => s + d[key], 0) / sums.length);
+  return { cal: avg('cal'), protein: avg('protein'), carbs: avg('carbs'), fat: avg('fat') };
+}
+
+function getPersonalScale(userId, realDailyCalories) {
+  if (!realDailyCalories) return 1;
+  const personal = buildHealthProfile(store, userId)?.targets?.calorieTarget;
+  if (!personal) return 1;
+  return Math.min(Math.max(personal / realDailyCalories, 0.5), 2.0);
+}
+
+function scaleGramsField(v, scale) { return `${Math.round((parseFloat(v) || 0) * scale)}g`; }
+
+function scaleMeal(meal, scale) {
+  if (scale === 1) return meal;
+  return {
+    ...meal,
+    cal: Math.round((meal.cal || 0) * scale),
+    protein: scaleGramsField(meal.protein, scale),
+    carbs: scaleGramsField(meal.carbs, scale),
+    fat: scaleGramsField(meal.fat, scale),
+    ingredients: meal.ingredients.map(ing => ({ ...ing, grams: Math.round((ing.grams * scale) / 5) * 5 })),
+  };
+}
+
 app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const diet = sanitize(req.query.diet)||req.userObj?.profile?.diet||'atkins';
   const budget = Math.min(Math.max(parseInt(req.query.budget||req.userObj?.profile?.budget||200),50),1000);
@@ -2432,6 +2504,8 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const plan = plans?.[diet]||plans?.atkins;
   if (!plan) return res.json({error:'Plan not found'});
   const pd = load('food_prices.json');
+  const weekAvg = getWeekAvgDaily(plan);
+  const personalScale = getPersonalScale(req.user.id, weekAvg.cal);
 
   const week = [];
   for (let dayIdx = 0; dayIdx < plan.week.length; dayIdx++) {
@@ -2441,7 +2515,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
       // Only day 0 (today) carries per-user overrides - the rest of the week
       // is still the static plan preview, matching how the dashboard only
       // ever requests/edits "today" via date.
-      let effectiveMeal = meal;
+      let effectiveMeal = scaleMeal(meal, personalScale);
       let swapsUsed = 0;
       let mealTypeKey = null;
       if (dayIdx === 0) {
@@ -2462,7 +2536,7 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
           // the user switched diets) - regenerate for what's actually being
           // asked for.
           try {
-            const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd);
+            const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd, personalScale);
             if (generated) {
               effectiveMeal = priceMeal(generated, pd);
               saveMealOverride(req.user.id, date, mealTypeKey, { meal: effectiveMeal, tier: budgetTier, diet, swapsUsed: 0, manualSwap: false });
@@ -2483,7 +2557,17 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   // sodium/cholesterol/sugar tags today, so real meal-level filtering by lab
   // flags would need a separate data-modeling effort.
   const labAdvisory = buildLabAdvisories(getLatestLabFlags(req.user.id));
-  res.json({...plan,week,dailyCost,budget,withinBudget:dailyCost<=budget,labAdvisory});
+  // The headline daily targets must match what the scaled week actually
+  // contains - showing a generic declared number while every meal below it
+  // was resized to this user's real target would be a visible, confusing
+  // contradiction. Derived from weekAvg (the real week, see getWeekAvgDaily)
+  // rather than the plan's own declared fields, which were found to be
+  // stale/wrong for every diet in the live DB.
+  const dailyCalories = Math.round(weekAvg.cal * personalScale);
+  const dailyCarbs = scaleGramsField(weekAvg.carbs, personalScale);
+  const dailyProtein = scaleGramsField(weekAvg.protein, personalScale);
+  const dailyFat = scaleGramsField(weekAvg.fat, personalScale);
+  res.json({...plan,week,dailyCalories,dailyCarbs,dailyProtein,dailyFat,dailyCost,budget,withinBudget:dailyCost<=budget,labAdvisory});
 });
 
 const MEAL_SWAP_LIMIT = 3;
@@ -2506,8 +2590,10 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
   const budget = Math.min(Math.max(parseInt(req.userObj?.profile?.budget || 200), 50), 1000);
   const budgetTier = budgetTierFor(budget);
   const pd = load('food_prices.json');
+  const dietPlan = load('meal_plans.json')?.[diet];
+  const personalScale = getPersonalScale(req.user.id, dietPlan ? getWeekAvgDaily(dietPlan).cal : 0);
 
-  const generated = await generateMealAlternative(diet, mealType, budgetTier, MEAL_SWAP_PREFERENCES[preference] || null, pd);
+  const generated = await generateMealAlternative(diet, mealType, budgetTier, MEAL_SWAP_PREFERENCES[preference] || null, pd, personalScale);
   if (!generated) return res.status(502).json({ error: 'تعذر توليد بديل الآن، حاول تاني · Could not generate an alternative right now, try again' });
 
   const priced = priceMeal(generated, pd);
