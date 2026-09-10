@@ -1210,18 +1210,19 @@ function migrateMealOverridesBlob() {
 migrateMealOverridesBlob();
 
 // ─── USERS (architecture audit's other critical scalability finding) ──────
-// The last, and highest-stakes, blob-store migration: users.json holds
+// The last, and highest-stakes, blob-store migration: users.json held
 // EVERY user's identity, password hash, subscription/billing state, and
 // full health profile in one JSON array, loaded and fully re-parsed on
 // nearly every authenticated request (`auth()` middleware, every profile
-// read/write, every admin action). This is Phase 1 of that migration only
-// - build the real tables, migrate the real data, verify it byte-for-byte
-// - deliberately NOT a cutover. Not one route in server.js reads or writes
-// these tables yet; users.json remains the sole live source of truth for
-// login, sessions, and billing until a dedicated, carefully-staged cutover
-// (a separate, later piece of work - this touches real passwords and real
-// subscriptions for real paying users, categorically higher stakes than
-// the nutrition-domain tables migrated earlier today).
+// read/write, every admin action). Phase 1 built the real tables and
+// migrated + verified the real data byte-for-byte against the live blob
+// (see seedUsersFromBlob/verifyUsersMigration below). Phase 2 (below,
+// after those two functions) is the actual cutover: load('users.json'),
+// save('users.json', ...), and update('users.json', ...) now transparently
+// redirect to these tables, so every existing caller across the codebase
+// (server.js's ~40 call sites, health.js, daily_brief.js, reminders.js,
+// and the test suite's fixture seeding) keeps working completely
+// unchanged - no route was individually rewritten.
 //
 // Split into `users` (identity/auth/billing) and `user_profiles` (health/
 // nutrition preferences, 1:1) rather than one wide table - genuinely
@@ -1341,60 +1342,63 @@ const bool01 = (v) => (v ? 1 : 0);
 // that still doesn't match is left NULL rather than forced through, since
 // a FK violation would abort the whole migration for every user, not just
 // the one with bad data.
+// Shared by the one-time blob migration below AND by writeUsersToTables()
+// (the live cutover write path, further down) - one field-mapping
+// implementation so the two can never drift apart from each other.
+function upsertFullUser(u, skippedRefs) {
+  const p = u.profile || {};
+  const now = new Date().toISOString();
+  upsertUserStmt.run({
+    id: u.id, username: u.username, password: u.password, email: u.email || null, phone: u.phone || null,
+    role: u.role || 'user', plan: u.plan || null, created: u.created || null,
+    active: bool01(u.active), email_verified: bool01(u.emailVerified), trial_start: u.trialStart || null,
+    paid: bool01(u.paid), lang: u.lang || null, login_attempts: u.loginAttempts || 0,
+    avatar_url: u.avatarUrl || null, last_login: u.lastLogin || null, deleted_at: u.deletedAt || null,
+    facebook_auth: bool01(u.facebookAuth), google_auth: bool01(u.googleAuth),
+    forced_reregistration: bool01(u.forcedReregistration), open_wearables_user_id: u.openWearablesUserId || null,
+    now,
+  });
+
+  const dietId = p.diet && getDiet(p.diet) ? p.diet : (p.diet ? (skippedRefs.push(`${u.id} diet="${p.diet}"`), null) : null);
+  const goalId = p.goalType ? normalizeGoalType(p.goalType) : null;
+  const activityLevelId = p.activityLevel && getActivityLevel(p.activityLevel) ? p.activityLevel : (p.activityLevel ? (skippedRefs.push(`${u.id} activityLevel="${p.activityLevel}"`), null) : null);
+
+  upsertUserProfileStmt.run({
+    user_id: u.id, diet_id: dietId, weight: p.weight ?? null, height: p.height ?? null, age: p.age ?? null,
+    gender: p.gender || null, budget: p.budget ?? null, body_fat: p.bodyFat ?? null, muscle_mass: p.muscleMass ?? null,
+    bmi: p.bmi ?? null, bmr: p.bmr ?? null, goal_id: goalId, activity_level_id: activityLevelId,
+    calorie_mode: p.calorieMode || null, custom_calorie_target: p.customCalorieTarget ?? null,
+    cycle_tracking_enabled: bool01(p.cycleTrackingEnabled), last_period_start: p.lastPeriodStart || null,
+    cycle_length: p.cycleLength ?? null, takes_creatine: bool01(p.takesCreatine),
+    measurements_updated_at: p.measurementsUpdatedAt || null, custom_allergy_text: p.customAllergyText || null,
+    target_weight: p.targetWeight ?? null, profile_lang: p.lang || null, now,
+  });
+
+  deleteUserAllergiesStmt.run(u.id);
+  for (const allergenId of (Array.isArray(p.allergies) ? p.allergies : [])) {
+    if (db.prepare('SELECT 1 FROM allergens WHERE id = ?').get(allergenId)) {
+      insUserAllergyStmt.run({ user_id: u.id, allergen_id: allergenId });
+    } else {
+      skippedRefs.push(`${u.id} allergy="${allergenId}"`);
+    }
+  }
+  deleteUserConditionsStmt.run(u.id);
+  for (const conditionId of (Array.isArray(p.medicalConditions) ? p.medicalConditions : [])) {
+    if (db.prepare('SELECT 1 FROM medical_conditions WHERE id = ?').get(conditionId)) {
+      insUserConditionStmt.run({ user_id: u.id, condition_id: conditionId });
+    } else {
+      skippedRefs.push(`${u.id} medicalCondition="${conditionId}"`);
+    }
+  }
+}
+
 function seedUsersFromBlob() {
   const users = load('users.json') || [];
-  const now = new Date().toISOString();
-  let migrated = 0;
   const skippedRefs = [];
-  for (const u of users) {
-    const p = u.profile || {};
-    upsertUserStmt.run({
-      id: u.id, username: u.username, password: u.password, email: u.email || null, phone: u.phone || null,
-      role: u.role || 'user', plan: u.plan || null, created: u.created || null,
-      active: bool01(u.active), email_verified: bool01(u.emailVerified), trial_start: u.trialStart || null,
-      paid: bool01(u.paid), lang: u.lang || null, login_attempts: u.loginAttempts || 0,
-      avatar_url: u.avatarUrl || null, last_login: u.lastLogin || null, deleted_at: u.deletedAt || null,
-      facebook_auth: bool01(u.facebookAuth), google_auth: bool01(u.googleAuth),
-      forced_reregistration: bool01(u.forcedReregistration), open_wearables_user_id: u.openWearablesUserId || null,
-      now,
-    });
-
-    const dietId = p.diet && getDiet(p.diet) ? p.diet : (p.diet ? (skippedRefs.push(`${u.id} diet="${p.diet}"`), null) : null);
-    const goalId = p.goalType ? normalizeGoalType(p.goalType) : null;
-    const activityLevelId = p.activityLevel && getActivityLevel(p.activityLevel) ? p.activityLevel : (p.activityLevel ? (skippedRefs.push(`${u.id} activityLevel="${p.activityLevel}"`), null) : null);
-
-    upsertUserProfileStmt.run({
-      user_id: u.id, diet_id: dietId, weight: p.weight ?? null, height: p.height ?? null, age: p.age ?? null,
-      gender: p.gender || null, budget: p.budget ?? null, body_fat: p.bodyFat ?? null, muscle_mass: p.muscleMass ?? null,
-      bmi: p.bmi ?? null, bmr: p.bmr ?? null, goal_id: goalId, activity_level_id: activityLevelId,
-      calorie_mode: p.calorieMode || null, custom_calorie_target: p.customCalorieTarget ?? null,
-      cycle_tracking_enabled: bool01(p.cycleTrackingEnabled), last_period_start: p.lastPeriodStart || null,
-      cycle_length: p.cycleLength ?? null, takes_creatine: bool01(p.takesCreatine),
-      measurements_updated_at: p.measurementsUpdatedAt || null, custom_allergy_text: p.customAllergyText || null,
-      target_weight: p.targetWeight ?? null, profile_lang: p.lang || null, now,
-    });
-
-    deleteUserAllergiesStmt.run(u.id);
-    for (const allergenId of (Array.isArray(p.allergies) ? p.allergies : [])) {
-      if (db.prepare('SELECT 1 FROM allergens WHERE id = ?').get(allergenId)) {
-        insUserAllergyStmt.run({ user_id: u.id, allergen_id: allergenId });
-      } else {
-        skippedRefs.push(`${u.id} allergy="${allergenId}"`);
-      }
-    }
-    deleteUserConditionsStmt.run(u.id);
-    for (const conditionId of (Array.isArray(p.medicalConditions) ? p.medicalConditions : [])) {
-      if (db.prepare('SELECT 1 FROM medical_conditions WHERE id = ?').get(conditionId)) {
-        insUserConditionStmt.run({ user_id: u.id, condition_id: conditionId });
-      } else {
-        skippedRefs.push(`${u.id} medicalCondition="${conditionId}"`);
-      }
-    }
-    migrated++;
-  }
+  for (const u of users) upsertFullUser(u, skippedRefs);
   if (skippedRefs.length) console.error('[db] seedUsersFromBlob: skipped invalid references (left NULL/omitted, did not block migration):\n' + skippedRefs.join('\n'));
-  console.log(`[db] users migrated: ${migrated} from the legacy blob (verification-only - no route reads this table yet).`);
-  return { migrated, skippedRefs };
+  console.log(`[db] users migrated: ${users.length} from the legacy blob (verification-only - no route reads this table yet).`);
+  return { migrated: users.length, skippedRefs };
 }
 // NOT auto-run at module-load time, unlike Phases 1-3 - users.json is
 // itself seeded by server.js's initData(), which runs near the end of
@@ -1404,8 +1408,10 @@ function seedUsersFromBlob() {
 // this ever touched real user data: migrating at module-load time here
 // would run against an empty/stale blob on first boot, then silently
 // leave a duplicate stale row once initData() populated it moments later).
-// server.js must call seedUsersFromBlob()/verifyUsersMigration() itself,
-// positioned after initData().
+// Superseded by the load/save redirect below as of the 2026-09-10 cutover
+// - kept only as the historical one-time migration record, no longer
+// called by server.js (calling it post-cutover would be a harmless no-op:
+// load('users.json') now reads the tables themselves).
 
 function getUserRow(id) { return db.prepare('SELECT * FROM users WHERE id = ?').get(id) || null; }
 function getUserProfileRow(userId) { return db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(userId) || null; }
@@ -1459,8 +1465,107 @@ function verifyUsersMigration() {
   if (errors.length) throw new Error('[db] users migration verification FAILED:\n' + errors.join('\n'));
   console.log(`[db] users migration verified: all ${users.length} users match the live blob exactly (identity/billing fields, profile fields, and allergy links).`);
 }
-// Also not auto-run - see seedUsersFromBlob's comment above. Called by
-// server.js right after seedUsersFromBlob(), both positioned after initData().
+// Also not auto-run - superseded by the redirect below, see that comment.
+
+// Rebuilds one user's exact users.json object shape from the tables - the
+// inverse of upsertFullUser(). Fields with a NOT NULL DEFAULT column
+// (active/emailVerified/paid/loginAttempts/etc) are always included, since
+// every real caller already reads them defensively (`!!u.active`, `u.paid
+// || false`-style, confirmed by grep before this cutover shipped) - a
+// user created via a path that never set them originally and one that set
+// them to false/0 are indistinguishable once in the table, and every
+// caller already treats those two cases identically. Nullable string
+// fields (email/phone/trialStart/etc) are included only when set, closer
+// to the blob's historically sparse shape but not load-bearing either way.
+function userRowToObject(row) {
+  const p = getUserProfileRow(row.id) || {};
+  const allergyIds = getUserAllergyIds(row.id);
+  const conditionIds = getUserMedicalConditionIds(row.id);
+
+  const profile = {};
+  if (p.diet_id != null) profile.diet = p.diet_id;
+  if (p.weight != null) profile.weight = p.weight;
+  if (p.height != null) profile.height = p.height;
+  if (p.age != null) profile.age = p.age;
+  if (p.gender != null) profile.gender = p.gender;
+  if (p.budget != null) profile.budget = p.budget;
+  if (p.body_fat != null) profile.bodyFat = p.body_fat;
+  if (p.muscle_mass != null) profile.muscleMass = p.muscle_mass;
+  if (p.bmi != null) profile.bmi = p.bmi;
+  if (p.bmr != null) profile.bmr = p.bmr;
+  if (p.goal_id != null) profile.goalType = p.goal_id;
+  if (p.activity_level_id != null) profile.activityLevel = p.activity_level_id;
+  if (p.calorie_mode != null) profile.calorieMode = p.calorie_mode;
+  if (p.custom_calorie_target != null) profile.customCalorieTarget = p.custom_calorie_target;
+  if (p.cycle_tracking_enabled) profile.cycleTrackingEnabled = true;
+  if (p.last_period_start != null) profile.lastPeriodStart = p.last_period_start;
+  if (p.cycle_length != null) profile.cycleLength = p.cycle_length;
+  if (p.takes_creatine) profile.takesCreatine = true;
+  if (p.measurements_updated_at != null) profile.measurementsUpdatedAt = p.measurements_updated_at;
+  if (p.custom_allergy_text != null) profile.customAllergyText = p.custom_allergy_text;
+  if (p.target_weight != null) profile.targetWeight = p.target_weight;
+  if (p.profile_lang != null) profile.lang = p.profile_lang;
+  if (allergyIds.length) profile.allergies = allergyIds;
+  if (conditionIds.length) profile.medicalConditions = conditionIds;
+
+  const user = { id: row.id, username: row.username, password: row.password, role: row.role };
+  if (row.email != null) user.email = row.email;
+  if (row.phone != null) user.phone = row.phone;
+  if (row.plan != null) user.plan = row.plan;
+  if (row.created != null) user.created = row.created;
+  user.active = !!row.active;
+  user.emailVerified = !!row.email_verified;
+  if (row.trial_start != null) user.trialStart = row.trial_start;
+  user.paid = !!row.paid;
+  if (row.lang != null) user.lang = row.lang;
+  user.loginAttempts = row.login_attempts || 0;
+  if (row.avatar_url != null) user.avatarUrl = row.avatar_url;
+  user.lastLogin = row.last_login ?? null;
+  if (row.deleted_at != null) user.deletedAt = row.deleted_at;
+  if (row.facebook_auth) user.facebookAuth = true;
+  if (row.google_auth) user.googleAuth = true;
+  if (row.forced_reregistration) user.forcedReregistration = true;
+  if (row.open_wearables_user_id != null) user.openWearablesUserId = row.open_wearables_user_id;
+  user.profile = profile;
+  return user;
+}
+
+// The live read path behind load('users.json') as of the cutover. Returns
+// null (not []) when the table is genuinely empty, matching the blob
+// store's null-for-never-saved semantics exactly - initData() below relies
+// on `load('users.json') === null` to decide whether to seed the default
+// admin account on a brand-new deployment, and a real deploy's users table
+// starts out with zero rows just like the blob started out unsaved.
+function usersFromTables() {
+  const rows = db.prepare('SELECT * FROM users ORDER BY rowid').all();
+  if (!rows.length) return null;
+  return rows.map(userRowToObject);
+}
+
+// The live write path behind save('users.json', ...). save() replaces the
+// whole document, so this must too: upsert every incoming user, then
+// remove any existing row whose id isn't in the incoming array (covers
+// account deletion and the admin delete-user route, both of which filter
+// the array and re-save it). Wrapped in one transaction for the same
+// atomicity save() always had.
+const _writeUsersTxn = db.transaction((users) => {
+  const skippedRefs = [];
+  for (const u of users) upsertFullUser(u, skippedRefs);
+  if (skippedRefs.length) console.error('[db] users.json write: skipped invalid references (left NULL/omitted):\n' + skippedRefs.join('\n'));
+  const incomingIds = new Set(users.map(u => u.id));
+  const existingIds = db.prepare('SELECT id FROM users').all().map(r => r.id);
+  for (const id of existingIds) {
+    if (incomingIds.has(id)) continue;
+    deleteUserAllergiesStmt.run(id);
+    deleteUserConditionsStmt.run(id);
+    db.prepare('DELETE FROM user_profiles WHERE user_id = ?').run(id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  }
+});
+function writeUsersToTables(users) {
+  _writeUsersTxn(users);
+  return users;
+}
 
 // ─── EVENTS ─────────────────────────────────────────────────────────────────
 // Append-only analytics log. This is a real table, not a JSON document, because
@@ -1558,6 +1663,7 @@ function analytics(days = 30) {
 // Read a document. Returns the parsed JSON, or null if the key doesn't exist
 // (matching the old load() contract so callers' `|| []` / `|| {}` still work).
 function load(key) {
+  if (key === 'users.json') return usersFromTables();
   const row = selStmt.get(key);
   if (!row) return null;
   try { return JSON.parse(row.value); } catch { return null; }
@@ -1565,6 +1671,7 @@ function load(key) {
 
 // Write a document, replacing it wholesale. Atomic and durable.
 function save(key, data) {
+  if (key === 'users.json') return writeUsersToTables(data);
   upsertStmt.run({ key, value: JSON.stringify(data), updated_at: new Date().toISOString() });
   return data;
 }
