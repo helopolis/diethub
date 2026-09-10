@@ -1543,15 +1543,16 @@ function usersFromTables() {
 }
 
 // The live write path behind save('users.json', ...). save() replaces the
-// whole document, so this must too: upsert every incoming user, then
-// remove any existing row whose id isn't in the incoming array (covers
-// account deletion and the admin delete-user route, both of which filter
-// the array and re-save it). Wrapped in one transaction for the same
-// atomicity save() always had.
+// whole document, so this must too: remove any existing row whose id isn't
+// in the incoming array FIRST, then upsert the incoming array - covers
+// account deletion and the admin delete-user route (both filter the array
+// and re-save it), and also avoids a transient UNIQUE(username) collision
+// when an incoming row has a different id than an existing row that
+// happens to share its username (upsert-then-delete would briefly have
+// both rows alive at once and fail the constraint; delete-then-upsert
+// never does). Wrapped in one transaction for the same atomicity save()
+// always had.
 const _writeUsersTxn = db.transaction((users) => {
-  const skippedRefs = [];
-  for (const u of users) upsertFullUser(u, skippedRefs);
-  if (skippedRefs.length) console.error('[db] users.json write: skipped invalid references (left NULL/omitted):\n' + skippedRefs.join('\n'));
   const incomingIds = new Set(users.map(u => u.id));
   const existingIds = db.prepare('SELECT id FROM users').all().map(r => r.id);
   for (const id of existingIds) {
@@ -1561,6 +1562,9 @@ const _writeUsersTxn = db.transaction((users) => {
     db.prepare('DELETE FROM user_profiles WHERE user_id = ?').run(id);
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
   }
+  const skippedRefs = [];
+  for (const u of users) upsertFullUser(u, skippedRefs);
+  if (skippedRefs.length) console.error('[db] users.json write: skipped invalid references (left NULL/omitted):\n' + skippedRefs.join('\n'));
 });
 function writeUsersToTables(users) {
   _writeUsersTxn(users);
