@@ -67,9 +67,9 @@ describe('Food resolution — exact-match-only, no substring collisions', () => 
 });
 
 describe('Diets, goals, allergens, medical conditions — real tables, not JS constants', () => {
-  test('all 9 real selectable diets plus the balanced fallback exist', () => {
+  test('all 10 real selectable diets plus the balanced fallback exist', () => {
     const ids = db.listDiets().map(d => d.id).sort();
-    expect(ids).toEqual(['atkins', 'balanced', 'diabetic', 'keto', 'kids', 'mediterranean', 'men', 'men_40', 'women', 'women_40'].sort());
+    expect(ids).toEqual(['atkins', 'balanced', 'diabetic', 'healthy_lifestyle', 'keto', 'kids', 'mediterranean', 'men', 'men_40', 'women', 'women_40'].sort());
   });
 
   test('lose_fat and gain_muscle get a real protein boost; lose_weight/gain_weight/maintain do not', () => {
