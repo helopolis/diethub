@@ -920,6 +920,13 @@ function seedDiets() {
     { id: 'men_40', name_en: 'Men Over 40', name_ar: 'الرجل فوق الأربعين', protein_per_kg: 1.6, low_carb: 0, style_label_en: 'men over 40 (heart-healthy, prostate-friendly, muscle preservation)' },
     { id: 'kids', name_en: 'Kids', name_ar: 'الأطفال', protein_per_kg: 1.2, low_carb: 0, style_label_en: 'healthy kids (balanced growth nutrition, kid-friendly, no severe restriction)' },
     { id: 'balanced', name_en: 'Balanced (fallback)', name_ar: 'متوازن (احتياطي)', protein_per_kg: 1.4, low_carb: 0, style_label_en: null },
+    // Added 2026-09-10: a real, selectable 10th diet (distinct from the
+    // internal-only 'balanced' fallback above, which has no meal content of
+    // its own) - whole grains, a vegetable at every meal, protein rotated
+    // across poultry/fish/legumes/eggs, moderate healthy fats, no
+    // restriction. Real week of meals in meal_plans.json, migrated into
+    // meals/recipe_ingredients via seedMealsFromDietPlans same as the other 9.
+    { id: 'healthy_lifestyle', name_en: 'Healthy Lifestyle', name_ar: 'نمط حياة صحي', protein_per_kg: 1.5, low_carb: 0, style_label_en: 'healthy lifestyle (balanced macros, moderate-protein, no restriction)' },
   ];
   for (const d of diets) insDietStmt.run({ ...d, now });
 

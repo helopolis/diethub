@@ -1149,6 +1149,53 @@ function buildMealPlans() {
           meal('سناك','Snack','4:00 PM','زبادي بالعسل والفواكه','Yogurt with honey and fruit',[ing('زبادي','Plain Yogurt','150 جم / 150g',150),ing('عسل نحل','Honey','نصف ملعقة / half tbsp',10),ing('موز','Banana','نصف حبة / half',60)],180,'6g','30g','4g',24)
         ])
       ]
+    },
+    healthy_lifestyle:{
+      nameAr:'نمط حياة صحي',nameEn:'Healthy Lifestyle',dailyCalories:1771,dailyCarbs:'210g',dailyProtein:'122g',dailyFat:'52g',
+      week:[
+        mk('الأحد','Sunday',[
+          meal('إفطار','Breakfast','7:30 AM','شوفان بالموز والعسل','Oats with banana and honey',[ing('شوفان','Oats','75 جم / 75g',75),ing('لبن','Milk','1 كوب / 1 cup',255),ing('موز','Banana','حبة / 1 piece',130),ing('عسل نحل','Honey','ملعقة / 1 tbsp',20)],624,'22g','108g','14g',0),
+          meal('غداء','Lunch','2:00 PM','صدر فراخ مشوي مع أرز أسمر وخضار','Grilled chicken breast with brown rice and vegetables',[ing('صدر فرخة مشوي','Grilled Chicken Breast','190 جم / 190g',190),ing('أرز بني','Brown Rice','190 جم / 190g',190),ing('خضار مشكلة','Mixed Vegetables','155 جم / 155g',155),ing('زيت زيتون','Olive Oil','نصف ملعقة / 0.5 tbsp',10)],667,'67g','54g','19g',0),
+          meal('عشاء','Dinner','7:30 PM','شوربة عدس مع سلطة وعيش أسمر','Lentil soup with salad and whole wheat bread',[ing('شوربة عدس','Lentil Soup','385 جم / 385g',385),ing('سلطة خضراء','Green Salad','130 جم / 130g',130),ing('عيش أسمر','Whole Wheat Bread','نصف رغيف / half loaf',65)],456,'27g','74g','8g',0),
+          meal('سناك','Snack','5:00 PM','زبادي يوناني بالتوت','Greek yogurt with mixed berries',[ing('زبادي يوناني','Greek Yogurt','190 جم / 190g',190),ing('توت مشكل','Mixed Berries','75 جم / 75g',75)],144,'20g','14g','1g',0)
+        ]),
+        mk('الاثنين','Monday',[
+          meal('إفطار','Breakfast','7:30 AM','بيض مسلوق مع عيش أسمر وطماطم','Boiled eggs with whole wheat bread and tomato',[ing('بيض مسلوق','Boiled Egg','بيضتين / 2 eggs',130),ing('عيش أسمر','Whole Wheat Bread','75 جم / 75g',75),ing('طماطم','Tomato','حبة / 1 piece',100)],405,'28g','36g','17g',0),
+          meal('غداء','Lunch','2:00 PM','سمك بلطي مشوي مع كسكسي وسلطة','Grilled tilapia with couscous and salad',[ing('سمك بلطي','Tilapia Fish','230 جم / 230g',230),ing('كسكسي','Couscous','190 جم / 190g',190),ing('سلطة خضراء','Green Salad','130 جم / 130g',130),ing('زيت زيتون','Olive Oil','نصف ملعقة / 0.5 tbsp',10)],622,'68g','49g','17g',0),
+          meal('عشاء','Dinner','7:30 PM','فول مدمس بزيت الزيتون وخضار','Foul medames with olive oil and vegetables',[ing('فول مدمس','Foul Medames','255 جم / 255g',255),ing('زيت زيتون','Olive Oil','نصف ملعقة / 0.5 tbsp',10),ing('طماطم','Tomato','75 جم / 75g',75),ing('عيش بلدي','Baladi Bread','ثلث رغيف / third loaf',60)],541,'25g','81g','13g',0),
+          meal('سناك','Snack','5:00 PM','تفاحة مع لوز','Apple with almonds',[ing('تفاح','Apple','حبة / 1 piece',165),ing('لوز','Almonds','20 جم / 20g',20)],202,'5g','28g','10g',0)
+        ]),
+        mk('الثلاثاء','Tuesday',[
+          meal('إفطار','Breakfast','7:30 AM','جبنة قريش بالطماطم والخيار مع عيش بلدي','Cottage cheese with tomato and cucumber, baladi bread',[ing('جبنة قريش','Cottage Cheese','130 جم / 130g',130),ing('طماطم','Tomato','75 جم / 75g',75),ing('خيار','Cucumber','75 جم / 75g',75),ing('عيش بلدي','Baladi Bread','نصف رغيف / half loaf',75)],351,'22g','50g','7g',0),
+          meal('غداء','Lunch','2:00 PM','كبدة بقري مع أرز أبيض وسلطة','Beef liver with white rice and salad',[ing('كبدة بقري','Beef Liver','165 جم / 165g',165),ing('أرز أبيض','White Rice','190 جم / 190g',190),ing('سلطة خضراء','Green Salad','130 جم / 130g',130)],562,'50g','65g','9g',0),
+          meal('عشاء','Dinner','7:30 PM','حمص بزيت الزيتون مع خضار وعيش أسمر','Hummus in olive oil with vegetables, whole wheat bread',[ing('حمص','Hummus','190 جم / 190g',190),ing('زيت زيتون','Olive Oil','نصف ملعقة / 0.5 tbsp',10),ing('خضار مشكلة','Mixed Vegetables','130 جم / 130g',130),ing('عيش أسمر','Whole Wheat Bread','50 جم / 50g',50)],573,'24g','56g','30g',0),
+          meal('سناك','Snack','5:00 PM','زبادي بالعسل','Plain yogurt with honey',[ing('زبادي','Plain Yogurt','220 جم / 220g',220),ing('عسل نحل','Honey','15 جم / 15g',15)],180,'8g','23g','7g',0)
+        ]),
+        mk('الأربعاء','Wednesday',[
+          meal('إفطار','Breakfast','7:30 AM','شوفان بالتفاح والقرفة','Oats with apple',[ing('شوفان','Oats','75 جم / 75g',75),ing('لبن','Milk','1 كوب / 1 cup',255),ing('تفاح','Apple','حبة / 1 piece',130)],515,'21g','80g','14g',0),
+          meal('غداء','Lunch','2:00 PM','صدر ديك رومي مع بطاطا مسلوقة وخضار','Turkey breast with boiled potato and vegetables',[ing('صدر ديك رومي','Turkey Breast','190 جم / 190g',190),ing('بطاطس مسلوقة','Boiled Potato','230 جم / 230g',230),ing('بروكلي','Broccoli','130 جم / 130g',130),ing('زيت زيتون','Olive Oil','نصف ملعقة / 0.5 tbsp',10)],589,'63g','55g','14g',0),
+          meal('عشاء','Dinner','7:30 PM','شوربة عدس مع سلطة','Lentil soup with salad',[ing('شوربة عدس','Lentil Soup','410 جم / 410g',410),ing('سلطة خضراء','Green Salad','130 جم / 130g',130),ing('عيش بلدي','Baladi Bread','ثلث رغيف / third loaf',60)],472,'25g','82g','7g',0),
+          meal('سناك','Snack','5:00 PM','موزة مع مكسرات مشكلة','Banana with mixed nuts',[ing('موز','Banana','حبة / 1 piece',140),ing('مكسرات مشكلة','Mixed Nuts','20 جم / 20g',20)],246,'6g','36g','11g',0)
+        ]),
+        mk('الخميس','Thursday',[
+          meal('إفطار','Breakfast','7:30 AM','بيض مسلوق مع أفوكادو وعيش أسمر','Boiled eggs with avocado and whole wheat bread',[ing('بيض مسلوق','Boiled Egg','بيضتين / 2 eggs',130),ing('أفوكادو','Avocado','75 جم / 75g',75),ing('عيش أسمر','Whole Wheat Bread','65 جم / 65g',65)],482,'27g','34g','28g',0),
+          meal('غداء','Lunch','2:00 PM','سلمون مشوي مع أرز أسمر وسبانخ','Grilled salmon with brown rice and spinach',[ing('سلمون','Salmon','190 جم / 190g',190),ing('أرز بني','Brown Rice','190 جم / 190g',190),ing('سبانخ','Spinach','130 جم / 130g',130)],632,'51g','48g','25g',0),
+          meal('عشاء','Dinner','7:30 PM','حمص حب معلب مع سلطة وعيش بلدي','Chickpeas with salad and baladi bread',[ing('حمص حب معلب','Chickpeas','230 جم / 230g',230),ing('سلطة خضراء','Green Salad','130 جم / 130g',130),ing('عيش بلدي','Baladi Bread','ثلث رغيف / third loaf',60),ing('زيت زيتون','Olive Oil','نصف ملعقة / 0.5 tbsp',10)],593,'23g','89g','17g',0),
+          meal('سناك','Snack','5:00 PM','برتقالة مع جبنة فيتا','Orange with feta cheese',[ing('برتقال','Orange','حبة / 1 piece',190),ing('جبنة فيتا','Feta Cheese','40 جم / 40g',40)],195,'7g','24g','9g',0)
+        ]),
+        mk('الجمعة','Friday',[
+          meal('إفطار','Breakfast','8:00 AM','فول مدمس بزيت الزيتون والطماطم','Foul medames with olive oil and tomato',[ing('فول مدمس','Foul Medames','255 جم / 255g',255),ing('زيت زيتون','Olive Oil','نصف ملعقة / 0.5 tbsp',10),ing('طماطم','Tomato','75 جم / 75g',75),ing('عيش بلدي','Baladi Bread','نصف رغيف / half loaf',75)],581,'27g','89g','13g',0),
+          meal('غداء','Lunch','2:30 PM','لحمة مفرومة مع مكرونة وسلطة','Ground beef with pasta and salad',[ing('لحمة مفرومة','Ground Beef','165 جم / 165g',165),ing('مكرونة','Pasta','190 جم / 190g',190),ing('سلطة خضراء','Green Salad','130 جم / 130g',130)],694,'52g','53g','30g',0),
+          meal('عشاء','Dinner','8:00 PM','زبادي يوناني مع خضار وعيش أسمر','Greek yogurt with vegetables and whole wheat bread',[ing('زبادي يوناني','Greek Yogurt','220 جم / 220g',220),ing('خضار مشكلة','Mixed Vegetables','130 جم / 130g',130),ing('عيش أسمر','Whole Wheat Bread','50 جم / 50g',50)],299,'31g','37g','3g',0),
+          meal('سناك','Snack','5:30 PM','تفاحة مع طحينة','Apple with tahini',[ing('تفاح','Apple','حبة / 1 piece',165),ing('طحينة','Tahini','15 جم / 15g',15)],175,'3g','26g','8g',0)
+        ]),
+        mk('السبت','Saturday',[
+          meal('إفطار','Breakfast','7:30 AM','شوفان بالمانجو','Oats with mango',[ing('شوفان','Oats','75 جم / 75g',75),ing('لبن','Milk','1 كوب / 1 cup',255),ing('مانجو','Mango','130 جم / 130g',130)],525,'22g','81g','14g',0),
+          meal('غداء','Lunch','2:00 PM','صدر فراخ مشوي مع بطاطا حلوة وبروكلي','Grilled chicken breast with sweet potato and broccoli',[ing('صدر فرخة مشوي','Grilled Chicken Breast','190 جم / 190g',190),ing('بطاطا','Sweet Potato','230 جم / 230g',230),ing('بروكلي','Broccoli','130 جم / 130g',130)],556,'66g','55g','8g',0),
+          meal('عشاء','Dinner','7:30 PM','تونة مع سلطة وخبز أسمر','Tuna with salad and whole wheat bread',[ing('تونة','Tuna','155 جم / 155g',155),ing('سلطة خضراء','Green Salad','155 جم / 155g',155),ing('عيش أسمر','Whole Wheat Bread','65 جم / 65g',65)],371,'50g','33g','4g',0),
+          meal('سناك','Snack','5:00 PM','جبنة قريش مع خيار','Cottage cheese with cucumber',[ing('جبنة قريش','Cottage Cheese','130 جم / 130g',130),ing('خيار','Cucumber','130 جم / 130g',130)],147,'15g','9g','6g',0)
+        ])
+      ]
     }
   };
 }
@@ -2449,6 +2496,7 @@ const DIET_STYLE_LABELS = {
   men: "general men's nutrition (higher protein and calories, balanced)",
   men_40: 'men over 40 (heart-healthy, prostate-friendly, muscle preservation)',
   kids: 'healthy kids (balanced growth nutrition, kid-friendly, no severe restriction)',
+  healthy_lifestyle: 'healthy lifestyle (balanced macros, moderate-protein, no restriction)',
 };
 
 // Phase 3 of the nutrition-architecture migration: DIET_META (health.js),

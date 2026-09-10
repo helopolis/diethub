@@ -157,6 +157,7 @@ const DIET_META = {
   men:           { proteinPerKg: 1.4, lowCarb: false },
   men_40:        { proteinPerKg: 1.6, lowCarb: false }, // bone/muscle preservation
   kids:          { proteinPerKg: 1.2, lowCarb: false },
+  healthy_lifestyle: { proteinPerKg: 1.5, lowCarb: false },
 };
 
 function buildHealthProfile(store, userId) {
@@ -443,7 +444,7 @@ function flag(type, severity, ar, en) { return { type, severity, ar, en }; }
 // labels below are direct translations of the existing Arabic ones (same
 // real diet/goal/activity-level set already used at registration — see
 // RegisterScreen.js's DIET_OPTIONS/GOAL_OPTIONS), not new business data.
-const DIET_AR = { atkins:'أتكينز', keto:'كيتو', lowcarb:'قليل الكربوهيدرات', highprotein:'عالي البروتين', mediterranean:'متوسطي', balanced:'متوازن', diabetic:'مرضى السكري', women:'المرأة', women_40:'المرأة فوق الأربعين', men:'الرجل', men_40:'الرجل فوق الأربعين', kids:'الأطفال' };
+const DIET_AR = { atkins:'أتكينز', keto:'كيتو', lowcarb:'قليل الكربوهيدرات', highprotein:'عالي البروتين', mediterranean:'متوسطي', balanced:'متوازن', diabetic:'مرضى السكري', women:'المرأة', women_40:'المرأة فوق الأربعين', men:'الرجل', men_40:'الرجل فوق الأربعين', kids:'الأطفال', healthy_lifestyle:'نمط حياة صحي' };
 // lose/gain kept for any caller still passing the pre-expansion 2-value
 // scheme (coachSummary's `g.goalType` comes from buildHealthProfile's
 // `goals`, which is already normalizeGoalType()'d, but this map is also
@@ -451,7 +452,7 @@ const DIET_AR = { atkins:'أتكينز', keto:'كيتو', lowcarb:'قليل ال
 // otherwise.
 const GOAL_AR = { lose_weight:'إنقاص الوزن', lose_fat:'حرق الدهون', maintain:'الحفاظ على الوزن', gain_weight:'زيادة الوزن', gain_muscle:'بناء العضلات', lose:'إنقاص الوزن', gain:'زيادة الوزن' };
 const ACTIVITY_AR = { sedentary:'قليل الحركة', light:'نشاط خفيف', moderate:'نشاط متوسط', active:'نشيط', very_active:'نشيط جداً' };
-const DIET_EN = { atkins:'Atkins', keto:'Keto', lowcarb:'Low-Carb', highprotein:'High-Protein', mediterranean:'Mediterranean', balanced:'Balanced', diabetic:'Diabetic', women:'Women', women_40:'Women 40+', men:'Men', men_40:'Men 40+', kids:'Kids' };
+const DIET_EN = { atkins:'Atkins', keto:'Keto', lowcarb:'Low-Carb', highprotein:'High-Protein', mediterranean:'Mediterranean', balanced:'Balanced', diabetic:'Diabetic', women:'Women', women_40:'Women 40+', men:'Men', men_40:'Men 40+', kids:'Kids', healthy_lifestyle:'Healthy Lifestyle' };
 const GOAL_EN = { lose_weight:'Lose Weight', lose_fat:'Lose Fat', maintain:'Maintain Weight', gain_weight:'Gain Weight', gain_muscle:'Build Muscle', lose:'Lose Weight', gain:'Gain Weight' };
 const ACTIVITY_EN = { sedentary:'Sedentary', light:'Lightly Active', moderate:'Moderately Active', active:'Active', very_active:'Very Active' };
 
