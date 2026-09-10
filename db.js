@@ -949,6 +949,50 @@ function seedDiets() {
     { diet_id: 'diabetic', condition_id: 'type1_diabetes', severity: 'caution',
       message_ar: 'هذا النظام مصمم كتوجيه عام لسكري النوع الثاني ولا يأخذ في الاعتبار جرعات الأنسولين. إذا كان لديك سكري النوع الأول، احسب الكربوهيدرات مع طبيبك لمطابقة جرعة الأنسولين، ولا تعتمد على هذا الرقم وحده.',
       message_en: "This plan is written as general Type 2 guidance and doesn't account for insulin dosing. If you have Type 1 diabetes, carb-count with your care team to match your insulin ratio — don't rely on this number alone." },
+    // Added 2026-09-10: 6 more real, standard clinical cautions (not
+    // invented) for the trackable-only conditions added earlier. Explicitly
+    // NOT added for hypertension (the real driver, sodium, isn't tracked
+    // anywhere in this app's food data - a diet-level rule would be
+    // fabricating a link the data can't support) or prediabetes (controlled-
+    // carb diets are broadly fine regardless of which one is picked, not a
+    // real contraindication case). Scoped to keto/atkins only - the two
+    // diets where these specific cautions are clearly, defensibly true.
+    { diet_id: 'keto', condition_id: 'pregnant', severity: 'caution',
+      message_ar: 'الكيتو غير موصى به عادة أثناء الحمل بسبب تأثير الكيتونات المحتمل على نمو الجنين. استشيري طبيبك قبل اتباع هذا النظام.',
+      message_en: "Ketogenic diets aren't generally recommended during pregnancy due to potential effects of ketone exposure on fetal development. Talk to your doctor before following this diet." },
+    { diet_id: 'atkins', condition_id: 'pregnant', severity: 'caution',
+      message_ar: 'أتكينز نظام منخفض الكربوهيدرات جداً وقد لا يكون مناسباً أثناء الحمل. استشيري طبيبك أولاً.',
+      message_en: 'Atkins is a very low-carb diet and may not be appropriate during pregnancy. Check with your doctor first.' },
+    { diet_id: 'keto', condition_id: 'gestational_diabetes', severity: 'caution',
+      message_ar: 'الكيتو قد يؤثر على إدارة سكري الحمل ومستويات الكيتونات. يجب متابعة هذا النظام تحت إشراف طبي مباشر أثناء الحمل.',
+      message_en: 'Keto can affect gestational diabetes management and ketone levels. This diet should only be followed under direct medical supervision during pregnancy.' },
+    { diet_id: 'atkins', condition_id: 'gestational_diabetes', severity: 'caution',
+      message_ar: 'أتكينز نظام منخفض الكربوهيدرات جداً وقد يحتاج متابعة خاصة مع سكري الحمل. استشيري طبيبك أولاً.',
+      message_en: 'Atkins is very low-carb and may need special monitoring alongside gestational diabetes. Check with your doctor first.' },
+    { diet_id: 'keto', condition_id: 'breastfeeding', severity: 'caution',
+      message_ar: 'الأنظمة المقيدة جداً مثل الكيتو قد تؤثر على كمية الحليب أثناء الرضاعة. استشيري طبيبك أو أخصائي الرضاعة أولاً.',
+      message_en: 'Very restrictive diets like Keto can affect milk supply while breastfeeding. Check with your doctor or a lactation specialist first.' },
+    { diet_id: 'atkins', condition_id: 'breastfeeding', severity: 'caution',
+      message_ar: 'أتكينز نظام مقيد جداً وقد يؤثر على كمية الحليب أثناء الرضاعة. استشيري طبيبك أولاً.',
+      message_en: 'Atkins is a very restrictive diet and may affect milk supply while breastfeeding. Check with your doctor first.' },
+    { diet_id: 'keto', condition_id: 'type2_diabetes', severity: 'caution',
+      message_ar: 'إذا كنت تتناول أدوية للسكري (خاصة الأنسولين)، فإن الكيتو قد يسبب انخفاضاً حاداً في السكر. استشر طبيبك قبل البدء لتعديل الجرعات إذا لزم الأمر.',
+      message_en: 'If you take diabetes medication (especially insulin), Keto can cause a sharp drop in blood sugar. Talk to your doctor before starting, in case your dosage needs adjusting.' },
+    { diet_id: 'atkins', condition_id: 'type2_diabetes', severity: 'caution',
+      message_ar: 'إذا كنت تتناول أدوية للسكري (خاصة الأنسولين)، فإن أتكينز قد يسبب انخفاضاً حاداً في السكر. استشر طبيبك قبل البدء.',
+      message_en: 'If you take diabetes medication (especially insulin), Atkins can cause a sharp drop in blood sugar. Talk to your doctor before starting.' },
+    { diet_id: 'atkins', condition_id: 'liver_disease', severity: 'caution',
+      message_ar: 'أتكينز نظام عالي البروتين وقد يزيد العبء على الكبد في حالات أمراض الكبد. استشر طبيبك أولاً.',
+      message_en: 'Atkins is high-protein and may add strain on the liver in liver disease. Check with your doctor first.' },
+    { diet_id: 'keto', condition_id: 'liver_disease', severity: 'caution',
+      message_ar: 'الكيتو نظام عالي الدهون وقد لا يناسب حالات أمراض الكبد. استشر طبيبك أولاً.',
+      message_en: 'Keto is high-fat and may not suit liver disease. Check with your doctor first.' },
+    { diet_id: 'keto', condition_id: 'hyperlipidemia', severity: 'caution',
+      message_ar: 'الكيتو نظام عالي الدهون جداً، وقد تحتاج لمتابعة تحليل الدهون (الكوليسترول) بشكل منتظم أثناء اتباعه.',
+      message_en: 'Keto is very high-fat, and you may need to monitor your lipid panel (cholesterol) regularly while following it.' },
+    { diet_id: 'atkins', condition_id: 'hyperlipidemia', severity: 'caution',
+      message_ar: 'أتكينز نظام عالي الدهون، وقد تحتاج لمتابعة تحليل الدهون (الكوليسترول) بشكل منتظم أثناء اتباعه.',
+      message_en: 'Atkins is high-fat, and you may need to monitor your lipid panel (cholesterol) regularly while following it.' },
   ];
   for (const c of contraindications) insDietContraStmt.run({ ...c, now });
 }

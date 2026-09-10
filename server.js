@@ -1203,9 +1203,13 @@ function buildMealPlans() {
 // Resolves a test's why/whyAr field (which may be a flat string for
 // diet-agnostic tests, or a {diet: reason, default: reason} map for tests
 // whose rationale genuinely differs by diet/demographic) down to the one
-// string relevant to the given diet.
-function resolveLabWhy(field, diet) {
+// string relevant to the given diet. A real medical condition (if the map
+// has a reason for one the user actually has) takes priority over the diet
+// reason - "why you should get this test" is more true when phrased around
+// an actual condition than a diet choice, when both exist on the same test.
+function resolveLabWhy(field, diet, medicalConditions = []) {
   if (typeof field === 'string') return field;
+  for (const c of medicalConditions) if (field[c]) return field[c];
   return field[diet] || field.default;
 }
 
@@ -1217,23 +1221,23 @@ function resolveLabWhy(field, diet) {
 // "why" text to every user regardless of their selected diet.
 function buildLabTests() {
   return {
-    lastUpdated:'2026-07-21',
+    lastUpdated:'2026-09-10',
     tests:[
       { id:'lipid', name:'Lipid Profile', nameAr:'دهون الدم الكاملة', urgent:true, frequency:'monthly', frequencyAr:'شهرياً', mokhtabar:150, alpha:200, labmed:180, diets:['all'],
-        why:{ default:'Monitors cholesterol and heart health', atkins:'Essential for Atkins — monitors cholesterol changes from a high-fat diet', keto:'Essential for Keto — monitors cholesterol changes from a very high-fat diet', men_40:'Heart disease risk rises after 40 — track cholesterol closely', women_40:'Cholesterol often rises after menopause — important to monitor' },
-        whyAr:{ default:'يراقب الكوليسترول وصحة القلب', atkins:'أساسي في Atkins — يراقب تغيرات الكوليسترول من نظام عالي الدهون', keto:'أساسي في Keto — يراقب تغيرات الكوليسترول من نظام عالي الدهون جداً', men_40:'خطر أمراض القلب يزيد بعد الأربعين — تابع الكوليسترول جيداً', women_40:'الكوليسترول غالباً يرتفع بعد سن اليأس — مهم المتابعة' } },
-      { id:'kidney', name:'Kidney Function', nameAr:'وظائف الكلى', urgent:true, frequency:'quarterly', frequencyAr:'كل 3 أشهر', mokhtabar:200, alpha:252, labmed:230, diets:['atkins','keto','men','men_40'],
-        why:{ default:'High-protein diets stress the kidneys — must monitor' },
-        whyAr:{ default:'الأنظمة عالية البروتين تضغط على الكلى — يجب المتابعة' } },
+        why:{ default:'Monitors cholesterol and heart health', atkins:'Essential for Atkins — monitors cholesterol changes from a high-fat diet', keto:'Essential for Keto — monitors cholesterol changes from a very high-fat diet', men_40:'Heart disease risk rises after 40 — track cholesterol closely', women_40:'Cholesterol often rises after menopause — important to monitor', hyperlipidemia:'Core test for managing your high cholesterol — tracks whether it is improving' },
+        whyAr:{ default:'يراقب الكوليسترول وصحة القلب', atkins:'أساسي في Atkins — يراقب تغيرات الكوليسترول من نظام عالي الدهون', keto:'أساسي في Keto — يراقب تغيرات الكوليسترول من نظام عالي الدهون جداً', men_40:'خطر أمراض القلب يزيد بعد الأربعين — تابع الكوليسترول جيداً', women_40:'الكوليسترول غالباً يرتفع بعد سن اليأس — مهم المتابعة', hyperlipidemia:'التحليل الأساسي لمتابعة ارتفاع الكوليسترول — يوضح هل يتحسن أم لا' } },
+      { id:'kidney', name:'Kidney Function', nameAr:'وظائف الكلى', urgent:true, frequency:'quarterly', frequencyAr:'كل 3 أشهر', mokhtabar:200, alpha:252, labmed:230, diets:['atkins','keto','men','men_40'], conditions:['ckd','hypertension'],
+        why:{ default:'High-protein diets stress the kidneys — must monitor', ckd:'Essential to monitor kidney function directly with chronic kidney disease', hypertension:'High blood pressure is a leading cause of kidney damage — worth tracking together' },
+        whyAr:{ default:'الأنظمة عالية البروتين تضغط على الكلى — يجب المتابعة', ckd:'أساسي لمتابعة وظائف الكلى مباشرة مع مرض الكلى المزمن', hypertension:'ارتفاع ضغط الدم من أهم أسباب تلف الكلى — يستحق المتابعة معاً' } },
       { id:'sugar', name:'Blood Sugar + HbA1c', nameAr:'سكر الدم + HbA1c', urgent:true, frequency:'quarterly', frequencyAr:'كل 3 أشهر', mokhtabar:80, alpha:110, labmed:90, diets:['all'],
-        why:{ default:'Foundation for all diets — determines insulin resistance', diabetic:'Core test for managing diabetes — tracks long-term blood sugar control', kids:'Establishes a healthy baseline early and catches issues while easy to manage' },
-        whyAr:{ default:'أساس كل الأنظمة — يحدد مستوى مقاومة الإنسولين', diabetic:'التحليل الأساسي لمتابعة السكري — يتابع التحكم طويل المدى في سكر الدم', kids:'يحدد خط أساس صحي مبكراً ويكشف أي مشكلة وهي لسه سهل التعامل معها' } },
+        why:{ default:'Foundation for all diets — determines insulin resistance', diabetic:'Core test for managing diabetes — tracks long-term blood sugar control', kids:'Establishes a healthy baseline early and catches issues while easy to manage', type1_diabetes:'Core test for managing Type 1 diabetes — tracks long-term blood sugar control', type2_diabetes:'Core test for managing Type 2 diabetes — tracks long-term blood sugar control', prediabetes:'Tracks whether prediabetes is progressing or improving', gestational_diabetes:'Important to monitor blood sugar closely during pregnancy with gestational diabetes' },
+        whyAr:{ default:'أساس كل الأنظمة — يحدد مستوى مقاومة الإنسولين', diabetic:'التحليل الأساسي لمتابعة السكري — يتابع التحكم طويل المدى في سكر الدم', kids:'يحدد خط أساس صحي مبكراً ويكشف أي مشكلة وهي لسه سهل التعامل معها', type1_diabetes:'التحليل الأساسي لمتابعة سكري النوع الأول — يتابع التحكم طويل المدى في سكر الدم', type2_diabetes:'التحليل الأساسي لمتابعة سكري النوع الثاني — يتابع التحكم طويل المدى في سكر الدم', prediabetes:'يتابع هل ما قبل السكري يتطور أم يتحسن', gestational_diabetes:'مهم لمتابعة سكر الدم عن قرب أثناء الحمل مع سكري الحمل' } },
       { id:'cbc', name:'CBC Complete Blood Count', nameAr:'صورة الدم الكاملة', urgent:false, frequency:'quarterly', frequencyAr:'كل 3 أشهر', mokhtabar:60, alpha:165, labmed:100, diets:['all'],
         why:{ default:'Detects anemia and general blood health issues', atkins:'Detects anemia common when cutting carbs', keto:'Detects anemia common when cutting carbs', women:'Iron-deficiency anemia is common in women — this test catches it early', women_40:'Iron-deficiency anemia is common in women — this test catches it early', kids:'Screens for anemia, which affects growth and concentration in children' },
         whyAr:{ default:'يكشف الأنيميا ومشاكل الدم العامة', atkins:'يكشف الأنيميا الشائعة عند تقليل الكربوهيدرات', keto:'يكشف الأنيميا الشائعة عند تقليل الكربوهيدرات', women:'أنيميا نقص الحديد شائعة عند النساء — هذا التحليل يكشفها مبكراً', women_40:'أنيميا نقص الحديد شائعة عند النساء — هذا التحليل يكشفها مبكراً', kids:'يكشف الأنيميا التي تؤثر على النمو والتركيز عند الأطفال' } },
       { id:'liver', name:'Liver Function', nameAr:'وظائف الكبد', urgent:false, frequency:'quarterly', frequencyAr:'كل 3 أشهر', mokhtabar:150, alpha:300, labmed:250, diets:['all'],
-        why:{ default:'General liver health check', atkins:'The liver works hard during ketosis and high-fat digestion', keto:'The liver works hard during ketosis and high-fat digestion' },
-        whyAr:{ default:'فحص عام لصحة الكبد', atkins:'الكبد يعمل بشكل مكثف أثناء الكيتوسيس وهضم الدهون العالية', keto:'الكبد يعمل بشكل مكثف أثناء الكيتوسيس وهضم الدهون العالية' } },
+        why:{ default:'General liver health check', atkins:'The liver works hard during ketosis and high-fat digestion', keto:'The liver works hard during ketosis and high-fat digestion', liver_disease:'Directly monitors liver health and function' },
+        whyAr:{ default:'فحص عام لصحة الكبد', atkins:'الكبد يعمل بشكل مكثف أثناء الكيتوسيس وهضم الدهون العالية', keto:'الكبد يعمل بشكل مكثف أثناء الكيتوسيس وهضم الدهون العالية', liver_disease:'يتابع صحة ووظائف الكبد مباشرة' } },
       { id:'thyroid', name:'Thyroid TSH+T3+T4', nameAr:'هرمونات الغدة الدرقية', urgent:false, frequency:'quarterly', frequencyAr:'كل 3 أشهر', mokhtabar:150, alpha:175, labmed:160, diets:['all'],
         why:{ default:'Thyroid issues prevent weight loss/health goals despite a perfect diet', women_40:'Thyroid problems become more common around menopause and affect weight and energy' },
         whyAr:{ default:'مشاكل الغدة تمنع تحقيق أهدافك الصحية حتى مع أفضل نظام', women_40:'مشاكل الغدة الدرقية تصبح أكثر شيوعاً حول سن اليأس وتؤثر على الوزن والطاقة' } },
@@ -2967,10 +2971,15 @@ app.post(`${BASE}/api/meal-plan/swap`, auth, async (req,res) => {
 app.get(`${BASE}/api/food-prices`, auth, (req,res)=>res.json({ ...load('food_prices.json'), freshness: load('price_scraper_freshness.json') || {} }));
 app.get(`${BASE}/api/labs`, auth, (req,res) => {
   const diet = req.query.diet || 'atkins';
+  // A test can now also be relevant because of a real medical condition,
+  // not just the diet - e.g. Kidney Function belongs in front of anyone
+  // with CKD or hypertension, regardless of what diet they picked (it
+  // previously only showed for the high-protein diets).
+  const medicalConditions = Array.isArray(req.userObj?.profile?.medicalConditions) ? req.userObj.profile.medicalConditions : [];
   const data = load('labs.json') || { lastUpdated:null, tests:[] };
   const tests = (data.tests||[])
-    .filter(t => (t.diets||[]).includes('all') || (t.diets||[]).includes(diet))
-    .map(t => ({ ...t, why: resolveLabWhy(t.why, diet), whyAr: resolveLabWhy(t.whyAr, diet) }));
+    .filter(t => (t.diets||[]).includes('all') || (t.diets||[]).includes(diet) || (t.conditions||[]).some(c => medicalConditions.includes(c)))
+    .map(t => ({ ...t, why: resolveLabWhy(t.why, diet, medicalConditions), whyAr: resolveLabWhy(t.whyAr, diet, medicalConditions) }));
   res.json({ lastUpdated: data.lastUpdated, tests });
 });
 
@@ -4379,8 +4388,9 @@ app.get(`${BASE}/api/lab-results/recommendations`, auth, (req,res) => {
   // show male-specific supplements to a user who simply never set their
   // gender, exactly the kind of unverified assumption this whole pass has
   // been about not making.
+  const healthProfile = buildHealthProfile(store, req.user.id);
   const demographics = {
-    age: buildHealthProfile(store, req.user.id)?.demographics?.age,
+    age: healthProfile?.demographics?.age,
     gender: req.userObj.profile?.gender === 'male' || req.userObj.profile?.gender === 'female'
       ? req.userObj.profile.gender : null,
   };
@@ -4413,6 +4423,12 @@ app.get(`${BASE}/api/lab-results/recommendations`, auth, (req,res) => {
     dietSupplements: buildDietSupplements(diet, demographics),
     locationSupplements,
     referenceMetadata,
+    // Same real dietWarnings ProfileScreen already shows (diet_contraindications
+    // table, keyed by the user's actual diet + medical conditions) - surfaced
+    // here too rather than inventing new supplement-specific medical claims,
+    // since this screen is exactly where a "should I be taking this" caution
+    // (e.g. Keto + pregnancy, Atkins + liver disease) is most relevant.
+    dietWarnings: healthProfile?.dietWarnings || [],
   });
 });
 

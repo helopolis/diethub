@@ -88,6 +88,48 @@ const DIET_CONTRAINDICATIONS = {
       en: "This plan is written as general Type 2 guidance and doesn't account for insulin dosing. If you have Type 1 diabetes, carb-count with your care team to match your insulin ratio — don't rely on this number alone." },
   ],
 };
+// Added 2026-09-10 - see db.js seedDiets()'s matching comment for why these
+// 6 conditions got real rules (and why hypertension/prediabetes didn't).
+DIET_CONTRAINDICATIONS.keto.push(
+  { condition: 'pregnant', severity: 'caution',
+    ar: 'الكيتو غير موصى به عادة أثناء الحمل بسبب تأثير الكيتونات المحتمل على نمو الجنين. استشيري طبيبك قبل اتباع هذا النظام.',
+    en: "Ketogenic diets aren't generally recommended during pregnancy due to potential effects of ketone exposure on fetal development. Talk to your doctor before following this diet." },
+  { condition: 'gestational_diabetes', severity: 'caution',
+    ar: 'الكيتو قد يؤثر على إدارة سكري الحمل ومستويات الكيتونات. يجب متابعة هذا النظام تحت إشراف طبي مباشر أثناء الحمل.',
+    en: 'Keto can affect gestational diabetes management and ketone levels. This diet should only be followed under direct medical supervision during pregnancy.' },
+  { condition: 'breastfeeding', severity: 'caution',
+    ar: 'الأنظمة المقيدة جداً مثل الكيتو قد تؤثر على كمية الحليب أثناء الرضاعة. استشيري طبيبك أو أخصائي الرضاعة أولاً.',
+    en: 'Very restrictive diets like Keto can affect milk supply while breastfeeding. Check with your doctor or a lactation specialist first.' },
+  { condition: 'type2_diabetes', severity: 'caution',
+    ar: 'إذا كنت تتناول أدوية للسكري (خاصة الأنسولين)، فإن الكيتو قد يسبب انخفاضاً حاداً في السكر. استشر طبيبك قبل البدء لتعديل الجرعات إذا لزم الأمر.',
+    en: 'If you take diabetes medication (especially insulin), Keto can cause a sharp drop in blood sugar. Talk to your doctor before starting, in case your dosage needs adjusting.' },
+  { condition: 'liver_disease', severity: 'caution',
+    ar: 'الكيتو نظام عالي الدهون وقد لا يناسب حالات أمراض الكبد. استشر طبيبك أولاً.',
+    en: 'Keto is high-fat and may not suit liver disease. Check with your doctor first.' },
+  { condition: 'hyperlipidemia', severity: 'caution',
+    ar: 'الكيتو نظام عالي الدهون جداً، وقد تحتاج لمتابعة تحليل الدهون (الكوليسترول) بشكل منتظم أثناء اتباعه.',
+    en: 'Keto is very high-fat, and you may need to monitor your lipid panel (cholesterol) regularly while following it.' },
+);
+DIET_CONTRAINDICATIONS.atkins.push(
+  { condition: 'pregnant', severity: 'caution',
+    ar: 'أتكينز نظام منخفض الكربوهيدرات جداً وقد لا يكون مناسباً أثناء الحمل. استشيري طبيبك أولاً.',
+    en: 'Atkins is a very low-carb diet and may not be appropriate during pregnancy. Check with your doctor first.' },
+  { condition: 'gestational_diabetes', severity: 'caution',
+    ar: 'أتكينز نظام منخفض الكربوهيدرات جداً وقد يحتاج متابعة خاصة مع سكري الحمل. استشيري طبيبك أولاً.',
+    en: 'Atkins is very low-carb and may need special monitoring alongside gestational diabetes. Check with your doctor first.' },
+  { condition: 'breastfeeding', severity: 'caution',
+    ar: 'أتكينز نظام مقيد جداً وقد يؤثر على كمية الحليب أثناء الرضاعة. استشيري طبيبك أولاً.',
+    en: 'Atkins is a very restrictive diet and may affect milk supply while breastfeeding. Check with your doctor first.' },
+  { condition: 'type2_diabetes', severity: 'caution',
+    ar: 'إذا كنت تتناول أدوية للسكري (خاصة الأنسولين)، فإن أتكينز قد يسبب انخفاضاً حاداً في السكر. استشر طبيبك قبل البدء.',
+    en: 'If you take diabetes medication (especially insulin), Atkins can cause a sharp drop in blood sugar. Talk to your doctor before starting.' },
+  { condition: 'liver_disease', severity: 'caution',
+    ar: 'أتكينز نظام عالي البروتين وقد يزيد العبء على الكبد في حالات أمراض الكبد. استشر طبيبك أولاً.',
+    en: 'Atkins is high-protein and may add strain on the liver in liver disease. Check with your doctor first.' },
+  { condition: 'hyperlipidemia', severity: 'caution',
+    ar: 'أتكينز نظام عالي الدهون، وقد تحتاج لمتابعة تحليل الدهون (الكوليسترول) بشكل منتظم أثناء اتباعه.',
+    en: 'Atkins is high-fat, and you may need to monitor your lipid panel (cholesterol) regularly while following it.' },
+);
 
 // Bilingual objects, not a pre-resolved string — same pattern bmiCategory
 // already uses, since buildHealthProfile doesn't take a lang param; each
