@@ -55,7 +55,7 @@ body{overflow:hidden;position:relative}
 .food-icon{position:absolute;opacity:0.09;animation:drift linear infinite}
 @keyframes drift{from{transform:translateY(100vh) rotate(0)}to{transform:translateY(-150px) rotate(360deg)}}
 
-#heroBanner{position:fixed;top:16px;left:50%;transform:translateX(-50%);width:min(92vw,460px);aspect-ratio:1200/675;border-radius:var(--e-radius);overflow:hidden;z-index:1000;box-shadow:var(--e-shadow-lg);cursor:pointer;background:linear-gradient(135deg,var(--e-primary),var(--e-accent));direction:ltr}
+#heroBanner{display:none}
 #heroBannerTrack{display:flex;direction:ltr;height:100%;width:max-content;animation:heroTicker 35s linear infinite}
 #heroBannerTrack.ltr{animation-direction:reverse}
 #heroBannerTrack img,#heroBannerTrack .hero-slide-text{width:min(92vw,460px);height:100%;flex-shrink:0}
@@ -68,10 +68,11 @@ body{overflow:hidden;position:relative}
 #heroBanner:hover #heroBannerTrack{animation-play-state:paused}
 @media(prefers-reduced-motion:reduce){#heroBannerTrack{animation:none}.blob{animation:none}.food-icon{animation:none}}
 
-body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;padding:20px;padding-top:291px;box-sizing:border-box;min-height:100vh}
+html{overflow-y:auto}
+body{display:grid;grid-template-columns:1fr auto 1fr;align-items:safe center;gap:0;padding:20px;padding-top:60px;box-sizing:border-box;min-height:100vh}
 .banner-col{position:relative;z-index:5;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:20px 12px;overflow:hidden;height:100vh;max-height:780px}
-.banner-track{display:flex;flex-direction:column;gap:14px;animation:scrollUp 28s linear infinite}
-.banner-track-rev{display:flex;flex-direction:column;gap:14px;animation:scrollDown 32s linear infinite}
+.banner-track{display:flex;flex-direction:column;gap:14px;animation:scrollUp 140s linear infinite}
+.banner-track-rev{display:flex;flex-direction:column;gap:14px;animation:scrollDown 150s linear infinite}
 @keyframes scrollUp{from{transform:translateY(0)}to{transform:translateY(-50%)}}
 @keyframes scrollDown{from{transform:translateY(-50%)}to{transform:translateY(0)}}
 .banner-col:hover .banner-track,.banner-col:hover .banner-track-rev{animation-play-state:paused}
@@ -84,10 +85,16 @@ body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;pa
 .tag-primary{background:var(--e-primary-soft);color:var(--e-primary-ink)}
 .tag-accent{background:var(--e-accent-soft);color:var(--e-accent-ink)}
 .tag-error{background:var(--e-error-soft);color:var(--e-error-ink)}
-@media(max-width:1100px){.banner-col{display:none}body{display:flex;align-items:center;justify-content:center}}
+@media(max-width:1100px){.banner-col{display:none}body{display:flex;align-items:safe center;justify-content:center}}
 
 .login-card-slot{position:relative;z-index:10;justify-self:center;width:100%}
 .hpds-auth-divider-label{padding:0 4px}
+
+/* Blue accent for this page's primary actions only (scoped to .hpds-auth-card,
+   not a global HPDS token change) - matches the mobile app's real brand
+   accent color for CTAs/links, without touching --e-primary-ink, which
+   other HPDS pages (dashboard-pilot.html etc.) still rely on as sage green. */
+.hpds-auth-card .hpds-btn-primary{background:var(--e-accent-ink)}
 </style>
 </head>
 <body>
@@ -150,7 +157,7 @@ body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;pa
     <div style="text-align:center;margin-top:12px"><a href="/forgot-password-pilot.html" id="forgotLink" style="color:var(--e-ink-soft);font-size:0.85rem">نسيت كلمة المرور؟</a></div>
     <div style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--e-line-soft)">
       <span id="noAccountText" style="color:var(--e-ink-soft);font-size:0.85rem">ليس لديك حساب؟</span>
-      <a href="#" onclick="switchAuth('register');return false" id="registerLink" style="color:var(--e-primary-ink);font-weight:700;font-size:0.85rem">سجّل الآن 🆓</a>
+      <a href="#" onclick="switchAuth('register');return false" id="registerLink" style="color:var(--e-accent-ink);font-weight:700;font-size:0.85rem">سجّل الآن 🆓</a>
     </div>
     <div style="text-align:center;margin-top:10px"><a href="/diet/demo" id="demoLink" style="color:var(--e-ink-faint);font-size:0.8rem">👁️ عرض تجريبي بدون تسجيل</a></div>
   </div>
@@ -172,7 +179,7 @@ body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;pa
       <div class="hpds-field">
         <label class="hpds-field-label" id="rBudgetLabel">الميزانية اليومية للطعام</label>
         <input class="hpds-range" type="range" min="100" max="500" value="200" step="25" id="rBudget" oninput="updateBudgetVal()">
-        <div class="hpds-range-val" id="rBudgetVal">200 جنيه/يوم</div>
+        <div class="hpds-range-val" id="rBudgetVal">200 / يوم</div>
       </div>
       <div class="hpds-reg-divider" id="measureDivider">📏 القياسات الجسدية (InBody)</div>
       <div class="hpds-field-3">
@@ -202,16 +209,16 @@ body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;pa
       <div class="hpds-pwd-hint" id="pwdHint"></div>
       <div class="hpds-hint-box" id="pwdRequirements">
         🔒 كلمة المرور يجب أن تحتوي على: حرف كبير (A-Z) + حرف صغير (a-z) + رقم (0-9) + رمز (!@#$%)<br>
-        <span style="color:var(--e-primary-ink)">مثال صحيح: MyDiet2026!</span>
+        <span style="color:var(--e-accent-ink)">مثال صحيح: MyDiet2026!</span>
       </div>
       <div class="hpds-field"><label class="hpds-field-label" id="rEmailLabel">البريد الإلكتروني</label><input class="hpds-input" type="email" id="rEmail" placeholder="email@example.com"></div>
-      <div class="hpds-field"><label class="hpds-field-label" id="rPhoneLabel">رقم الهاتف</label><input class="hpds-input" type="tel" id="rPhone" placeholder="01XXXXXXXXX"></div>
+      <div class="hpds-field"><label class="hpds-field-label" id="rPhoneLabel">رقم الهاتف</label><input class="hpds-input" type="tel" id="rPhone" placeholder="+1 234 567 8900"></div>
     </div>
     <button class="hpds-btn hpds-btn-primary hpds-btn-md" id="regBtn" onclick="doRegister()">ابدأ تجربتك المجانية ←</button>
     <div style="text-align:center;margin-top:12px"><a href="/diet/demo" id="demoLink2" style="color:var(--e-ink-faint);font-size:0.8rem">👁️ عرض تجريبي أولاً</a></div>
     <div style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--e-line-soft)">
       <span style="color:var(--e-ink-soft);font-size:0.85rem" id="haveAccountText">لديك حساب بالفعل؟</span>
-      <a href="#" onclick="switchAuth('login');return false" style="color:var(--e-primary-ink);font-weight:700;font-size:0.85rem" id="loginLinkFromReg">سجّل الدخول</a>
+      <a href="#" onclick="switchAuth('login');return false" style="color:var(--e-accent-ink);font-weight:700;font-size:0.85rem" id="loginLinkFromReg">سجّل الدخول</a>
     </div>
   </div>
 </div>
@@ -229,7 +236,7 @@ const STR = {
     tabLogin:'تسجيل الدخول', tabReg:'حساب جديد 🆓', regBtn:'ابدأ تجربتك المجانية ←', regBtnBusy:'جاري الإنشاء...',
     trialPill:'تجربة مجانية <span>14 يوم</span> — بدون بطاقة ائتمان',
     rUsrLabel:'اسم المستخدم *', rPwdLabel:'كلمة المرور *',
-    pwdReq:'🔒 كلمة المرور يجب أن تحتوي على: حرف كبير (A-Z) + حرف صغير (a-z) + رقم (0-9) + رمز (!@#$%)<br><span style="color:var(--e-primary-ink)">مثال صحيح: MyDiet2026!</span>',
+    pwdReq:'🔒 كلمة المرور يجب أن تحتوي على: حرف كبير (A-Z) + حرف صغير (a-z) + رقم (0-9) + رمز (!@#$%)<br><span style="color:var(--e-accent-ink)">مثال صحيح: MyDiet2026!</span>',
     rEmailLabel:'البريد الإلكتروني', rPhoneLabel:'رقم الهاتف',
     dietDivider:'🎯 النظام الغذائي والهدف', rDietLabel:'النظام الغذائي', rGenderLabel:'الجنس', rBudgetLabel:'الميزانية اليومية للطعام',
     measureDivider:'📏 القياسات الجسدية (InBody)', rWeightLabel:'الوزن (كجم)', rHeightLabel:'الطول (سم)', rAgeLabel:'العمر',
@@ -248,7 +255,7 @@ const STR = {
     tabLogin:'Login', tabReg:'New Account 🆓', regBtn:'Start your free trial →', regBtnBusy:'Creating...',
     trialPill:'Free trial <span>14 days</span> — no credit card',
     rUsrLabel:'Username *', rPwdLabel:'Password *',
-    pwdReq:'🔒 Password must contain: uppercase (A-Z) + lowercase (a-z) + number (0-9) + symbol (!@#$%)<br><span style="color:var(--e-primary-ink)">Valid example: MyDiet2026!</span>',
+    pwdReq:'🔒 Password must contain: uppercase (A-Z) + lowercase (a-z) + number (0-9) + symbol (!@#$%)<br><span style="color:var(--e-accent-ink)">Valid example: MyDiet2026!</span>',
     rEmailLabel:'Email', rPhoneLabel:'Phone Number',
     dietDivider:'🎯 Diet & Goal', rDietLabel:'Diet Type', rGenderLabel:'Gender', rBudgetLabel:'Daily Food Budget',
     measureDivider:'📏 Body Measurements (InBody)', rWeightLabel:'Weight (kg)', rHeightLabel:'Height (cm)', rAgeLabel:'Age',
@@ -346,7 +353,7 @@ function renderSelectOptions(selectId, options, isAr) {
 function updateBudgetVal() {
   const isAr = _loginLang === 'ar';
   const v = document.getElementById('rBudget').value;
-  document.getElementById('rBudgetVal').textContent = v + (isAr ? ' جنيه/يوم' : ' EGP/day');
+  document.getElementById('rBudgetVal').textContent = v + (isAr ? ' / يوم' : ' /day');
 }
 function calcBMIField() {
   const s = STR[_loginLang];
@@ -505,7 +512,7 @@ function fbLogin() {
 //    semantic tag colors instead of the old lime/orange/coral rgba tints. ──
 const LEFT_FEATS=[
   {icon:'🥗',titleAr:'خطط وجبات أسبوعية',titleEn:'Weekly Meal Plans',descAr:'خطط مخصصة لنظامك الغذائي: أتكينز، كيتو، متوسطي، سكري',descEn:'Custom plans for your diet: Atkins, Keto, Mediterranean, Diabetic',tagAr:'مخصص',tagEn:'Custom',tagClass:'tag-primary'},
-  {icon:'💰',titleAr:'أسعار السوق المصري',titleEn:'Egyptian Market Prices',descAr:'مقارنة أسعار 8 متاجر محدثة أسبوعياً في مكان واحد',descEn:'Compare prices across 8 stores, updated weekly, in one place',tagAr:'توفير',tagEn:'Savings',tagClass:'tag-accent'},
+  {icon:'💰',titleAr:'مقارنة الأسعار',titleEn:'Price Comparison',descAr:'مقارنة أسعار المتاجر القريبة منك محدثة أسبوعياً في مكان واحد',descEn:'Compare prices across nearby stores, updated weekly, in one place',tagAr:'توفير',tagEn:'Savings',tagClass:'tag-accent'},
   {icon:'🧬',titleAr:'تحليل InBody',titleEn:'InBody Analysis',descAr:'أدخل قياساتك واحصل على توصيات دقيقة لجسمك',descEn:'Enter your measurements and get precise recommendations for your body',tagAr:'دقيق',tagEn:'Precise',tagClass:'tag-primary'},
   {icon:'🔬',titleAr:'دليل تحاليل المعمل',titleEn:'Lab Test Guide',descAr:'اعرف أي تحاليل تحتاجها ومتى، مع مقارنة أسعار المعامل',descEn:'Know which lab tests you need and when, with price comparisons',tagAr:'صحة',tagEn:'Health',tagClass:'tag-error'},
   {icon:'🤖',titleAr:'مساعد ذكي بالعربي',titleEn:'Smart AI Assistant',descAr:'مساعد Health Pace يجاوبك على أسئلتك الغذائية فوراً',descEn:'The Health Pace Assistant answers your nutrition questions instantly',tagAr:'مميز',tagEn:'VIP',tagClass:'tag-accent'},
@@ -518,7 +525,7 @@ const RIGHT_FEATS=[
   {icon:'🛒',titleAr:'قائمة تسوق ذكية',titleEn:'Smart Shopping List',descAr:'اعرف احتاج إيه وامتين تشتريه وفين بأرخص سعر',descEn:"Know what you need, when to buy it, and where it's cheapest",tagAr:'توفير',tagEn:'Savings',tagClass:'tag-accent'},
   {icon:'💊',titleAr:'توصيات المكملات',titleEn:'Supplement Recommendations',descAr:'فيتامينات ومكملات موصى بها حسب نظامك الغذائي',descEn:'Vitamins and supplements recommended for your specific diet',tagAr:'صحة',tagEn:'Health',tagClass:'tag-primary'},
   {icon:'🔥',titleAr:'حساب السعرات',titleEn:'Calorie Calculator',descAr:'معرفة دقيقة بالسعرات والبروتين والكارب والدهون لكل وجبة',descEn:'Precise calories, protein, carbs and fat for every meal',tagAr:'دقيق',tagEn:'Precise',tagClass:'tag-error'},
-  {icon:'📱',titleAr:'يعمل على موبايلك',titleEn:'Works on Your Phone',descAr:'صُمم بالكامل للهواتف المصرية. سريع وسهل الاستخدام.',descEn:'Fully designed for Egyptian phones. Fast and easy to use.',tagAr:'موبايل',tagEn:'Mobile',tagClass:'tag-primary'},
+  {icon:'📱',titleAr:'يعمل على موبايلك',titleEn:'Works on Your Phone',descAr:'مصمم بالكامل ليعمل بسلاسة على أي هاتف. سريع وسهل الاستخدام.',descEn:'Fully designed to work smoothly on any phone. Fast and easy to use.',tagAr:'موبايل',tagEn:'Mobile',tagClass:'tag-primary'},
   {icon:'🔒',titleAr:'خصوصية تامة',titleEn:'Complete Privacy',descAr:'بياناتك محمية بتشفير عالي المستوى ولا تُشارك مع أحد',descEn:'Your data is protected with high-level encryption, never shared',tagAr:'آمن',tagEn:'Secure',tagClass:'tag-accent'},
   {icon:'🌍',titleAr:'عربي وإنجليزي',titleEn:'Arabic & English',descAr:'واجهة كاملة بالعربية والإنجليزية. اختار اللغة اللي تريحك',descEn:'Fully bilingual interface. Choose whichever language you prefer',tagAr:'ثنائي',tagEn:'Bilingual',tagClass:'tag-primary'},
   {icon:'📈',titleAr:'نتائج حقيقية',titleEn:'Real Results',descAr:'آلاف المستخدمين حققوا أهدافهم مع Health Pace',descEn:'Thousands of users have reached their goals with Health Pace',tagAr:'مثبت',tagEn:'Proven',tagClass:'tag-error'},
