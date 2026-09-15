@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html id="htmlRoot" lang="ar" dir="rtl" class="hp-editorial">
+<head>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#FAF7F2">
+<title>Health Pace — دايت بوت</title>
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/hpds.css">
+<noscript><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@700;900&family=Readex+Pro:wght@400;600;700&display=swap" rel="stylesheet"></noscript>
+<style>
+body{min-height:100vh;display:flex;flex-direction:column;background:var(--e-bg)}
+.cb-header{display:flex;align-items:center;gap:10px;padding:16px;padding-top:calc(16px + env(safe-area-inset-top,0px));border-bottom:1px solid var(--e-line);background:var(--e-surface);flex-shrink:0}
+.cb-back{background:none;border:none;cursor:pointer;color:var(--e-ink-soft);padding:4px;display:flex}
+[dir="rtl"] .cb-back svg{transform:scaleX(-1)}
+.cb-logo{width:22px;height:22px;flex-shrink:0}
+.cb-titles{flex:1;min-width:0}
+.cb-title{font-family:'IBM Plex Sans','IBM Plex Sans Arabic',sans-serif;font-weight:700;font-size:16px;color:var(--e-ink)}
+.cb-subtitle{font-size:12px;color:var(--e-ink-soft)}
+.cb-saved-btn{background:none;border:none;cursor:pointer;font-size:19px;padding:4px}
+.cb-body{flex:1;display:flex;flex-direction:column;max-width:640px;width:100%;margin:0 auto;min-height:0}
+/* #cbChatView wraps .cb-messages + the input row - without this, it isn't a
+   flex container, so .cb-messages's flex:1 (meant to grow and push the
+   input row to the bottom) does nothing: the whole block just sits at its
+   natural top height, leaving the rest of .cb-body empty below the input
+   instead of a normal pinned-to-bottom chat layout. */
+#cbChatView{flex:1;display:flex;flex-direction:column;min-height:0}
+.cb-messages{flex:1;overflow-y:auto;padding:16px}
+.cb-gate{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;gap:16px}
+.cb-gate-text{font-size:15px;color:var(--e-ink);line-height:1.5;max-width:340px}
+</style>
+</head>
+<body>
+<div class="cb-header">
+  <button class="cb-back" onclick="cbBack()" aria-label="رجوع" id="cbBackBtn">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <img class="cb-logo" src="/mark-dark.svg" alt="">
+  <div class="cb-titles">
+    <div class="cb-title" id="cbTitle">دايت بوت</div>
+    <div class="cb-subtitle" id="cbSubtitle">مساعدك الصحي الذكي</div>
+  </div>
+  <button class="cb-saved-btn" onclick="cbOpenSaved()" aria-label="اقتراحاتي المحفوظة" id="cbSavedBtn">📂</button>
+</div>
+
+<div class="cb-body">
+  <div id="cbGate" class="cb-gate" style="display:none">
+    <img src="/mark-dark.svg" alt="" style="width:44px;height:44px">
+    <div class="cb-gate-text" id="cbGateText"></div>
+    <a href="/diet/payment" class="hpds-btn hpds-btn-primary hpds-btn-md" style="width:auto;padding:0 28px" id="cbGateUpgrade"></a>
+  </div>
+
+  <div id="cbChatView">
+    <div class="cb-messages" id="cbMessages"></div>
+    <div class="hpds-chat-disclaimer" id="cbDisclaimer"></div>
+    <div class="hpds-chat-input-row" id="cbInputRow">
+      <textarea class="hpds-chat-input" id="cbInput" rows="1" dir="auto"></textarea>
+      <button type="button" class="hpds-chat-send-btn" id="cbSendBtn" onclick="cbSendTyped()" aria-label="إرسال">
+        <svg class="hpds-chat-send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="cbSavedView" class="cb-messages" style="display:none"></div>
+</div>
+
+<script src="/hpds.js"></script>
+<script>
+const STR = {
+  ar: {
+    title:'دايت بوت', subtitle:'مساعدك الصحي الذكي', placeholder:'اكتب رسالتك...',
+    greeting:'أهلاً! أنا دايت بوت 🥗 اسألني أي شيء عن نظامك الغذائي أو صحتك.',
+    genericError:'حدث خطأ، حاول مرة أخرى', vipOnly:'هذه الميزة متاحة لأعضاء VIP و Elite فقط', upgradeButton:'عرض الباقات',
+    disclaimer:'دايت بوت مساعد ذكي وليس بديلاً عن استشارة طبية.',
+    savedTitle:'اقتراحاتي المحفوظة', backToChat:'العودة للمحادثة',
+    unverified:'اقتراح ذكاء اصطناعي — غير موثّق', deleteLabel:'حذف',
+    noSaved:'لا توجد اقتراحات محفوظة بعد — جرّب أحد الاقتراحات مثل "ساعدني في تنظيم وجباتي الأسبوعية".',
+    loadSavedError:'تعذر تحميل الاقتراحات المحفوظة', retry:'أعد المحاولة', kcal:'سعرة',
+    suggestions:[
+      {text:'📋 ساعدني في تنظيم وجباتي الأسبوعية', plan:'meals'},
+      {text:'🏃 اقترح خطة نشاط يومية تناسبني', plan:'activity'},
+      {text:'💊 راجع مكملاتي الغذائية', plan:null},
+      {text:'💧 كيف أحسّن ترطيبي اليومي؟', plan:null},
+    ],
+  },
+  en: {
+    title:'Diet Bot', subtitle:'Your AI health assistant', placeholder:'Type your message...',
+    greeting:"Hi! I'm Diet Bot 🥗 Ask me anything about your nutrition or health.",
+    genericError:'Something went wrong, please try again', vipOnly:'This feature is available for VIP and Elite members only', upgradeButton:'View Plans',
+    disclaimer:'Diet Bot is an AI assistant, not a substitute for medical advice.',
+    savedTitle:'My Saved Suggestions', backToChat:'Back to chat',
+    unverified:'AI suggestion — unverified', deleteLabel:'Delete',
+    noSaved:'No saved suggestions yet — try a suggestion like "Help me plan my weekly meals."',
+    loadSavedError:'Could not load your saved suggestions', retry:'Try again', kcal:'kcal',
+    suggestions:[
+      {text:'📋 Help me plan my weekly meals', plan:'meals'},
+      {text:'🏃 Suggest a daily activity plan for me', plan:'activity'},
+      {text:'💊 Review my supplements', plan:null},
+      {text:'💧 How do I improve my daily hydration?', plan:null},
+    ],
+  },
+};
+let _lang = 'ar';
+let _messages = []; // [{role, content, saved}]
+let _suggestionsShown = true;
+let _questionsPromise = null;
+let _questionsLoaded = false;
+let _savedSuggestions = null; // null = not fetched yet
+let _panel = 'chat'; // 'chat' | 'saved'
+let _sending = false;
+
+function t(key) { return STR[_lang][key]; }
+
+function cbBack() {
+  if (_panel === 'saved') { cbCloseSaved(); return; }
+  location.href = '/dashboard-pilot.html';
+}
+
+function applyLang(lang) {
+  _lang = lang;
+  const isAr = lang === 'ar';
+  document.getElementById('htmlRoot').setAttribute('lang', lang);
+  document.getElementById('htmlRoot').setAttribute('dir', isAr ? 'rtl' : 'ltr');
+  document.getElementById('cbTitle').textContent = _panel === 'saved' ? t('savedTitle') : t('title');
+  document.getElementById('cbSubtitle').textContent = _panel === 'saved' ? t('backToChat') : t('subtitle');
+  document.getElementById('cbInput').placeholder = t('placeholder');
+  document.getElementById('cbInput').setAttribute('aria-label', t('placeholder'));
+  document.getElementById('cbSendBtn').setAttribute('aria-label', isAr ? 'إرسال' : 'Send');
+  document.getElementById('cbDisclaimer').textContent = t('disclaimer');
+  document.getElementById('cbSavedBtn').setAttribute('aria-label', t('savedTitle'));
+  document.getElementById('cbBackBtn').setAttribute('aria-label', isAr ? 'رجوع' : 'Back');
+  document.getElementById('cbGateText').textContent = t('vipOnly');
+  document.getElementById('cbGateUpgrade').textContent = t('upgradeButton');
+  renderMessages();
+}
+
+function renderMessages() {
+  const box = document.getElementById('cbMessages');
+  let html = hpdsChatBubbleHTML({ role: 'assistant', text: t('greeting'), rtl: _lang === 'ar' });
+  _messages.forEach(m => {
+    html += m.typing ? hpdsChatTypingHTML() : hpdsChatBubbleHTML({ role: m.role, text: m.content, saved: m.saved, rtl: _lang === 'ar' });
+  });
+  if (_suggestionsShown) html += hpdsSuggestionChipsHTML(t('suggestions'), 'cbTapSuggestion');
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+function cbTapSuggestion(i) {
+  const sugg = t('suggestions')[i];
+  cbSend(sugg.text, sugg.plan, true);
+}
+
+async function cbSendTyped() {
+  const input = document.getElementById('cbInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  await cbSend(text, null, false);
+}
+
+// `awaitQuestions` mirrors the real, deliberate distinction the original
+// legacy widget (dashboard.html) already had: typed sends never await the
+// in-flight follow-up-questions call (by the time someone reads the
+// greeting and types, it's virtually always resolved); only a suggestion-
+// chip tap awaits it, since a chip can be tapped within milliseconds of the
+// page loading — the actual race window the original fix closes.
+async function cbSend(text, plan, awaitQuestions) {
+  if (_sending) return;
+  _suggestionsShown = false;
+  if (awaitQuestions && _questionsPromise) await _questionsPromise;
+  _messages = _messages.filter(m => !m.typing);
+  _messages.push({ role: 'user', content: text });
+  _messages.push({ role: 'assistant', content: '', typing: true });
+  _sending = true;
+  renderMessages();
+  try {
+    const body = { messages: _messages.filter(m => !m.typing).map(m => ({ role: m.role, content: m.content })), lang: _lang };
+    if (plan) body.generatePlan = plan;
+    const r = await fetch('/diet/api/chatbot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    _messages = _messages.filter(m => !m.typing);
+    if (r.status === 403) {
+      showGate();
+      return;
+    }
+    if (d.reply) {
+      _messages.push({ role: 'assistant', content: d.reply, saved: !!d.savedSuggestion });
+      if (d.savedSuggestion) _savedSuggestions = null; // stale — refetch next time the panel opens
+    }
+  } catch (e) {
+    _messages = _messages.filter(m => !m.typing);
+    _messages.push({ role: 'assistant', content: t('genericError') });
+  } finally {
+    _sending = false;
+    renderMessages();
+  }
+}
+
+function showGate() {
+  document.getElementById('cbChatView').style.display = 'none';
+  document.getElementById('cbSavedBtn').style.display = 'none';
+  document.getElementById('cbGate').style.display = 'flex';
+}
+
+async function loadFollowUpQuestions() {
+  if (_questionsLoaded) return _questionsPromise;
+  _questionsLoaded = true;
+  _questionsPromise = (async () => {
+    _messages.push({ role: 'assistant', content: '', typing: true });
+    renderMessages();
+    try {
+      const r = await fetch('/diet/api/chatbot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ generateQuestions: true, messages: [], lang: _lang }) });
+      const d = await r.json();
+      _messages = _messages.filter(m => !m.typing);
+      if (r.status === 403) { showGate(); return; }
+      if (d.reply) _messages.push({ role: 'assistant', content: d.reply });
+    } catch (e) {
+      _messages = _messages.filter(m => !m.typing);
+    } finally {
+      renderMessages();
+    }
+  })();
+  return _questionsPromise;
+}
+
+function cbOpenSaved() {
+  _panel = 'saved';
+  document.getElementById('cbChatView').style.display = 'none';
+  document.getElementById('cbSavedView').style.display = 'block';
+  document.getElementById('cbSavedBtn').style.display = 'none';
+  document.getElementById('cbTitle').textContent = t('savedTitle');
+  document.getElementById('cbSubtitle').textContent = t('backToChat');
+  renderSavedPanel();
+}
+function cbCloseSaved() {
+  _panel = 'chat';
+  document.getElementById('cbChatView').style.display = 'block';
+  document.getElementById('cbSavedView').style.display = 'none';
+  document.getElementById('cbSavedBtn').style.display = 'inline-block';
+  document.getElementById('cbTitle').textContent = t('title');
+  document.getElementById('cbSubtitle').textContent = t('subtitle');
+}
+async function renderSavedPanel() {
+  const panel = document.getElementById('cbSavedView');
+  if (_savedSuggestions == null) {
+    try {
+      const r = await fetch('/diet/api/ai-suggestions');
+      _savedSuggestions = r.ok ? await r.json() : null;
+      if (_savedSuggestions == null) throw new Error('load failed');
+    } catch (e) {
+      panel.innerHTML = hpdsErrorStateHTML({ message: t('loadSavedError'), retryLabel: t('retry'), onRetryFn: 'cbRetrySaved' });
+      return;
+    }
+  }
+  if (!_savedSuggestions.length) {
+    panel.innerHTML = hpdsEmptyStateHTML({ message: t('noSaved') });
+    return;
+  }
+  panel.innerHTML = _savedSuggestions.map(sugg =>
+    hpdsPlanCardHTML(sugg, { unverified: t('unverified'), delete: t('deleteLabel'), kcal: t('kcal') }, 'cbDeleteSuggestion')
+  ).join('');
+}
+function cbRetrySaved() { _savedSuggestions = null; renderSavedPanel(); }
+async function cbDeleteSuggestion(id) {
+  _savedSuggestions = _savedSuggestions.filter(s => s.id !== id);
+  renderSavedPanel();
+  try { await fetch('/diet/api/ai-suggestions/' + id, { method: 'DELETE' }); } catch (e) {}
+}
+window.cbTapSuggestion = cbTapSuggestion;
+window.cbDeleteSuggestion = cbDeleteSuggestion;
+window.cbRetrySaved = cbRetrySaved;
+
+document.getElementById('cbInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cbSendTyped(); }
+});
+
+(async function init() {
+  // fetch() follows the server's unauthenticated redirect transparently —
+  // meRes.ok is still true (final status 200) even though the body is
+  // login.html, not JSON. meRes.redirected catches that case explicitly,
+  // same pattern already used by dashboard-pilot.html's own init().
+  const meRes = await fetch('/diet/api/me');
+  if (!meRes.ok || meRes.redirected) { location.href = '/diet/login'; return; }
+  const me = await meRes.json();
+  applyLang(me.lang || 'ar');
+  await loadFollowUpQuestions();
+})();
+</script>
+</body>
+</html>

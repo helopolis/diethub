@@ -3949,7 +3949,8 @@ app.post(`${BASE}/api/chatbot`, auth, async (req, res) => {
   const u = req.userObj;
   // Language now resolves per-request instead of being permanently baked
   // into one hardcoded Arabic prompt — see ai_language.js for the fallback
-  // chain (stored user preference -> client-sent app language -> English).
+  // chain (client-sent app language -> stored user preference -> English;
+  // reversed 2026-09-09 from the order this comment used to describe).
   const lang = aiLanguage.resolveLanguage({ userLang: u.lang, appLang: req.body.lang });
   const S = aiLanguage.strings(lang);
   if (!BETA_MODE && !hasActiveCoverage(u.id) && u.role !== 'admin') {
@@ -4077,7 +4078,7 @@ ${generateQuestions ? 'Your task now: ask 3 short, personalized follow-up questi
   const systemPrompt = aiLanguage.buildSystemPrompt({ productInstructions, safetyInstructions, lang, userContext: summary });
 
   try {
-    const { text } = await ai.chat({ system: systemPrompt, messages, maxTokens: 500 });
+    const { text } = await ai.chat({ system: systemPrompt, messages, maxTokens: 500, lang });
     res.json({ reply: text || S.emptyReply });
   } catch(e) {
     console.error('Chatbot error:', e.message);
