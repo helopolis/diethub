@@ -2844,43 +2844,64 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const userAllergies = req.userObj?.profile?.allergies || [];
   const customAllergyText = req.userObj?.profile?.customAllergyText || '';
 
+  // Only day 0 (today) carries per-user overrides or needs a fresh
+  // AI-generated alternative - the rest of the week is still the static
+  // plan preview, matching how the dashboard only ever requests/edits
+  // "today" via date. Every meal that needs generation is resolved here,
+  // concurrently, before the main loop below - previously each one was
+  // awaited one at a time inside that loop, so a non-'mid' budget tier
+  // with 4 meals paid the cost of 4 sequential AI calls added together
+  // (measured live in production: 30-40s for one request) instead of
+  // running them at the same time.
+  const day0Resolved = new Map(); // mealTypeKey -> { effectiveMeal, swapsUsed }
+  const day0 = plan.week[0];
+  if (day0) {
+    await Promise.all(day0.meals.map(async (meal) => {
+      const mealTypeKey = meal.typeEn ? meal.typeEn.toLowerCase() : meal.type;
+      const override = getMealOverride(req.user.id, date, mealTypeKey, diet);
+      if (override && override.manualSwap) {
+        // The user's explicit "change this meal" choice always wins over
+        // the budget slider, regardless of which tier it was generated at.
+        // (getMealOverride already discards it if it was swapped under a
+        // different diet than the one being requested now.)
+        day0Resolved.set(mealTypeKey, { effectiveMeal: override.meal, swapsUsed: override.swapsUsed });
+      } else if (override && override.tier === budgetTier) {
+        day0Resolved.set(mealTypeKey, { effectiveMeal: override.meal, swapsUsed: 0 });
+      } else if (budgetTier !== 'mid') {
+        // No override yet (or one exists but for a different tier/diet
+        // than currently requested, e.g. slider moved from low to high, or
+        // the user switched diets) - regenerate for what's actually being
+        // asked for.
+        try {
+          const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd, personalScale, userAllergies, customAllergyText, proteinBoost);
+          if (generated) {
+            const effectiveMeal = priceMeal(generated, pd);
+            saveMealOverride(req.user.id, date, mealTypeKey, { meal: effectiveMeal, tier: budgetTier, diet, swapsUsed: 0, manualSwap: false });
+            day0Resolved.set(mealTypeKey, { effectiveMeal, swapsUsed: 0 });
+          }
+        } catch (e) {
+          console.error('[meal-plan] tier generation failed, falling back to static plan:', e.message);
+        }
+      }
+      // else (budgetTier === 'mid', no override): leave unresolved - the
+      // main loop's static scaled fallback below is used as-is.
+    }));
+  }
+
   const week = [];
   for (let dayIdx = 0; dayIdx < plan.week.length; dayIdx++) {
     const day = plan.week[dayIdx];
     const meals = [];
     for (const meal of day.meals) {
-      // Only day 0 (today) carries per-user overrides - the rest of the week
-      // is still the static plan preview, matching how the dashboard only
-      // ever requests/edits "today" via date.
       let effectiveMeal = scaleMeal(correctMealMacros(meal, diet, dayIdx), personalScale, proteinBoost, pd);
       let swapsUsed = 0;
       let mealTypeKey = null;
       if (dayIdx === 0) {
         mealTypeKey = meal.typeEn ? meal.typeEn.toLowerCase() : meal.type;
-        const override = getMealOverride(req.user.id, date, mealTypeKey, diet);
-        if (override && override.manualSwap) {
-          // The user's explicit "change this meal" choice always wins over
-          // the budget slider, regardless of which tier it was generated at.
-          // (getMealOverride already discards it if it was swapped under a
-          // different diet than the one being requested now.)
-          effectiveMeal = override.meal;
-          swapsUsed = override.swapsUsed;
-        } else if (override && override.tier === budgetTier) {
-          effectiveMeal = override.meal;
-        } else if (budgetTier !== 'mid') {
-          // No override yet (or one exists but for a different tier/diet
-          // than currently requested, e.g. slider moved from low to high, or
-          // the user switched diets) - regenerate for what's actually being
-          // asked for.
-          try {
-            const generated = await generateMealAlternative(diet, mealTypeKey, budgetTier, null, pd, personalScale, userAllergies, customAllergyText, proteinBoost);
-            if (generated) {
-              effectiveMeal = priceMeal(generated, pd);
-              saveMealOverride(req.user.id, date, mealTypeKey, { meal: effectiveMeal, tier: budgetTier, diet, swapsUsed: 0, manualSwap: false });
-            }
-          } catch (e) {
-            console.error('[meal-plan] tier generation failed, falling back to static plan:', e.message);
-          }
+        const resolved = day0Resolved.get(mealTypeKey);
+        if (resolved) {
+          effectiveMeal = resolved.effectiveMeal;
+          swapsUsed = resolved.swapsUsed;
         }
       }
       // Last checkpoint before pricing, regardless of which branch above
