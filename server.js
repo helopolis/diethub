@@ -2501,6 +2501,7 @@ const DIET_STYLE_LABELS = {
   men_40: 'men over 40 (heart-healthy, prostate-friendly, muscle preservation)',
   kids: 'healthy kids (balanced growth nutrition, kid-friendly, no severe restriction)',
   healthy_lifestyle: 'healthy lifestyle (balanced macros, moderate-protein, no restriction)',
+  vegan: 'vegan (100% plant-based - no meat, fish, dairy, eggs, or honey)',
 };
 
 // Phase 3 of the nutrition-architecture migration: DIET_META (health.js),
@@ -2562,9 +2563,18 @@ async function generateMealAlternative(dietStyle, mealType, budgetTier, preferen
   // applied to whatever comes back (defense in depth: catches an allergen
   // the AI names in free text without using a listed id).
   const allItems = foodPrices?.items || [];
-  const items = (userAllergies?.length || customAllergyText)
+  let items = (userAllergies?.length || customAllergyText)
     ? allItems.filter(i => !ingredientIsUnsafe(i.name, i.nameEn, userAllergies, customAllergyText))
     : allItems;
+  // Hard filter, same as the allergy one above - never rely on prompt
+  // instructions alone for something this safety/trust-critical (matches
+  // the allergy-filter's own precedent one line up: "it genuinely cannot
+  // suggest what isn't offered"). Uses the real per-item `vegan` boolean
+  // tag on food_prices.json, not name/category inference, which would be
+  // fragile and could quietly miss a real animal-derived ingredient.
+  if (dietStyle === 'vegan') {
+    items = items.filter(i => i.vegan === true);
+  }
   const cheapestOf = (i) => Math.min(...STORE_KEYS.map(s => i[s]).filter(p => p > 0));
   const ingredientCatalog = items.map(i => `${i.id} (${i.nameEn}/${i.name}, ~${cheapestOf(i)} EGP/${i.unit}, category: ${i.category})`).join('\n');
 

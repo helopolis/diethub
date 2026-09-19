@@ -87,6 +87,18 @@ const DIET_CONTRAINDICATIONS = {
       ar: 'هذا النظام مصمم كتوجيه عام لسكري النوع الثاني ولا يأخذ في الاعتبار جرعات الأنسولين. إذا كان لديك سكري النوع الأول، احسب الكربوهيدرات مع طبيبك لمطابقة جرعة الأنسولين، ولا تعتمد على هذا الرقم وحده.',
       en: "This plan is written as general Type 2 guidance and doesn't account for insulin dosing. If you have Type 1 diabetes, carb-count with your care team to match your insulin ratio — don't rely on this number alone." },
   ],
+  // Added 2026-09-19 alongside the vegan diet itself - see db.js
+  // seedDiets()'s matching comment for the real clinical reasoning
+  // (well-planned vegan is viable during pregnancy/breastfeeding per major
+  // dietetics bodies, but B12/iron/omega-3 need deliberate supplementation).
+  vegan: [
+    { condition: 'pregnant', severity: 'caution',
+      ar: 'النظام النباتي الكامل يحتاج تخطيطاً دقيقاً أثناء الحمل، خصوصاً فيتامين ب12 والحديد وأوميغا 3. ناقشي مع طبيبك خطة المكملات الغذائية المناسبة.',
+      en: 'A fully plant-based diet needs careful planning during pregnancy, especially vitamin B12, iron, and omega-3. Discuss a supplementation plan with your doctor.' },
+    { condition: 'breastfeeding', severity: 'caution',
+      ar: 'نقص فيتامين ب12 عند الأم النباتية غير المكمّلة قد يؤثر على الرضيع عبر حليب الثدي. تأكدي من أخذ مكمل ب12 واستشيري طبيبك.',
+      en: "A breastfeeding mother on a fully plant-based diet without B12 supplementation risks passing that deficiency to her infant through breastmilk. Make sure you're taking a B12 supplement and check with your doctor." },
+  ],
 };
 // Added 2026-09-10 - see db.js seedDiets()'s matching comment for why these
 // 6 conditions got real rules (and why hypertension/prediabetes didn't).
@@ -200,6 +212,11 @@ const DIET_META = {
   men_40:        { proteinPerKg: 1.6, lowCarb: false }, // bone/muscle preservation
   kids:          { proteinPerKg: 1.2, lowCarb: false },
   healthy_lifestyle: { proteinPerKg: 1.5, lowCarb: false },
+  // Slightly above the general-nutrition diets (1.6, matching women_40/
+  // men_40's tier) rather than reusing healthy_lifestyle's 1.5 - plant
+  // proteins are typically less bioavailable/complete than animal protein,
+  // a standard dietetics consideration for a real vegan target.
+  vegan: { proteinPerKg: 1.6, lowCarb: false },
 };
 
 function buildHealthProfile(store, userId) {

@@ -927,6 +927,18 @@ function seedDiets() {
     // restriction. Real week of meals in meal_plans.json, migrated into
     // meals/recipe_ingredients via seedMealsFromDietPlans same as the other 9.
     { id: 'healthy_lifestyle', name_en: 'Healthy Lifestyle', name_ar: 'نمط حياة صحي', protein_per_kg: 1.5, low_carb: 0, style_label_en: 'healthy lifestyle (balanced macros, moderate-protein, no restriction)' },
+    // Added 2026-09-19: 100% plant-based - no meat, fish, dairy, eggs, or
+    // honey. protein_per_kg set a notch above the general-nutrition diets
+    // (1.6, matching women_40/men_40's tier) rather than reusing
+    // healthy_lifestyle's 1.5 - plant proteins are typically less
+    // bioavailable/complete than animal protein (lower PDCAAS scores), so
+    // a real vegan target should run slightly higher to compensate, a
+    // standard dietetics consideration. Ingredient-level enforcement is
+    // the food_prices.json `vegan` boolean tag (added the same day) plus
+    // the hard filter in generateMealAlternative - this row alone doesn't
+    // make anything actually vegan, it's the meal-plan/AI-generation code
+    // that has to respect it.
+    { id: 'vegan', name_en: 'Vegan', name_ar: 'نباتي (فيغن)', protein_per_kg: 1.6, low_carb: 0, style_label_en: 'vegan (100% plant-based - no meat, fish, dairy, eggs, or honey)' },
   ];
   for (const d of diets) insDietStmt.run({ ...d, now });
 
@@ -993,6 +1005,20 @@ function seedDiets() {
     { diet_id: 'atkins', condition_id: 'hyperlipidemia', severity: 'caution',
       message_ar: 'أتكينز نظام عالي الدهون، وقد تحتاج لمتابعة تحليل الدهون (الكوليسترول) بشكل منتظم أثناء اتباعه.',
       message_en: 'Atkins is high-fat, and you may need to monitor your lipid panel (cholesterol) regularly while following it.' },
+    // Added 2026-09-19 alongside the vegan diet itself. Real, standard
+    // clinical guidance (not invented): major dietetics bodies consider a
+    // well-planned vegan diet viable during pregnancy/breastfeeding, but
+    // specifically flag B12, iron, and omega-3 (DHA) as needing deliberate
+    // supplementation - B12 especially, since infant deficiency via a
+    // vegan mother's breastmilk without supplementation is a real,
+    // documented risk. 'caution', not 'contraindicated' - matches that
+    // real consensus (viable with planning, not unsafe outright).
+    { diet_id: 'vegan', condition_id: 'pregnant', severity: 'caution',
+      message_ar: 'النظام النباتي الكامل يحتاج تخطيطاً دقيقاً أثناء الحمل، خصوصاً فيتامين ب12 والحديد وأوميغا 3. ناقشي مع طبيبك خطة المكملات الغذائية المناسبة.',
+      message_en: 'A fully plant-based diet needs careful planning during pregnancy, especially vitamin B12, iron, and omega-3. Discuss a supplementation plan with your doctor.' },
+    { diet_id: 'vegan', condition_id: 'breastfeeding', severity: 'caution',
+      message_ar: 'نقص فيتامين ب12 عند الأم النباتية غير المكمّلة قد يؤثر على الرضيع عبر حليب الثدي. تأكدي من أخذ مكمل ب12 واستشيري طبيبك.',
+      message_en: "A breastfeeding mother on a fully plant-based diet without B12 supplementation risks passing that deficiency to her infant through breastmilk. Make sure you're taking a B12 supplement and check with your doctor." },
   ];
   for (const c of contraindications) insDietContraStmt.run({ ...c, now });
 }
