@@ -1754,7 +1754,33 @@ function load(key) {
 function save(key, data) {
   if (key === 'users.json') return writeUsersToTables(data);
   upsertStmt.run({ key, value: JSON.stringify(data), updated_at: new Date().toISOString() });
+  mirrorToDisk(key, data);
   return data;
+}
+
+// The DB row is the only thing load() ever reads - but for any key that
+// still has a legacy file sitting in DATA_DIR (from the original
+// migrateFromJson import below), keep that file mirroring current DB
+// content on every write. Without this, the file silently freezes at
+// whatever it held at first-boot import while the DB row keeps moving,
+// with nothing to show the two have diverged - indistinguishable from a
+// live, editable file. That's a real incident, not a hypothetical: adding
+// the vegan diet's meal plan and priced ingredients on 2026-09-19 was
+// built entirely against the on-disk food_prices.json/meal_plans.json,
+// which turned out to have been stale since their respective one-time
+// imports - hours of edits that the running app never saw, discovered
+// only by noticing seedMealsFromDietPlans() reported 0 new meals. This
+// doesn't make the file a second read path (load() still never looks at
+// it) - it just keeps it truthful as a snapshot/diagnostic, so the next
+// person who opens it isn't misled the same way.
+function mirrorToDisk(key, data) {
+  const fp = path.join(DATA_DIR, key);
+  if (!fs.existsSync(fp)) return; // no legacy file for this key - nothing to keep in sync
+  try {
+    fs.writeFileSync(fp, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error(`[db] mirror-to-disk failed for ${key}:`, e.message);
+  }
 }
 
 // Atomic read-modify-write. Runs the mutator inside an IMMEDIATE transaction so
@@ -1771,8 +1797,11 @@ function update(key, mutator, fallback = null) {
   return _txn.immediate(key, mutator, fallback);
 }
 
-// One-time import of any legacy flat-file JSON into the store. Skips keys that
-// already exist in the DB, so it's safe to run on every boot.
+// One-time *import* of any legacy flat-file JSON into the store - read-only
+// direction. Skips keys that already exist in the DB, so it's safe to run
+// on every boot. The reverse direction (DB -> file) happens continuously
+// instead, via save()'s mirrorToDisk() above, so a file that's already
+// been imported once doesn't go stale forever after.
 function migrateFromJson(dir, keys) {
   const migrated = [];
   for (const key of keys) {
