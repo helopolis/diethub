@@ -893,6 +893,15 @@ db.exec(`DELETE FROM diet_contraindications WHERE id NOT IN (
 )`);
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_diet_contra_unique ON diet_contraindications(diet_id, condition_id)`);
 
+// DO NOTHING on conflict means editing an *existing* diet's fields below
+// (name_en/name_ar/protein_per_kg/low_carb/style_label_en) never actually
+// reaches the DB on restart - only brand-new diet ids do. Caught live,
+// 2026-09-20: relabeling 'diabetic' here alone silently left the DB row
+// stale (harmless today - nothing currently reads name_en/name_ar - but
+// verifyDietTablesMatch's own protein_per_kg/low_carb/style_label_en checks
+// would have the same blind spot for an edit, not just an addition). A
+// real field edit needs a one-off manual UPDATE alongside the code change,
+// same as this one got.
 const insDietStmt = db.prepare(`INSERT INTO diets (id,name_en,name_ar,protein_per_kg,low_carb,style_label_en,created_at)
   VALUES (@id,@name_en,@name_ar,@protein_per_kg,@low_carb,@style_label_en,@now) ON CONFLICT(id) DO NOTHING`);
 const insDietContraStmt = db.prepare(`INSERT INTO diet_contraindications (diet_id,condition_id,severity,message_en,message_ar,created_at)
@@ -968,7 +977,14 @@ function seedDiets() {
     { id: 'atkins', name_en: 'Atkins', name_ar: 'آتكينز', protein_per_kg: 1.9, low_carb: 1, style_label_en: 'Atkins (very low-carb)' },
     { id: 'keto', name_en: 'Keto', name_ar: 'كيتو', protein_per_kg: 1.8, low_carb: 1, style_label_en: 'Ketogenic (very low-carb, high-fat)' },
     { id: 'mediterranean', name_en: 'Mediterranean', name_ar: 'متوسطي', protein_per_kg: 1.4, low_carb: 0, style_label_en: 'Mediterranean' },
-    { id: 'diabetic', name_en: 'Diabetic', name_ar: 'مرضى السكري', protein_per_kg: 1.6, low_carb: 1, style_label_en: 'diabetic-friendly (low glycemic, controlled-carb)' },
+    // name_en/name_ar updated 2026-09-20 (was 'Diabetic'/'مرضى السكري') -
+    // honest-labeling fix: this plan's real content is written for Type 2
+    // management, not Type 1's different consistent-carb/insulin-matching
+    // needs (see the diet_contraindications row below, and constants.js's
+    // matching comment on the mobile/web DIET_OPTIONS label). Not checked
+    // by verifyDietTablesMatch (only protein_per_kg/low_carb/style_label_en
+    // are), so no DIET_META/DIET_STYLE_LABELS change needed alongside this.
+    { id: 'diabetic', name_en: 'Diabetes (Type 2)', name_ar: 'السكري (النوع الثاني)', protein_per_kg: 1.6, low_carb: 1, style_label_en: 'diabetic-friendly (low glycemic, controlled-carb)' },
     { id: 'women', name_en: 'Women', name_ar: 'المرأة', protein_per_kg: 1.4, low_carb: 0, style_label_en: "general women's nutrition (balanced, iron and folate focused)" },
     { id: 'women_40', name_en: 'Women Over 40', name_ar: 'المرأة فوق الأربعين', protein_per_kg: 1.6, low_carb: 0, style_label_en: 'women over 40 (bone health, muscle preservation, balanced)' },
     { id: 'men', name_en: 'Men', name_ar: 'الرجل', protein_per_kg: 1.4, low_carb: 0, style_label_en: "general men's nutrition (higher protein and calories, balanced)" },
