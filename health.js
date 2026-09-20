@@ -155,6 +155,12 @@ function checkDietContraindications(store, diet, medicalConditions) {
     .map(r => ({ condition: r.condition_id, severity: r.severity, ar: r.message_ar, en: r.message_en }));
 }
 
+function checkFastingContraindications(store, fastingProtocol, medicalConditions) {
+  if (!fastingProtocol) return [];
+  return store.getFastingContraindications(fastingProtocol, medicalConditions)
+    .map(r => ({ condition: r.condition_id, severity: r.severity, ar: r.message_ar, en: r.message_en }));
+}
+
 // Infer activity level from average daily steps when the user hasn't set one.
 function activityFromSteps(avgSteps) {
   if (avgSteps == null) return null;
@@ -217,6 +223,42 @@ const DIET_META = {
   // proteins are typically less bioavailable/complete than animal protein,
   // a standard dietetics consideration for a real vegan target.
   vegan: { proteinPerKg: 1.6, lowCarb: false },
+};
+
+// Real values migrated as-is from db.js's fasting_protocols seed - mirrors
+// DIET_META's role (boot-verified against the DB, see
+// verifyFastingTablesMatch) but for the fasting_protocol_id axis instead of
+// diet_id. MVP is 16:8 only - 18:6/20:4 are a one-line addition each here
+// and in db.js's seedFastingProtocols() once the phasing calls for it.
+const FASTING_META = {
+  '16:8': { fastHours: 16, eatHours: 8 },
+};
+
+// Same shape/discipline as DIET_CONTRAINDICATIONS - real, standard clinical
+// guidance (not invented): Type 1 diabetes carries a real hypoglycemia risk
+// under fasting without medically-supervised insulin retiming, so it's
+// 'contraindicated' rather than 'caution', matching keto's own severity for
+// the same condition above. Pregnancy/breastfeeding need a continuous
+// nutrient supply, standard guidance against fasting during either.
+// Eating-disorder history and being underweight are real IF contraindications
+// too, but this app has no medical_conditions row for the former and no
+// clean DB-level derivation for the latter beyond user_profiles.bmi - not
+// invented here, same restraint the original migration applied to
+// hypertension/hyperlipidemia. Age<18 and bmi<18.5 should be screened
+// directly from the profile's own fields wherever this is enforced, not
+// added as a fake medical condition.
+const FASTING_CONTRAINDICATIONS = {
+  '16:8': [
+    { condition: 'type1_diabetes', severity: 'contraindicated',
+      ar: 'الصيام المتقطع قد يسبب هبوطاً خطيراً في السكر لمرضى السكري النوع الأول دون تعديل جرعة الأنسولين بإشراف طبي مباشر. لا تبدأ هذا النمط دون استشارة طبيبك.',
+      en: "Intermittent fasting carries a real hypoglycemia risk for Type 1 diabetics unless insulin timing is adjusted under direct medical supervision. Don't start this pattern without checking with your doctor." },
+    { condition: 'pregnant', severity: 'caution',
+      ar: 'الحمل يحتاج إمداداً غذائياً مستمراً طوال اليوم. لا يُنصح عادة بالصيام المتقطع أثناء الحمل - استشيري طبيبك أولاً.',
+      en: 'Pregnancy needs a steady, continuous nutrient supply through the day. Intermittent fasting isn\'t generally recommended during pregnancy - check with your doctor first.' },
+    { condition: 'breastfeeding', severity: 'caution',
+      ar: 'الرضاعة تحتاج إمداداً غذائياً وسعرات حرارية مستمرة. استشيري طبيبك قبل اتباع الصيام المتقطع أثناء الرضاعة.',
+      en: 'Breastfeeding needs a steady calorie and nutrient supply. Check with your doctor before following intermittent fasting while breastfeeding.' },
+  ],
 };
 
 function buildHealthProfile(store, userId) {
@@ -471,11 +513,13 @@ function buildHealthProfile(store, userId) {
     goals: {
       diet: p.diet || 'atkins', goalType, targetWeight: num(p.targetWeight), budget: num(p.budget) || 200, activityLevel, takesCreatine,
       cycleTrackingEnabled: !!p.cycleTrackingEnabled, lastPeriodStart: p.lastPeriodStart || null, cycleLength: p.cycleLength || 28,
+      fastingProtocol: p.fastingProtocol || null, fastingWindowStartHour: num(p.fastingWindowStartHour),
     },
     allergies: Array.isArray(p.allergies) ? p.allergies : [],
     customAllergyText: p.customAllergyText || '',
     medicalConditions: Array.isArray(p.medicalConditions) ? p.medicalConditions : [],
     dietWarnings: checkDietContraindications(store, p.diet || 'atkins', p.medicalConditions),
+    fastingWarnings: checkFastingContraindications(store, p.fastingProtocol, p.medicalConditions),
     targets: {
       bmr, bmrFormula, tdee, proteinTargetG, hydrationTargetL,
       calorieMode, calorieTarget, recommendedCalorieTarget,
@@ -588,4 +632,4 @@ function coachSummary(hp, lang = 'ar') {
   return lines.join('\n');
 }
 
-module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, DIET_CONTRAINDICATIONS };
+module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, DIET_CONTRAINDICATIONS, FASTING_META, FASTING_CONTRAINDICATIONS };

@@ -17,7 +17,7 @@ const { Webhook } = require('svix');
 const { AppStoreServerAPIClient, SignedDataVerifier, Environment: AppleEnv, Status: AppleSubStatus } = require('@apple/app-store-server-library');
 const { androidpublisher } = require('@googleapis/androidpublisher');
 const store = require('./db');
-const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS, DIET_CONTRAINDICATIONS, DIET_META } = require('./health');
+const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS, DIET_CONTRAINDICATIONS, DIET_META, FASTING_META, FASTING_CONTRAINDICATIONS } = require('./health');
 const aiLanguage = require('./ai_language');
 const { runReminderCheck } = require('./reminders');
 const { buildDailyBrief, buildWeeklySummary } = require('./daily_brief');
@@ -1809,7 +1809,7 @@ app.post(`${BASE}/register`, async (req,res) => {
   if (!r.ok) { secLog('REG_RATE_LIMITED',ip); return res.status(429).json({error:`لقد حاولت التسجيل أكثر من 7 مرات. انتظر 10 دقائق فقط وحاول مجدداً · You tried registering too many times. Please wait just 10 minutes and try again.`}); }
 
   const username = sanitize(req.body.username);
-  const {password, email, phone, diet, weight, height, age, gender, budget, bodyFat, muscleMass} = req.body;
+  const {password, email, phone, diet, weight, height, age, gender, budget, bodyFat, muscleMass, fastingProtocol} = req.body;
 
   if (username === null) return res.status(400).json({error:'Invalid characters in username'});
   const uErr = validateUsr(username); if (uErr) return res.status(400).json({error:uErr});
@@ -1834,7 +1834,7 @@ app.post(`${BASE}/register`, async (req,res) => {
     active:true, emailVerified: false,
     trialStart: new Date().toISOString().split('T')[0],
     paid:false, lang:'ar', loginAttempts:0, lastLogin:null, avatarUrl:null,
-    profile:{ diet:diet||'atkins', weight:w, height:h, age:parseInt(age)||null, gender:gender||'male', budget:parseInt(budget)||200, bodyFat:parseFloat(bodyFat)||null, muscleMass:parseFloat(muscleMass)||null, bmi, bmr, measurementsUpdatedAt:new Date().toISOString() }
+    profile:{ diet:diet||'atkins', fastingProtocol: (fastingProtocol && store.getFastingProtocol(fastingProtocol)) ? fastingProtocol : null, weight:w, height:h, age:parseInt(age)||null, gender:gender||'male', budget:parseInt(budget)||200, bodyFat:parseFloat(bodyFat)||null, muscleMass:parseFloat(muscleMass)||null, bmi, bmr, measurementsUpdatedAt:new Date().toISOString() }
   };
   users.push(newUser);
   save('users.json', users);
@@ -1881,7 +1881,15 @@ app.get(`${BASE}/api/me`, auth, (req,res) => { const {password,...safe}=req.user
 // /api/meal-plan/swap), rather than inventing new ones — same real limits,
 // now enforced consistently at the point of write, not just at some points
 // of read.
-const PROFILE_VALID_DIETS = ['atkins','keto','lowcarb','highprotein','mediterranean','balanced','diabetic','women','women_40','men','men_40','kids'];
+// Real bug, found while wiring fasting-protocol validation alongside this:
+// this was a hand-typed array that never got updated when healthy_lifestyle
+// (2026-09-10) or vegan (2026-09-19) were added as real, selectable diets -
+// existing users couldn't switch to either from their profile screen (this
+// route would 400 them) even though new signups could pick them fine at
+// /register, which never validated against this list at all. Deriving from
+// the diets table directly means this can't drift out of sync again.
+const PROFILE_VALID_DIETS = store.listDiets().map(d => d.id);
+const PROFILE_VALID_FASTING_PROTOCOLS = store.listFastingProtocols().map(p => p.id);
 const PROFILE_VALID_GENDERS = ['male','female'];
 function validateProfileField(key, value) {
   switch (key) {
@@ -1934,11 +1942,30 @@ app.post(`${BASE}/api/profile`, auth, (req,res) => {
   const users = load('users.json')||[];
   const idx = users.findIndex(u=>u.id===req.user.id);
   if (idx<0) return res.status(404).json({});
-  const ok = ['diet','budget','weight','height','age','gender','bodyFat','muscleMass','level','calorieMode','customCalorieTarget','takesCreatine','allergies','customAllergyText','medicalConditions','cycleTrackingEnabled','lastPeriodStart','cycleLength'];
+  const ok = ['diet','fastingProtocol','fastingWindowStartHour','budget','weight','height','age','gender','bodyFat','muscleMass','level','calorieMode','customCalorieTarget','takesCreatine','allergies','customAllergyText','medicalConditions','cycleTrackingEnabled','lastPeriodStart','cycleLength'];
   const safe = {};
   for (const k of ok) {
     if (req.body[k] === undefined) continue;
     if (k === 'allergies' || k === 'customAllergyText' || k === 'medicalConditions') { safe[k] = req.body[k]; continue; }
+    // fastingProtocol/fastingWindowStartHour are special-cased like the
+    // three above rather than going through validateProfileField: null is a
+    // legitimate value for both ("turn fasting off" / "use the default
+    // window start"), but that function's contract elsewhere is
+    // null-return-means-invalid - overloading that for these would be more
+    // confusing than just handling them inline.
+    if (k === 'fastingProtocol') {
+      if (req.body[k] === null || req.body[k] === '') { safe[k] = null; continue; }
+      if (!PROFILE_VALID_FASTING_PROTOCOLS.includes(req.body[k])) return res.status(400).json({ error: 'Invalid value for fastingProtocol' });
+      safe[k] = req.body[k];
+      continue;
+    }
+    if (k === 'fastingWindowStartHour') {
+      if (req.body[k] === null || req.body[k] === '') { safe[k] = null; continue; }
+      const h = Number(req.body[k]);
+      if (!Number.isInteger(h) || h < 0 || h > 23) return res.status(400).json({ error: 'Invalid value for fastingWindowStartHour' });
+      safe[k] = h;
+      continue;
+    }
     const validated = validateProfileField(k, req.body[k]);
     if (validated === null) return res.status(400).json({ error: `Invalid value for ${k}` });
     safe[k] = validated;
@@ -2517,6 +2544,10 @@ store.verifyDietTablesMatch({
   dietStyleLabels: DIET_STYLE_LABELS,
   dietContraindications: DIET_CONTRAINDICATIONS,
 });
+store.verifyFastingTablesMatch({
+  fastingMeta: FASTING_META,
+  fastingContraindications: FASTING_CONTRAINDICATIONS,
+});
 
 // Each diet's real nutritional definition already lives in its hand-authored
 // week of static meals (dailyCalories/dailyCarbs/dailyProtein/dailyFat on the
@@ -2838,6 +2869,31 @@ function scaleMeal(meal, calScale, proteinBoost, foodPrices) {
   };
 }
 
+// Retimes a day's meals to fall inside the user's fasting eating window,
+// evenly spaced from the window's open, leaving a buffer before it closes
+// (n meals over the window's eat_hours means the last meal lands one
+// "step" before close, not right at the edge). Deliberately does NOT touch
+// meal content, macros, ingredients, or pricing - only the displayed `time`
+// field changes. Reshaping WHAT gets served into fewer, larger meals would
+// mean inventing new combined recipe content with its own macro numbers -
+// exactly the "hand-typed nutrition drifts from what the real ingredients
+// add up to" bug class this app's own architecture was already burned by
+// once (see getMealNutrition's comment, 27/252 meals off by up to 69%).
+// Retiming the same, already-correct meals avoids reintroducing that.
+function retimeMealsForFastingWindow(meals, protocol, windowStartHour) {
+  const n = meals.length;
+  if (!n || !protocol) return meals;
+  const stepHours = protocol.eat_hours / n;
+  return meals.map((meal, i) => {
+    const totalMinutes = Math.round((windowStartHour + i * stepHours) * 60) % (24 * 60);
+    const h24 = Math.floor(totalMinutes / 60);
+    const min = totalMinutes % 60;
+    const ampm = h24 >= 12 ? 'PM' : 'AM';
+    let h12 = h24 % 12; if (h12 === 0) h12 = 12;
+    return { ...meal, time: `${h12}:${String(min).padStart(2, '0')} ${ampm}` };
+  });
+}
+
 app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const diet = sanitize(req.query.diet)||req.userObj?.profile?.diet||'atkins';
   const budget = Math.min(Math.max(parseInt(req.query.budget||req.userObj?.profile?.budget||200),50),1000);
@@ -2853,6 +2909,11 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   const { calScale: personalScale, proteinBoost } = getPersonalTargets(req.user.id, weekAvg);
   const userAllergies = req.userObj?.profile?.allergies || [];
   const customAllergyText = req.userObj?.profile?.customAllergyText || '';
+  // Undefined windowStartHour defaults to noon - a real, usable fasting
+  // window from the moment the protocol is turned on, without forcing a
+  // start-hour choice before the feature does anything.
+  const fastingProtocol = store.getFastingProtocol(req.userObj?.profile?.fastingProtocol);
+  const fastingWindowStartHour = Number.isInteger(req.userObj?.profile?.fastingWindowStartHour) ? req.userObj.profile.fastingWindowStartHour : 12;
 
   // Only day 0 (today) carries per-user overrides or needs a fresh
   // AI-generated alternative - the rest of the week is still the static
@@ -2922,7 +2983,8 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
       const priced = priceMeal(effectiveMeal, pd);
       meals.push({...priced, withinBudget: priced.price <= (budget/4), mealTypeKey, swapsUsed, swapsRemaining: MEAL_SWAP_LIMIT - swapsUsed});
     }
-    week.push({...day, meals});
+    const finalMeals = fastingProtocol ? retimeMealsForFastingWindow(meals, fastingProtocol, fastingWindowStartHour) : meals;
+    week.push({...day, meals: finalMeals});
   }
 
   const dailyCost=week[0]?.meals.reduce((s,m)=>s+m.price,0)||0;
@@ -2954,7 +3016,43 @@ app.get(`${BASE}/api/meal-plan`, auth, async (req,res) => {
   // (architecture audit Section 11) - purely additive, the mobile client
   // already consumes this whole object directly rather than unwrapping a
   // nested `ok`/`data` field, so this is a safe, non-breaking addition.
-  res.json({ok:true,...plan,week,dailyCalories,dailyCarbs,dailyProtein,dailyFat,dailyCost,budget,withinBudget:dailyCost<=budget,labAdvisory});
+  res.json({ok:true,...plan,week,dailyCalories,dailyCarbs,dailyProtein,dailyFat,dailyCost,budget,withinBudget:dailyCost<=budget,labAdvisory,
+    fastingProtocol: fastingProtocol ? { id: fastingProtocol.id, fastHours: fastingProtocol.fast_hours, eatHours: fastingProtocol.eat_hours, windowStartHour: fastingWindowStartHour } : null});
+});
+
+// Powers the dedicated fasting page's live countdown. Does the timezone math
+// server-side (Africa/Cairo, same convention as reminders.js's cairoNow())
+// so the client never needs its own timezone-aware window logic - just a
+// number to count down from and a label for what happens at zero.
+app.get(`${BASE}/api/fasting/status`, auth, (req, res) => {
+  const fastingProtocol = store.getFastingProtocol(req.userObj?.profile?.fastingProtocol);
+  if (!fastingProtocol) return res.json({ ok: true, protocol: null });
+  const windowStartHour = Number.isInteger(req.userObj?.profile?.fastingWindowStartHour) ? req.userObj.profile.fastingWindowStartHour : 12;
+  const windowEndHour = (windowStartHour + fastingProtocol.eat_hours) % 24;
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Cairo', hour12: false, hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t) => parts.find(p => p.type === t).value;
+  const startMinutes = windowStartHour * 60;
+  const endMinutes = startMinutes + fastingProtocol.eat_hours * 60; // may exceed 1440 if the window crosses midnight
+  // Fold "now" onto the same continuous timeline as the window - handles a
+  // window that crosses midnight (e.g. 20:00-04:00) the same way as one
+  // that doesn't, without a separate branch for each.
+  let nowOnTimeline = parseInt(get('hour'), 10) * 60 + parseInt(get('minute'), 10);
+  if (nowOnTimeline < startMinutes) nowOnTimeline += 24 * 60;
+
+  const isEatingWindowOpen = nowOnTimeline >= startMinutes && nowOnTimeline < endMinutes;
+  const nextBoundary = isEatingWindowOpen ? endMinutes : startMinutes + 24 * 60;
+
+  res.json({
+    ok: true,
+    protocol: { id: fastingProtocol.id, fastHours: fastingProtocol.fast_hours, eatHours: fastingProtocol.eat_hours },
+    windowStartHour, windowEndHour,
+    isEatingWindowOpen,
+    nextTransition: isEatingWindowOpen ? 'closes' : 'opens',
+    minutesUntilTransition: nextBoundary - nowOnTimeline,
+  });
 });
 
 const MEAL_SWAP_LIMIT = 3;

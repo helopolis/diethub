@@ -898,6 +898,61 @@ const insDietStmt = db.prepare(`INSERT INTO diets (id,name_en,name_ar,protein_pe
 const insDietContraStmt = db.prepare(`INSERT INTO diet_contraindications (diet_id,condition_id,severity,message_en,message_ar,created_at)
   VALUES (@diet_id,@condition_id,@severity,@message_en,@message_ar,@now) ON CONFLICT DO NOTHING`);
 
+// Intermittent fasting is an eating-*window* pattern (when to eat), a
+// different axis entirely from the diets above (what to eat) - a user picks
+// a diet AND, optionally, a fasting protocol on top of it. Kept as its own
+// table pair rather than a 12th diets row so it never forces a "Keto+IF"/
+// "Vegan+IF" content fork - the meal-plan route reshapes the same day's
+// meals into the chosen window rather than needing separate content per
+// combination. Added 2026-09-20.
+db.exec(`CREATE TABLE IF NOT EXISTS fasting_protocols (
+  id         TEXT PRIMARY KEY,
+  name_en    TEXT NOT NULL,
+  name_ar    TEXT NOT NULL,
+  fast_hours INTEGER NOT NULL,
+  eat_hours  INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+// condition_id FKs into medical_conditions, same as diet_contraindications.
+// Deliberately limited to conditions that already exist as real, selectable
+// rows there (pregnant/breastfeeding/type1_diabetes) - eating-disorder
+// history and being underweight are real, standard IF contraindications
+// too, but this app has no medical_conditions row for the former and no
+// clean derivation for the latter beyond the profile's own bmi column, so
+// neither is invented here (same "never invent medical knowledge" rule the
+// original migration set for hypertension/hyperlipidemia). Age<18 and
+// bmi<18.5 are checked directly from user_profiles in code instead - see
+// health.js's FASTING_CONTRAINDICATIONS comment.
+db.exec(`CREATE TABLE IF NOT EXISTS fasting_contraindications (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  protocol_id  TEXT NOT NULL REFERENCES fasting_protocols(id),
+  condition_id TEXT NOT NULL REFERENCES medical_conditions(id),
+  severity     TEXT NOT NULL,
+  message_en   TEXT NOT NULL,
+  message_ar   TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+)`);
+// Real unique constraint from day one this time - diet_contraindications
+// originally shipped without one and silently re-inserted its 6 rows as 24
+// on every restart before anyone noticed (ON CONFLICT DO NOTHING had no
+// conflict target). Not repeating that here.
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fasting_contra_unique ON fasting_contraindications(protocol_id, condition_id)`);
+
+const hasFastingProtocolId = db.prepare("SELECT 1 FROM pragma_table_info('user_profiles') WHERE name='fasting_protocol_id'").get();
+if (!hasFastingProtocolId) db.exec('ALTER TABLE user_profiles ADD COLUMN fasting_protocol_id TEXT REFERENCES fasting_protocols(id)');
+// Hour-of-day (0-23, local to whatever timezone the app already treats
+// everything else as) the eating window opens - e.g. 12 for a noon-8pm 16:8
+// window. NULL means "protocol chosen but no custom start yet" - server.js
+// falls back to a sensible default (noon) rather than requiring this be set
+// before fasting can be turned on at all.
+const hasFastingWindowStartHour = db.prepare("SELECT 1 FROM pragma_table_info('user_profiles') WHERE name='fasting_window_start_hour'").get();
+if (!hasFastingWindowStartHour) db.exec('ALTER TABLE user_profiles ADD COLUMN fasting_window_start_hour INTEGER');
+
+const insFastingProtocolStmt = db.prepare(`INSERT INTO fasting_protocols (id,name_en,name_ar,fast_hours,eat_hours,created_at)
+  VALUES (@id,@name_en,@name_ar,@fast_hours,@eat_hours,@now) ON CONFLICT(id) DO NOTHING`);
+const insFastingContraStmt = db.prepare(`INSERT INTO fasting_contraindications (protocol_id,condition_id,severity,message_en,message_ar,created_at)
+  VALUES (@protocol_id,@condition_id,@severity,@message_en,@message_ar,@now) ON CONFLICT DO NOTHING`);
+
 // Real values migrated as-is from DIET_META/DIET_STYLE_LABELS (health.js/
 // server.js) - not new numbers. Two DIET_META keys are deliberately NOT
 // migrated: 'lowcarb' and 'highprotein' were confirmed by the architecture
@@ -1024,12 +1079,51 @@ function seedDiets() {
 }
 seedDiets();
 
+// MVP is 16:8 only, per the phased rollout agreed with the founder - it's
+// the most-studied, easiest-to-sustain protocol, and validates the whole
+// mechanism (window field, countdown UI, meal-redistribution logic,
+// contraindication screening) before 18:6/20:4 (a one-row addition each,
+// no schema change) or 5:2 (genuinely different weekly-not-daily tracking,
+// needs its own design pass later).
+function seedFastingProtocols() {
+  const now = new Date().toISOString();
+  const protocols = [
+    { id: '16:8', name_en: '16:8', name_ar: '16:8', fast_hours: 16, eat_hours: 8 },
+  ];
+  for (const p of protocols) insFastingProtocolStmt.run({ ...p, now });
+
+  const contraindications = [
+    // Real hypoglycemia risk if insulin timing isn't adjusted for the
+    // fasting window under medical supervision - contraindicated, not just
+    // caution, matching keto's own type1_diabetes severity above.
+    { protocol_id: '16:8', condition_id: 'type1_diabetes', severity: 'contraindicated',
+      message_ar: 'الصيام المتقطع قد يسبب هبوطاً خطيراً في السكر لمرضى السكري النوع الأول دون تعديل جرعة الأنسولين بإشراف طبي مباشر. لا تبدأ هذا النمط دون استشارة طبيبك.',
+      message_en: "Intermittent fasting carries a real hypoglycemia risk for Type 1 diabetics unless insulin timing is adjusted under direct medical supervision. Don't start this pattern without checking with your doctor." },
+    { protocol_id: '16:8', condition_id: 'pregnant', severity: 'caution',
+      message_ar: 'الحمل يحتاج إمداداً غذائياً مستمراً طوال اليوم. لا يُنصح عادة بالصيام المتقطع أثناء الحمل - استشيري طبيبك أولاً.',
+      message_en: 'Pregnancy needs a steady, continuous nutrient supply through the day. Intermittent fasting isn\'t generally recommended during pregnancy - check with your doctor first.' },
+    { protocol_id: '16:8', condition_id: 'breastfeeding', severity: 'caution',
+      message_ar: 'الرضاعة تحتاج إمداداً غذائياً وسعرات حرارية مستمرة. استشيري طبيبك قبل اتباع الصيام المتقطع أثناء الرضاعة.',
+      message_en: 'Breastfeeding needs a steady calorie and nutrient supply. Check with your doctor before following intermittent fasting while breastfeeding.' },
+  ];
+  for (const c of contraindications) insFastingContraStmt.run({ ...c, now });
+}
+seedFastingProtocols();
+
 function listDiets() { return db.prepare('SELECT * FROM diets ORDER BY id').all(); }
 function getDiet(id) { return db.prepare('SELECT * FROM diets WHERE id = ?').get(id) || null; }
 function getDietContraindications(dietId, medicalConditions) {
   if (!medicalConditions || !medicalConditions.length) return [];
   const placeholders = medicalConditions.map(() => '?').join(',');
   return db.prepare(`SELECT * FROM diet_contraindications WHERE diet_id = ? AND condition_id IN (${placeholders})`).all(dietId, ...medicalConditions);
+}
+
+function listFastingProtocols() { return db.prepare('SELECT * FROM fasting_protocols ORDER BY id').all(); }
+function getFastingProtocol(id) { return id ? (db.prepare('SELECT * FROM fasting_protocols WHERE id = ?').get(id) || null) : null; }
+function getFastingContraindications(protocolId, medicalConditions) {
+  if (!protocolId || !medicalConditions || !medicalConditions.length) return [];
+  const placeholders = medicalConditions.map(() => '?').join(',');
+  return db.prepare(`SELECT * FROM fasting_contraindications WHERE protocol_id = ? AND condition_id IN (${placeholders})`).all(protocolId, ...medicalConditions);
 }
 
 // Boot-time proof this matches the real, live JS constants - same
@@ -1066,6 +1160,33 @@ function verifyDietTablesMatch({ dietMeta, dietStyleLabels, dietContraindication
   if (totalDbRules !== dbContraCount) errors.push(`diet_contraindications row count mismatch: DB has ${totalDbRules}, JS accounted for ${dbContraCount}`);
   if (errors.length) throw new Error('[db] diet-table migration verification FAILED:\n' + errors.join('\n'));
   console.log(`[db] diet tables verified: ${listDiets().length} diets and ${totalDbRules} contraindication rules match production JS constants exactly.`);
+}
+
+// Same discipline as verifyDietTablesMatch above, for the fasting_protocols/
+// fasting_contraindications pair.
+function verifyFastingTablesMatch({ fastingMeta, fastingContraindications }) {
+  const errors = [];
+  for (const protocol of listFastingProtocols()) {
+    const meta = fastingMeta[protocol.id];
+    if (!meta) { errors.push(`fasting protocol ${protocol.id} has no FASTING_META entry`); continue; }
+    if (meta.fastHours !== protocol.fast_hours) errors.push(`fasting protocol ${protocol.id} fast_hours mismatch: DB=${protocol.fast_hours} JS=${meta.fastHours}`);
+    if (meta.eatHours !== protocol.eat_hours) errors.push(`fasting protocol ${protocol.id} eat_hours mismatch: DB=${protocol.eat_hours} JS=${meta.eatHours}`);
+  }
+  let dbContraCount = 0;
+  for (const protocolId of Object.keys(fastingContraindications)) {
+    for (const rule of fastingContraindications[protocolId]) {
+      const dbRule = db.prepare('SELECT * FROM fasting_contraindications WHERE protocol_id = ? AND condition_id = ?').get(protocolId, rule.condition);
+      if (!dbRule) { errors.push(`fasting_contraindications missing: ${protocolId}/${rule.condition}`); continue; }
+      dbContraCount++;
+      if (dbRule.severity !== rule.severity) errors.push(`fasting_contraindications ${protocolId}/${rule.condition} severity mismatch: DB=${dbRule.severity} JS=${rule.severity}`);
+      if (dbRule.message_en !== rule.en) errors.push(`fasting_contraindications ${protocolId}/${rule.condition} message_en mismatch`);
+      if (dbRule.message_ar !== rule.ar) errors.push(`fasting_contraindications ${protocolId}/${rule.condition} message_ar mismatch`);
+    }
+  }
+  const totalDbRules = db.prepare('SELECT COUNT(*) c FROM fasting_contraindications').get().c;
+  if (totalDbRules !== dbContraCount) errors.push(`fasting_contraindications row count mismatch: DB has ${totalDbRules}, JS accounted for ${dbContraCount}`);
+  if (errors.length) throw new Error('[db] fasting-table migration verification FAILED:\n' + errors.join('\n'));
+  console.log(`[db] fasting tables verified: ${listFastingProtocols().length} protocol(s) and ${totalDbRules} contraindication rules match production JS constants exactly.`);
 }
 
 // ─── MEALS & RECIPE INGREDIENTS (Phase 4 of the nutrition-architecture ────
@@ -1387,10 +1508,10 @@ const upsertUserStmt = db.prepare(`INSERT INTO users
 const upsertUserProfileStmt = db.prepare(`INSERT INTO user_profiles
     (user_id,diet_id,weight,height,age,gender,budget,body_fat,muscle_mass,bmi,bmr,goal_id,activity_level_id,
      calorie_mode,custom_calorie_target,cycle_tracking_enabled,last_period_start,cycle_length,takes_creatine,
-     measurements_updated_at,custom_allergy_text,target_weight,profile_lang,updated_at)
+     measurements_updated_at,custom_allergy_text,target_weight,profile_lang,fasting_protocol_id,fasting_window_start_hour,updated_at)
   VALUES (@user_id,@diet_id,@weight,@height,@age,@gender,@budget,@body_fat,@muscle_mass,@bmi,@bmr,@goal_id,@activity_level_id,
      @calorie_mode,@custom_calorie_target,@cycle_tracking_enabled,@last_period_start,@cycle_length,@takes_creatine,
-     @measurements_updated_at,@custom_allergy_text,@target_weight,@profile_lang,@now)
+     @measurements_updated_at,@custom_allergy_text,@target_weight,@profile_lang,@fasting_protocol_id,@fasting_window_start_hour,@now)
   ON CONFLICT(user_id) DO UPDATE SET
     diet_id=excluded.diet_id, weight=excluded.weight, height=excluded.height, age=excluded.age, gender=excluded.gender,
     budget=excluded.budget, body_fat=excluded.body_fat, muscle_mass=excluded.muscle_mass, bmi=excluded.bmi, bmr=excluded.bmr,
@@ -1398,7 +1519,8 @@ const upsertUserProfileStmt = db.prepare(`INSERT INTO user_profiles
     custom_calorie_target=excluded.custom_calorie_target, cycle_tracking_enabled=excluded.cycle_tracking_enabled,
     last_period_start=excluded.last_period_start, cycle_length=excluded.cycle_length, takes_creatine=excluded.takes_creatine,
     measurements_updated_at=excluded.measurements_updated_at, custom_allergy_text=excluded.custom_allergy_text,
-    target_weight=excluded.target_weight, profile_lang=excluded.profile_lang, updated_at=excluded.updated_at`);
+    target_weight=excluded.target_weight, profile_lang=excluded.profile_lang, fasting_protocol_id=excluded.fasting_protocol_id,
+    fasting_window_start_hour=excluded.fasting_window_start_hour, updated_at=excluded.updated_at`);
 const insUserAllergyStmt = db.prepare(`INSERT INTO user_allergies (user_id,allergen_id) VALUES (@user_id,@allergen_id) ON CONFLICT DO NOTHING`);
 const insUserConditionStmt = db.prepare(`INSERT INTO user_medical_conditions (user_id,condition_id) VALUES (@user_id,@condition_id) ON CONFLICT DO NOTHING`);
 const deleteUserAllergiesStmt = db.prepare('DELETE FROM user_allergies WHERE user_id = ?');
@@ -1439,6 +1561,7 @@ function upsertFullUser(u, skippedRefs) {
   const dietId = p.diet && getDiet(p.diet) ? p.diet : (p.diet ? (skippedRefs.push(`${u.id} diet="${p.diet}"`), null) : null);
   const goalId = p.goalType ? normalizeGoalType(p.goalType) : null;
   const activityLevelId = p.activityLevel && getActivityLevel(p.activityLevel) ? p.activityLevel : (p.activityLevel ? (skippedRefs.push(`${u.id} activityLevel="${p.activityLevel}"`), null) : null);
+  const fastingProtocolId = p.fastingProtocol && getFastingProtocol(p.fastingProtocol) ? p.fastingProtocol : (p.fastingProtocol ? (skippedRefs.push(`${u.id} fastingProtocol="${p.fastingProtocol}"`), null) : null);
 
   upsertUserProfileStmt.run({
     user_id: u.id, diet_id: dietId, weight: p.weight ?? null, height: p.height ?? null, age: p.age ?? null,
@@ -1448,7 +1571,9 @@ function upsertFullUser(u, skippedRefs) {
     cycle_tracking_enabled: bool01(p.cycleTrackingEnabled), last_period_start: p.lastPeriodStart || null,
     cycle_length: p.cycleLength ?? null, takes_creatine: bool01(p.takesCreatine),
     measurements_updated_at: p.measurementsUpdatedAt || null, custom_allergy_text: p.customAllergyText || null,
-    target_weight: p.targetWeight ?? null, profile_lang: p.lang || null, now,
+    target_weight: p.targetWeight ?? null, profile_lang: p.lang || null, fasting_protocol_id: fastingProtocolId,
+    fasting_window_start_hour: Number.isInteger(p.fastingWindowStartHour) && p.fastingWindowStartHour >= 0 && p.fastingWindowStartHour <= 23 ? p.fastingWindowStartHour : null,
+    now,
   });
 
   deleteUserAllergiesStmt.run(u.id);
@@ -1561,6 +1686,8 @@ function userRowToObject(row) {
 
   const profile = {};
   if (p.diet_id != null) profile.diet = p.diet_id;
+  if (p.fasting_protocol_id != null) profile.fastingProtocol = p.fasting_protocol_id;
+  if (p.fasting_window_start_hour != null) profile.fastingWindowStartHour = p.fasting_window_start_hour;
   if (p.weight != null) profile.weight = p.weight;
   if (p.height != null) profile.height = p.height;
   if (p.age != null) profile.age = p.age;
@@ -1833,6 +1960,7 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   verifyLookupTablesMatch,
   resolveFood, normalizeFoodName, verifyFoodResolution,
   listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
+  listFastingProtocols, getFastingProtocol, getFastingContraindications, verifyFastingTablesMatch,
   seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity,
   getMealOverrideRow, saveMealOverrideRow, deleteMealOverrideRow, deleteAllMealOverridesForUser,
   listFoodCategories, listFoodsByCategory,
