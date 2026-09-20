@@ -1101,27 +1101,45 @@ seedDiets();
 // contraindication screening) before 18:6/20:4 (a one-row addition each,
 // no schema change) or 5:2 (genuinely different weekly-not-daily tracking,
 // needs its own design pass later).
+// 18:6/20:4 added 2026-09-20, per the phased rollout: 16:8 validated the
+// whole mechanism (window field, countdown, retiming, contraindication
+// screening) first, live. Confirmed a trivial addition, not new
+// architecture - not one line of the actual mechanism code (retiming,
+// /api/fasting/status, profile validation, boot verification) hardcodes
+// '16:8'; it all reads whatever protocols exist in this table.
 function seedFastingProtocols() {
   const now = new Date().toISOString();
   const protocols = [
     { id: '16:8', name_en: '16:8', name_ar: '16:8', fast_hours: 16, eat_hours: 8 },
+    { id: '18:6', name_en: '18:6', name_ar: '18:6', fast_hours: 18, eat_hours: 6 },
+    { id: '20:4', name_en: '20:4', name_ar: '20:4', fast_hours: 20, eat_hours: 4 },
   ];
   for (const p of protocols) insFastingProtocolStmt.run({ ...p, now });
 
-  const contraindications = [
-    // Real hypoglycemia risk if insulin timing isn't adjusted for the
-    // fasting window under medical supervision - contraindicated, not just
-    // caution, matching keto's own type1_diabetes severity above.
-    { protocol_id: '16:8', condition_id: 'type1_diabetes', severity: 'contraindicated',
-      message_ar: 'الصيام المتقطع قد يسبب هبوطاً خطيراً في السكر لمرضى السكري النوع الأول دون تعديل جرعة الأنسولين بإشراف طبي مباشر. لا تبدأ هذا النمط دون استشارة طبيبك.',
-      message_en: "Intermittent fasting carries a real hypoglycemia risk for Type 1 diabetics unless insulin timing is adjusted under direct medical supervision. Don't start this pattern without checking with your doctor." },
-    { protocol_id: '16:8', condition_id: 'pregnant', severity: 'caution',
-      message_ar: 'الحمل يحتاج إمداداً غذائياً مستمراً طوال اليوم. لا يُنصح عادة بالصيام المتقطع أثناء الحمل - استشيري طبيبك أولاً.',
-      message_en: 'Pregnancy needs a steady, continuous nutrient supply through the day. Intermittent fasting isn\'t generally recommended during pregnancy - check with your doctor first.' },
-    { protocol_id: '16:8', condition_id: 'breastfeeding', severity: 'caution',
-      message_ar: 'الرضاعة تحتاج إمداداً غذائياً وسعرات حرارية مستمرة. استشيري طبيبك قبل اتباع الصيام المتقطع أثناء الرضاعة.',
-      message_en: 'Breastfeeding needs a steady calorie and nutrient supply. Check with your doctor before following intermittent fasting while breastfeeding.' },
-  ];
+  // Same 3 conditions/severities/message text across all three protocols -
+  // none of the wording references specific hours, and there's no verified
+  // clinical source (yet) to justify a *different* severity tier for 18:6/
+  // 20:4 specifically vs 16:8, so this doesn't invent one. The real
+  // difference a shorter window brings (harder to hit nutrient targets in
+  // 4-6h vs 8h) is a UI-copy concern (see constants.js's FASTING_INFO), not
+  // a new contraindication rule.
+  const contraindications = [];
+  for (const protocolId of ['16:8', '18:6', '20:4']) {
+    contraindications.push(
+      // Real hypoglycemia risk if insulin timing isn't adjusted for the
+      // fasting window under medical supervision - contraindicated, not
+      // just caution, matching keto's own type1_diabetes severity above.
+      { protocol_id: protocolId, condition_id: 'type1_diabetes', severity: 'contraindicated',
+        message_ar: 'الصيام المتقطع قد يسبب هبوطاً خطيراً في السكر لمرضى السكري النوع الأول دون تعديل جرعة الأنسولين بإشراف طبي مباشر. لا تبدأ هذا النمط دون استشارة طبيبك.',
+        message_en: "Intermittent fasting carries a real hypoglycemia risk for Type 1 diabetics unless insulin timing is adjusted under direct medical supervision. Don't start this pattern without checking with your doctor." },
+      { protocol_id: protocolId, condition_id: 'pregnant', severity: 'caution',
+        message_ar: 'الحمل يحتاج إمداداً غذائياً مستمراً طوال اليوم. لا يُنصح عادة بالصيام المتقطع أثناء الحمل - استشيري طبيبك أولاً.',
+        message_en: 'Pregnancy needs a steady, continuous nutrient supply through the day. Intermittent fasting isn\'t generally recommended during pregnancy - check with your doctor first.' },
+      { protocol_id: protocolId, condition_id: 'breastfeeding', severity: 'caution',
+        message_ar: 'الرضاعة تحتاج إمداداً غذائياً وسعرات حرارية مستمرة. استشيري طبيبك قبل اتباع الصيام المتقطع أثناء الرضاعة.',
+        message_en: 'Breastfeeding needs a steady calorie and nutrient supply. Check with your doctor before following intermittent fasting while breastfeeding.' },
+    );
+  }
   for (const c of contraindications) insFastingContraStmt.run({ ...c, now });
 }
 seedFastingProtocols();

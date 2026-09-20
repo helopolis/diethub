@@ -232,6 +232,8 @@ const DIET_META = {
 // and in db.js's seedFastingProtocols() once the phasing calls for it.
 const FASTING_META = {
   '16:8': { fastHours: 16, eatHours: 8 },
+  '18:6': { fastHours: 18, eatHours: 6 },
+  '20:4': { fastHours: 20, eatHours: 4 },
 };
 
 // Same shape/discipline as DIET_CONTRAINDICATIONS - real, standard clinical
@@ -247,18 +249,24 @@ const FASTING_META = {
 // hypertension/hyperlipidemia. Age<18 and bmi<18.5 should be screened
 // directly from the profile's own fields wherever this is enforced, not
 // added as a fake medical condition.
+// 18:6/20:4 added 2026-09-20, reusing 16:8's exact rules - see db.js
+// seedFastingProtocols()'s matching comment for why (same conditions/
+// severities/text across all three, no invented per-protocol escalation).
+const FASTING_CONTRAINDICATION_RULES = [
+  { condition: 'type1_diabetes', severity: 'contraindicated',
+    ar: 'الصيام المتقطع قد يسبب هبوطاً خطيراً في السكر لمرضى السكري النوع الأول دون تعديل جرعة الأنسولين بإشراف طبي مباشر. لا تبدأ هذا النمط دون استشارة طبيبك.',
+    en: "Intermittent fasting carries a real hypoglycemia risk for Type 1 diabetics unless insulin timing is adjusted under direct medical supervision. Don't start this pattern without checking with your doctor." },
+  { condition: 'pregnant', severity: 'caution',
+    ar: 'الحمل يحتاج إمداداً غذائياً مستمراً طوال اليوم. لا يُنصح عادة بالصيام المتقطع أثناء الحمل - استشيري طبيبك أولاً.',
+    en: 'Pregnancy needs a steady, continuous nutrient supply through the day. Intermittent fasting isn\'t generally recommended during pregnancy - check with your doctor first.' },
+  { condition: 'breastfeeding', severity: 'caution',
+    ar: 'الرضاعة تحتاج إمداداً غذائياً وسعرات حرارية مستمرة. استشيري طبيبك قبل اتباع الصيام المتقطع أثناء الرضاعة.',
+    en: 'Breastfeeding needs a steady calorie and nutrient supply. Check with your doctor before following intermittent fasting while breastfeeding.' },
+];
 const FASTING_CONTRAINDICATIONS = {
-  '16:8': [
-    { condition: 'type1_diabetes', severity: 'contraindicated',
-      ar: 'الصيام المتقطع قد يسبب هبوطاً خطيراً في السكر لمرضى السكري النوع الأول دون تعديل جرعة الأنسولين بإشراف طبي مباشر. لا تبدأ هذا النمط دون استشارة طبيبك.',
-      en: "Intermittent fasting carries a real hypoglycemia risk for Type 1 diabetics unless insulin timing is adjusted under direct medical supervision. Don't start this pattern without checking with your doctor." },
-    { condition: 'pregnant', severity: 'caution',
-      ar: 'الحمل يحتاج إمداداً غذائياً مستمراً طوال اليوم. لا يُنصح عادة بالصيام المتقطع أثناء الحمل - استشيري طبيبك أولاً.',
-      en: 'Pregnancy needs a steady, continuous nutrient supply through the day. Intermittent fasting isn\'t generally recommended during pregnancy - check with your doctor first.' },
-    { condition: 'breastfeeding', severity: 'caution',
-      ar: 'الرضاعة تحتاج إمداداً غذائياً وسعرات حرارية مستمرة. استشيري طبيبك قبل اتباع الصيام المتقطع أثناء الرضاعة.',
-      en: 'Breastfeeding needs a steady calorie and nutrient supply. Check with your doctor before following intermittent fasting while breastfeeding.' },
-  ],
+  '16:8': FASTING_CONTRAINDICATION_RULES,
+  '18:6': FASTING_CONTRAINDICATION_RULES,
+  '20:4': FASTING_CONTRAINDICATION_RULES,
 };
 
 function buildHealthProfile(store, userId) {
