@@ -742,6 +742,52 @@ seedFoodAliases([
   { nameAr: 'جمبري مجمد', nameEn: 'Frozen Shrimp', matchesNameAr: 'جمبري' },
   { nameAr: 'زبدة طبيعية', nameEn: 'Natural Butter', matchesNameAr: 'زبدة' },
 ]);
+
+// Real gap found auditing the AI food-photo scanner (POST /api/nutrition-
+// log/photo, server.js): its vision prompt asks the model to "name each
+// item simply... in English", and a model describing a real shawarma photo
+// very plausibly returns "chicken shawarma sandwich" or "shawarma wrap",
+// not the bare "chicken shawarma" already seeded above - which the
+// EXACT-match resolver (see resolveFood's own comment) then misses
+// entirely, silently falling through to a rough AI-estimated calorie guess
+// instead of this food's real, curated macros. These aliases are the exact
+// same food under the vision model's likely phrasing, not new nutrition
+// data - same reasoning as the "فرخة كاملة"/Whole Chicken alias above.
+// Deliberately NOT aliased here: "beef shawarma"/"lamb shawarma" - real
+// shawarma made with beef or lamb runs meaningfully fattier than the
+// chicken version already seeded, so guessing it onto chicken's macros
+// would misrepresent it the same way olives-vs-olive-oil was ruled out
+// above. A real beef/lamb shawarma entry is a follow-up, not guessed here.
+seedFoodAliases([
+  { nameAr: 'شاورما', nameEn: 'shawarma', matchesNameAr: 'شاورما فراخ' },
+  { nameAr: 'ساندوتش شاورما فراخ', nameEn: 'chicken shawarma sandwich', matchesNameAr: 'شاورما فراخ' },
+  { nameAr: 'شاورما ساندوتش', nameEn: 'shawarma sandwich', matchesNameAr: 'شاورما فراخ' },
+  { nameAr: 'لفة شاورما فراخ', nameEn: 'chicken shawarma wrap', matchesNameAr: 'شاورما فراخ' },
+  { nameAr: 'لفة شاورما', nameEn: 'shawarma wrap', matchesNameAr: 'شاورما فراخ' },
+  { nameAr: 'طبق شاورما فراخ', nameEn: 'chicken shawarma plate', matchesNameAr: 'شاورما فراخ' },
+]);
+
+// Second real gap from the same audit: no burger/fast-food entry existed
+// at all, so any AI-identified burger (Big Mac included) always fell to a
+// rough AI-estimated guess. Big Mac specifically is added (not a generic
+// "burger") because it's the one fast-food item with a stable, publicly
+// published nutrition fact sheet to source real numbers from, the same
+// sourcing bar this table already holds itself to elsewhere (USDA-
+// equivalent reference composition, never invented) - a bare "burger"
+// or "cheeseburger" has no single real composition to cite and would be
+// a guess dressed up as a database entry.
+// Sourced from McDonald's own published nutrition information (one
+// sandwich, ~219g: 550 kcal, 25g protein, 45g carbs, 33g fat), converted
+// to this table's per-100g convention. From general knowledge, not a
+// live-fetched citation this pass (this session's web-search budget was
+// already exhausted) - flagged here the same way lab_reference_ranges
+// marks an unconfirmed range verified=0: treat as "sourced, not yet
+// independently re-checked against McDonald's current published page"
+// until someone does, not as guessed.
+seedFoods([
+  { nameAr: 'بيج ماك', nameEn: 'Big Mac', aliases: ['big mac', "mcdonald's big mac", 'mcdonalds big mac', 'big mac burger', 'برجر بيج ماك'], cal: 251, protein: 11.4, carbs: 20.5, fat: 15.1, allergens: ['gluten', 'milk', 'sesame', 'eggs'] },
+]);
+
 verifyFoodResolution();
 
 // ─── FOOD TAXONOMY (architecture audit Section 4) ──────────────────────────
@@ -831,7 +877,7 @@ function seedFoodTaxonomy() {
     bakery: ['baladi bread', 'white bread', 'whole wheat bread'],
     condiment: ['mayonnaise', 'tahini', "za'atar spice blend", 'cinnamon, ground', 'olives, green, canned'],
     sweetener: ['honey'],
-    mixed_dish: ['grilled kofta', 'chicken shawarma', 'fattah', 'koshari'],
+    mixed_dish: ['grilled kofta', 'chicken shawarma', 'fattah', 'koshari', 'Big Mac'],
   };
   let assigned = 0;
   const unassigned = [];
