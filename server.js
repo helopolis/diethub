@@ -4923,6 +4923,65 @@ function handleUploadError(err, req, res, _next) {
   res.status(400).json({ error: err.message || 'Upload failed' });
 }
 
+// ─── OCR USAGE QUOTAS ──────────────────────────────────────────────────────
+// Real per-feature usage caps, not abuse protection (see rateLimit() near
+// the top of this file for that — IP-keyed, in-memory, resets in minutes).
+// These are business-level entitlements per the founder's own numbers: 12
+// food-photo scans/day/user, 15 lab-report photo scans/month/user. Backed
+// by db.js's persistent document store (not the `rl` Map) since a quota
+// must survive a server restart — an in-memory counter would silently
+// reset every deploy and give every user a fresh 12/15 for free.
+// Bucketed on Africa/Cairo calendar day/month (todayCairoServer(), defined
+// below in this file — a plain function declaration, so it's hoisted and
+// callable up here) so a day/month boundary matches what a Cairo-based user
+// actually experiences, not a random UTC offset.
+const OCR_LIMITS = { food: { max: 12, period: 'day' }, lab: { max: 15, period: 'month' } };
+
+function ocrQuotaBucket(period) {
+  const today = todayCairoServer();
+  return period === 'day' ? today : today.slice(0, 7); // 'YYYY-MM'
+}
+
+// Read-only check — does NOT consume a slot. Call before doing any AI work
+// so an already-exhausted user doesn't cost a real vision-provider call.
+function checkOcrQuota(userId, kind) {
+  const { max, period } = OCR_LIMITS[kind];
+  const bucket = ocrQuotaBucket(period);
+  const all = load('ocr_usage.json') || {};
+  const rec = all[userId]?.[kind];
+  const used = (rec && rec.bucket === bucket) ? rec.count : 0;
+  return { ok: used < max, used, max, bucket, remaining: Math.max(0, max - used) };
+}
+
+// Consumes one slot. Only called after a vision call actually succeeds
+// (see both routes below) — a failed/unavailable AI provider shouldn't cost
+// the user part of their monthly/daily allowance for something they never
+// got a result from.
+function consumeOcrQuota(userId, kind) {
+  const { period } = OCR_LIMITS[kind];
+  const bucket = ocrQuotaBucket(period);
+  const result = update('ocr_usage.json', all => {
+    if (!all[userId]) all[userId] = {};
+    const rec = all[userId][kind];
+    all[userId][kind] = (rec && rec.bucket === bucket) ? { bucket, count: rec.count + 1 } : { bucket, count: 1 };
+    return all;
+  }, {});
+  return result[userId][kind].count;
+}
+
+// Deliberately explicit that this is an intentional per-user allowance, not
+// an app error — the founder's own stated reason for this exact wording:
+// without it, a blocked user has no way to tell "the feature is broken" from
+// "I used up today's/this month's free scans," and the honest answer here is
+// always the second one. Paired with FoodPhotoScreen.js/LabResultsScreen.js
+// showing the same allowance number *before* a user ever hits it (their own
+// "quotaIntro" string), so this message is a reminder of something already
+// disclosed, never a surprise.
+const OCR_QUOTA_MESSAGE = {
+  food: 'استخدمت الـ 12 صورة المجانية لتصوير الطعام المتاحة لك اليوم، ده حد استخدام عادل مش عطل في التطبيق، وهيتجدد بكرة. تقدر تضيف الوجبة يدوياً لحد ما يتجدد · You’ve used all 12 free food-photo scans available to you today — this is a fair-use limit, not an app problem, and it resets tomorrow. You can add the meal manually in the meantime',
+  lab: 'استخدمت الـ 15 صورة المجانية لتحليل نتائج المعمل المتاحة لك الشهر ده، ده حد استخدام عادل مش عطل في التطبيق، وهيتجدد الشهر القادم. تقدر تدخل النتائج يدوياً لحد ما يتجدد · You’ve used all 15 free lab-report scans available to you this month — this is a fair-use limit, not an app problem, and it resets next month. You can enter the results manually in the meantime',
+};
+
 const labUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
@@ -4938,6 +4997,9 @@ app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.array('files', 6), as
   if (!req.files || req.files.length === 0) return res.status(400).json({error:'No file uploaded'});
   if (req.files.some(f => f.mimetype === 'application/pdf'))
     return res.status(400).json({error:'PDF غير مدعوم حالياً، من فضلك صور التحليل بالكاميرا أو ارفع صورة · PDF not supported yet — please upload a photo of the report instead'});
+
+  const quota = checkOcrQuota(req.user.id, 'lab');
+  if (!quota.ok) return res.status(429).json({ ok:false, error: OCR_QUOTA_MESSAGE.lab, quotaExceeded: true, remaining: 0, limit: quota.max });
 
   const date = req.body.date || new Date().toISOString().split('T')[0];
 
@@ -4960,12 +5022,16 @@ app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.array('files', 6), as
       console.error('[lab-upload] all vision providers failed:', e.message);
       return res.status(502).json({ ok:false, error: 'خدمة القراءة التلقائية غير متاحة مؤقتاً، برجاء إدخال النتائج يدوياً أو المحاولة مرة أخرى بعد قليل · Automatic reading is temporarily unavailable — please enter your results manually or try again shortly' });
     }
+    // Counts against the monthly quota now — a real vision call was made and
+    // billed against the free-tier provider's own limits, regardless of
+    // whether usable test values come out the other end below.
+    const usedCount = consumeOcrQuota(req.user.id, 'lab');
 
     const match = rawText.match(/\{[\s\S]*\}/);
     const extracted = match ? JSON.parse(match[0]) : { tests: [] };
 
     if (!extracted.tests || extracted.tests.length === 0) {
-      return res.json({ ok:false, error: 'لم نتمكن من قراءة نتائج واضحة من الصورة، جرب صورة أوضح · Could not read clear results from the image, try a clearer photo' });
+      return res.json({ ok:false, error: 'لم نتمكن من قراءة نتائج واضحة من الصورة، جرب صورة أوضح · Could not read clear results from the image, try a clearer photo', remaining: Math.max(0, OCR_LIMITS.lab.max - usedCount), limit: OCR_LIMITS.lab.max });
     }
 
     // Normalize into the same {testName: value} shape manual entry already uses
@@ -4993,7 +5059,7 @@ app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.array('files', 6), as
       updateLabEntryAnalysis(req.user.id, date, analysis);
     } catch (e) { console.error('[lab-upload] analysis step failed (extraction still OK):', e.message); }
 
-    res.json({ ok:true, date, results, analysis });
+    res.json({ ok:true, date, results, analysis, remaining: Math.max(0, OCR_LIMITS.lab.max - usedCount), limit: OCR_LIMITS.lab.max });
   } catch (e) {
     console.error('[lab-upload] error:', e.message);
     res.status(500).json({ error: 'حصل خطأ أثناء تحليل الصورة · Error processing the image' });
@@ -5027,6 +5093,8 @@ const foodPhotoUpload = multer({
 
 app.post(`${BASE}/api/nutrition-log/photo`, auth, foodPhotoUpload.single('file'), async (req,res) => {
   if (!req.file) return res.status(400).json({error:'No file uploaded'});
+  const quota = checkOcrQuota(req.user.id, 'food');
+  if (!quota.ok) return res.status(429).json({ ok:false, error: OCR_QUOTA_MESSAGE.food, quotaExceeded: true, remaining: 0, limit: quota.max });
   const date = req.body.date || new Date().toISOString().split('T')[0];
 
   try {
@@ -5043,12 +5111,15 @@ app.post(`${BASE}/api/nutrition-log/photo`, auth, foodPhotoUpload.single('file')
       console.error('[nutrition-photo] all vision providers failed:', e.message);
       return res.status(502).json({ ok:false, error: 'خدمة التعرف على الطعام غير متاحة مؤقتاً، برجاء إدخال الوجبة يدوياً أو المحاولة مرة أخرى بعد قليل · Food recognition is temporarily unavailable — please add the meal manually or try again shortly' });
     }
+    // See the lab-upload route above for why this only consumes a slot after
+    // a real vision call succeeds, not on every request.
+    const usedCount = consumeOcrQuota(req.user.id, 'food');
 
     const match = rawText.match(/\{[\s\S]*\}/);
     const identified = match ? JSON.parse(match[0]) : { items: [] };
 
     if (!identified.items || identified.items.length === 0) {
-      return res.json({ ok:false, error: 'لم نتمكن من التعرف على طعام واضح في الصورة، جرب صورة أوضح · Could not identify clear food items in the photo, try a clearer picture' });
+      return res.json({ ok:false, error: 'لم نتمكن من التعرف على طعام واضح في الصورة، جرب صورة أوضح · Could not identify clear food items in the photo, try a clearer picture', remaining: Math.max(0, OCR_LIMITS.food.max - usedCount), limit: OCR_LIMITS.food.max });
     }
 
     // Items with no FOOD_DB match need their own calorie estimate — ask for
@@ -5105,7 +5176,7 @@ app.post(`${BASE}/api/nutrition-log/photo`, auth, foodPhotoUpload.single('file')
     const totalCal = withWarnings.reduce((s,it)=>s+it.cal, 0);
 
     secLog('NUTRITION_PHOTO_UPLOAD', getIP(req), { userId: req.user.id, itemCount: withWarnings.length });
-    res.json({ ok:true, date, items: withWarnings, totalCal });
+    res.json({ ok:true, date, items: withWarnings, totalCal, remaining: Math.max(0, OCR_LIMITS.food.max - usedCount), limit: OCR_LIMITS.food.max });
   } catch (e) {
     console.error('[nutrition-photo] error:', e.message);
     res.status(500).json({ error: 'حصل خطأ أثناء تحليل الصورة · Error processing the image' });
