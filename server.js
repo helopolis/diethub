@@ -6269,20 +6269,33 @@ app.get(`${BASE}/api/nearby-facility`, auth, async (req, res) => {
   if (!NEARBY_FACILITY_QUERY[type]) return res.status(400).json({ error: 'Invalid facility type' });
   if (isNaN(lat) || isNaN(lon)) return res.status(400).json({ error: 'Invalid coordinates' });
 
-  let best = null;
-  let source = null;
+  // Real bug found live (2026-09-22): this used to treat Google Places as a
+  // strict last-resort tier, only queried if Overpass/OSM found literally
+  // zero results. OSM's tagging coverage for private/club/residential pools
+  // (leisure=swimming_pool) is genuinely sparse in Cairo - so the moment OSM
+  // found ANY tagged pool, even one 10km away, Google was never consulted
+  // at all, even though it might know about a real pool 200m away that OSM
+  // simply doesn't have mapped. Now both sources are queried together (when
+  // Google Places is configured - GOOGLE_PLACES_API_KEY, currently unset on
+  // this deployment, so this branch is presently a no-op until that's set)
+  // and whichever result is genuinely closer wins, so a gap in one source's
+  // coverage can no longer silently hide a closer real answer from the other.
+  let osmBest = null, googleBest = null;
   try {
     const elements = await queryOverpassMirrors(type, lat, lon);
-    best = nearestFromOverpass(elements, lat, lon);
-    if (best) source = 'openstreetmap';
+    osmBest = nearestFromOverpass(elements, lat, lon);
   } catch (e) {
     console.error('[nearby-facility] Overpass chain error:', e.message);
   }
-
-  if (!best) {
-    best = await queryGooglePlaces(type, lat, lon);
-    if (best) source = 'google';
+  try {
+    googleBest = await queryGooglePlaces(type, lat, lon);
+  } catch (e) {
+    console.error('[nearby-facility] Google Places chain error:', e.message);
   }
+
+  let best = null, source = null;
+  if (osmBest && (!googleBest || osmBest.distanceKm <= googleBest.distanceKm)) { best = osmBest; source = 'openstreetmap'; }
+  else if (googleBest) { best = googleBest; source = 'google'; }
 
   if (!best) {
     return res.json({ ok: false, error: 'لم نجد أماكن قريبة حالياً، حاول مرة أخرى لاحقاً · No nearby locations found right now, try again later' });
