@@ -396,6 +396,52 @@ function sanitize(s) {
   for (const p of SEC.INJECTION) if (p.test(s)) return null;
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;').trim();
 }
+
+// Shared, robust JSON extraction for every "ask the AI for JSON, parse its
+// text reply" call site in this file (5 of them, found during a live QA
+// pass: generateMealAlternative, analyzeLabResults, the lab-photo and
+// food-photo vision routes, and the food-photo calorie estimate). Every one
+// of them used to do `text.match(/\{[\s\S]*\}/)` then JSON.parse the match -
+// a GREEDY regex that spans from the first "{" to the LAST "}" anywhere in
+// the reply. That's fine for a single clean JSON object, but a live,
+// reproduced failure (generateMealAlternative, 2026-09-22: "Unexpected
+// non-whitespace character after JSON at position 353") proved models
+// occasionally emit more than one JSON-looking chunk in one reply (a
+// correction, a repeated example, trailing commentary that happens to
+// contain braces) - the greedy match then spans both chunks and produces
+// something that isn't valid JSON at all, even though the model's actual
+// answer was perfectly parseable on its own. This silently degraded every
+// caller to its fallback path (e.g. the meal-budget slider quietly serving
+// the same static plan) with only a console.error to show for it.
+// Fix: find the FIRST "{" and walk forward counting brace depth (ignoring
+// braces inside string literals) to the matching close - the actual first
+// complete JSON value, never anything beyond it. Also strips ``` fences
+// first, the same defensive step analyzeLabResults already did on its own.
+function extractJson(text) {
+  const stripped = (text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const start = stripped.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0, inString = false, escaped = false;
+  for (let i = start; i < stripped.length; i++) {
+    const ch = stripped[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try { return JSON.parse(stripped.slice(start, i + 1)); }
+        catch { return null; }
+      }
+    }
+  }
+  return null; // unbalanced - the reply was truncated or never valid JSON
+}
 function validatePwd(p) {
   if (!p || p.length < SEC.PWD_MIN) return `كلمة المرور يجب أن تكون ${SEC.PWD_MIN} أحرف على الأقل · Password must be at least ${SEC.PWD_MIN} characters`;
   if (p.length > SEC.PWD_MAX) return 'كلمة المرور طويلة جداً · Password too long';
@@ -2665,9 +2711,7 @@ Return ONLY valid JSON, no other text, in this exact shape:
   let parsed;
   try {
     const { text } = await ai.chat({ messages: [{ role: 'user', content: prompt }], maxTokens: 500 });
-    const raw = text || '{}';
-    const match = raw.match(/\{[\s\S]*\}/);
-    parsed = match ? JSON.parse(match[0]) : null;
+    parsed = extractJson(text);
   } catch (e) {
     console.error('[generateMealAlternative] error:', e.message);
     return null;
@@ -4813,11 +4857,9 @@ async function analyzeLabResults(results, diet) {
   // lists routinely hit stop_reason:"max_tokens" and got cut off mid-JSON,
   // which is a genuine truncation no amount of parsing robustness can fix.
   const { text } = await ai.chat({ messages: [{ role: 'user', content: prompt }], maxTokens: 2000 });
-  // Free models sometimes wrap JSON in ```; strip fences before parsing,
-  // same robust handling the vision-extraction step already uses.
-  const raw = (text || '{}').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  const match = raw.match(/\{[\s\S]*\}/);
-  return JSON.parse(match ? match[0] : raw);
+  const parsed = extractJson(text);
+  if (!parsed) throw new Error('Could not parse a valid JSON analysis from the AI reply');
+  return parsed;
 }
 
 function saveLabEntry(userId, date, results, numericResults) {
@@ -5027,8 +5069,7 @@ app.post(`${BASE}/api/lab-results/upload`, auth, labUpload.array('files', 6), as
     // whether usable test values come out the other end below.
     const usedCount = consumeOcrQuota(req.user.id, 'lab');
 
-    const match = rawText.match(/\{[\s\S]*\}/);
-    const extracted = match ? JSON.parse(match[0]) : { tests: [] };
+    const extracted = extractJson(rawText) || { tests: [] };
 
     if (!extracted.tests || extracted.tests.length === 0) {
       return res.json({ ok:false, error: 'لم نتمكن من قراءة نتائج واضحة من الصورة، جرب صورة أوضح · Could not read clear results from the image, try a clearer photo', remaining: Math.max(0, OCR_LIMITS.lab.max - usedCount), limit: OCR_LIMITS.lab.max });
@@ -5115,8 +5156,7 @@ app.post(`${BASE}/api/nutrition-log/photo`, auth, foodPhotoUpload.single('file')
     // a real vision call succeeds, not on every request.
     const usedCount = consumeOcrQuota(req.user.id, 'food');
 
-    const match = rawText.match(/\{[\s\S]*\}/);
-    const identified = match ? JSON.parse(match[0]) : { items: [] };
+    const identified = extractJson(rawText) || { items: [] };
 
     if (!identified.items || identified.items.length === 0) {
       return res.json({ ok:false, error: 'لم نتمكن من التعرف على طعام واضح في الصورة، جرب صورة أوضح · Could not identify clear food items in the photo, try a clearer picture', remaining: Math.max(0, OCR_LIMITS.food.max - usedCount), limit: OCR_LIMITS.food.max });
@@ -5151,8 +5191,7 @@ app.post(`${BASE}/api/nutrition-log/photo`, auth, foodPhotoUpload.single('file')
         // whole upload (the items WITH a FOOD_DB match already saved fine).
         console.error('[nutrition-photo] calorie-estimate providers failed:', e.message);
       }
-      const estMatch = estText.match(/\{[\s\S]*\}/);
-      const estimated = estMatch ? JSON.parse(estMatch[0]) : { items: [] };
+      const estimated = extractJson(estText) || { items: [] };
       let ui = 0;
       for (let i = 0; i < items.length; i++) {
         if (items[i] !== null) continue;
