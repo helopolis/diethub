@@ -4389,38 +4389,93 @@ function computeAllergenWarning(itemAllergens, userAllergies, itemNameAr, itemNa
 // "Add Custom Food" only needs a name + grams instead of the user having to
 // already know the macro breakdown themselves. Looked up from FOOD_DB above -
 // a local, free, zero-cost database, not a paid AI call.
+// Real gap found live auditing this route (2026-09-23): any food not one of
+// the ~90 curated FOOD_DB entries (or a listed alias) hard-404'd with "enter
+// values manually" - the search box only ever "detected" that fixed list,
+// nothing else, even though the food-photo route (/api/nutrition-log/photo,
+// above) already has a proven, working pattern for exactly this case: ask
+// the AI for a plain calorie/macro estimate when there's no database match.
+// This reuses that exact same prompt/parsing approach rather than inventing
+// a second one - `dbMatch` still wins whenever it exists (real, curated
+// data beats a guess), and only a genuine miss now falls through to an
+// estimate instead of a dead end. Same plausibility floor as
+// generateMealAlternative's implausible-calorie rejection (see its own
+// comment) - a hallucinated number is worse than admitting we don't know.
+async function estimateFoodMacros(foodName, weightGrams) {
+  // Real bug caught live testing this: an earlier version of this prompt's
+  // JSON-shape example used literal zeros ({"cal":0,...}), and at least one
+  // free-tier model just echoed that example back verbatim instead of
+  // filling in a real estimate for "pad thai" - a confidently wrong answer,
+  // not a technical failure, so the try/catch below never caught it.
+  // Non-zero, clearly-a-placeholder numbers in the example reduce the odds
+  // of an echoed template being mistaken for a real answer; the cal > 0
+  // floor below is the actual guard that catches it either way.
+  const prompt = `Estimate real calories, protein, carbs, and fat for this specific food, for the given weight - do not use placeholder or example numbers. Food: "${foodName}", weight: ${weightGrams}g. Return ONLY valid JSON, no other text, matching this shape with YOUR OWN calculated numbers: {"cal":250,"protein":18,"carbs":30,"fat":9}. If "${foodName}" is not a real, edible food, return {"notFood":true} instead.`;
+  let text;
+  try {
+    ({ text } = await ai.chat({ messages: [{ role: 'user', content: prompt }], maxTokens: 200 }));
+  } catch (e) {
+    console.error('[nutrition-lookup] AI estimate providers failed:', e.message);
+    return null;
+  }
+  const parsed = extractJson(text);
+  if (!parsed || parsed.notFood) return null;
+  const cal = Number(parsed.cal);
+  // A real, edible food genuinely has some calories for a nonzero portion -
+  // cal <= 0 is always a wrong/degenerate answer (a stuck-zero echo, a
+  // parsing artifact), never a real one, so it's rejected the same as an
+  // implausibly high value (over 9 cal/g, the ceiling for pure fat).
+  if (!Number.isFinite(cal) || cal <= 0 || cal > weightGrams * 9) return null;
+  return {
+    cal: Math.round(cal),
+    protein: Math.round(Number(parsed.protein)) || 0,
+    carbs: Math.round(Number(parsed.carbs)) || 0,
+    fat: Math.round(Number(parsed.fat)) || 0,
+  };
+}
+
 app.post(`${BASE}/api/nutrition-lookup`, auth, async (req, res) => {
   const foodName = sanitize(req.body.foodName || '').trim();
   const weightGrams = parseFloat(req.body.weightGrams);
   if (!foodName || isNaN(weightGrams) || weightGrams <= 0 || weightGrams > 5000)
     return res.status(400).json({ error: 'foodName and a valid weightGrams (1-5000) required' });
 
+  const userAllergies = req.userObj.profile?.allergies || [];
+  const customAllergyText = req.userObj.profile?.customAllergyText || '';
   const match = findFoodMatch(foodName);
-  if (!match) {
+
+  if (match) {
+    const scale = weightGrams / 100;
+    // Real production safety fix, 2026-08-14: this route previously never
+    // checked allergens at all, even though FOOD_DB already carries them for
+    // real and the photo-logging route already used them — a user with a
+    // real allergy got zero warning on the manual/quick-add path, which is
+    // the more commonly used one. Same shared helper the photo route now
+    // also uses, so the two paths can't silently diverge again.
+    return res.json({
+      name: foodName,
+      weightGrams,
+      cal: Math.round(match.cal * scale),
+      protein: Math.round(match.protein * scale),
+      carbs: Math.round(match.carbs * scale),
+      fat: Math.round(match.fat * scale),
+      source: 'db',
+      allergenWarning: computeAllergenWarning(match.allergens, userAllergies, match.ar, match.en, customAllergyText),
+    });
+  }
+
+  const estimate = await estimateFoodMacros(foodName, weightGrams);
+  if (!estimate) {
     return res.status(404).json({
       error: 'الطعام غير موجود في قاعدة البيانات، من فضلك أدخل القيم يدوياً · Food not found in our database, please enter values manually',
       notFound: true,
     });
   }
-
-  const scale = weightGrams / 100;
-  // Real production safety fix, 2026-08-14: this route previously never
-  // checked allergens at all, even though FOOD_DB already carries them for
-  // real and the photo-logging route already used them — a user with a
-  // real allergy got zero warning on the manual/quick-add path, which is
-  // the more commonly used one. Same shared helper the photo route now
-  // also uses, so the two paths can't silently diverge again.
-  const userAllergies = req.userObj.profile?.allergies || [];
-  const customAllergyText = req.userObj.profile?.customAllergyText || '';
-  res.json({
-    name: foodName,
-    weightGrams,
-    cal: Math.round(match.cal * scale),
-    protein: Math.round(match.protein * scale),
-    carbs: Math.round(match.carbs * scale),
-    fat: Math.round(match.fat * scale),
-    allergenWarning: computeAllergenWarning(match.allergens, userAllergies, match.ar, match.en, customAllergyText),
-  });
+  // No allergens field for a freeform AI estimate - same honest limitation
+  // the food-photo route's own ai_estimate items already carry (allergens:
+  // []), rather than silently implying an allergen check we can't actually
+  // back with real per-ingredient data.
+  res.json({ name: foodName, weightGrams, ...estimate, source: 'ai_estimate', allergenWarning: [] });
 });
 
 // ─── LAB RESULTS TRACKER ──────────────────────────────────────────────────────
