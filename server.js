@@ -2525,10 +2525,22 @@ function priceMeal(meal, foodPrices) {
 }
 
 // budget thresholds tuned against the existing 50-1000 clamp range.
+// Real bug found live auditing the budget slider (2026-09-22): the old
+// 3-way split put the "mid" tier at 150-350 - more than half the slider's
+// 100-500 range - and mid never triggers regeneration below, so moving the
+// slider anywhere across most of its range visibly did nothing but update
+// the displayed number. Splits into 5 tiers instead; only the narrow
+// 275-325 band (the old default) stays a true no-op zone, so the AI-call
+// volume this adds is bounded to 2 more distinct generation tiers (very_low,
+// very_high), not "every tier calls the AI" - each tier's result is still
+// cached per user/day (see day0Resolved below), so dragging within one
+// tier never re-calls the AI regardless.
 function budgetTierFor(budget) {
-  if (budget < 150) return 'low';
-  if (budget > 350) return 'high';
-  return 'mid';
+  if (budget < 175) return 'very_low';
+  if (budget < 275) return 'low';
+  if (budget <= 325) return 'mid';
+  if (budget <= 425) return 'high';
+  return 'very_high';
 }
 
 // Reads the real meal_overrides table (scalability fix, architecture audit
@@ -2656,9 +2668,11 @@ async function generateMealAlternative(dietStyle, mealType, budgetTier, preferen
   const ingredientCatalog = items.map(i => `${i.id} (${i.nameEn}/${i.name}, ~${cheapestOf(i)} EGP/${i.unit}, category: ${i.category})`).join('\n');
 
   const tierInstruction = {
+    very_low: 'Use the cheapest ingredients from the list (lowest price-per-unit items) - this is a tight-budget meal.',
     low: 'Use cheap, budget-friendly ingredients from the list (lower price-per-unit items).',
-    high: 'Premium ingredients from the list are fine (higher price-per-unit items welcome).',
     mid: '',
+    high: 'Premium ingredients from the list are fine (higher price-per-unit items welcome).',
+    very_high: 'Go for the most premium ingredients on the list (highest price-per-unit items) - budget is not a concern for this meal.',
   }[budgetTier] || '';
   const preferenceInstruction = preference ? `The user specifically asked for: "${preference}". Reflect that in the meal choice.` : '';
   // personalScale (from getPersonalTargets, derived from the user's real
