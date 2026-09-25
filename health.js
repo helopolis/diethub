@@ -498,10 +498,19 @@ function buildHealthProfile(store, userId) {
   // physically equal or exceed total body weight. Catches a mis-typed
   // InBody reading (kg vs % confusion is the common real mistake) instead
   // of silently feeding a bad number into the targets above.
-  if (takesCreatine) {
+  // Real, deterministic bug caught live (2026-09-25) - not AI-dependent like
+  // coachSummary's version of this same mistake, this flag's text is shown
+  // directly in the app UI. hydrationTargetL/proteinTargetG are computed
+  // from weight/other profile fields and can genuinely be null before those
+  // are filled in - e.g. a user turning on "takes creatine" before entering
+  // their weight - which used to render as a literal, broken "water target
+  // raised to ?L" every time. The flag has nothing real to say without the
+  // actual numbers, so it's skipped entirely rather than shown with a
+  // placeholder standing in for real data.
+  if (takesCreatine && hydrationTargetL != null && proteinTargetG != null) {
     flags.push(flag('supplement', 'info',
-      `تتناول كرياتين — تم رفع هدف الماء إلى ${hydrationTargetL ?? '؟'} لتر، وتأكد من الوصول لهدف البروتين ${proteinTargetG ?? '؟'} جم يومياً`,
-      `Taking creatine — water target raised to ${hydrationTargetL ?? '?'}L, make sure you're hitting your ${proteinTargetG ?? '?'}g protein target daily`));
+      `تتناول كرياتين — تم رفع هدف الماء إلى ${hydrationTargetL} لتر، وتأكد من الوصول لهدف البروتين ${proteinTargetG} جم يومياً`,
+      `Taking creatine — water target raised to ${hydrationTargetL}L, make sure you're hitting your ${proteinTargetG}g protein target daily`));
   }
   if (muscleMass != null && weight != null && muscleMass >= weight) {
     flags.push(flag('body_comp', 'warning', 'كتلة العضلات المُدخلة أكبر من أو تساوي الوزن الكلي — تحقق من الرقم', 'Entered muscle mass is >= total weight — please double-check this value'));
@@ -577,9 +586,26 @@ function coachSummary(hp, lang = 'ar') {
   const DIET = en ? DIET_EN : DIET_AR, GOAL = en ? GOAL_EN : GOAL_AR, ACTIVITY = en ? ACTIVITY_EN : ACTIVITY_AR;
   const lines = [];
   lines.push(en ? `Name: ${hp.username}` : `الاسم: ${hp.username}`);
-  lines.push(en
-    ? `Age: ${d.age ?? 'unspecified'} · Gender: ${d.gender === 'female' ? 'female' : 'male'} · Height: ${d.height ?? '?'} cm · Weight: ${d.weight ?? '?'} kg`
-    : `العمر: ${d.age ?? 'غير محدد'} · الجنس: ${d.gender === 'female' ? 'أنثى' : 'ذكر'} · الطول: ${d.height ?? '؟'} سم · الوزن: ${d.weight ?? '؟'} كجم`);
+  // Real bug caught live (2026-09-25): height/weight used to fall back to a
+  // literal "?"/"؟" placeholder character when missing - the daily brief's
+  // AI narrative then sometimes echoed that exact symbol verbatim into
+  // user-facing text ("your weight was at ? kg"). The prompt's own "use
+  // only real data, never invent numbers" instruction correctly stopped the
+  // model from making up a number, but nothing told it to omit a mention
+  // entirely rather than parrot a placeholder. Age already used a real
+  // word ("unspecified"/"غير محدد") and never had this problem - height/
+  // weight now match that same "only mention what's actually present"
+  // pattern already used a few lines below for body composition, instead
+  // of a symbol with no natural-language meaning to fall back on.
+  {
+    const demoParts = [
+      en ? `Age: ${d.age ?? 'unspecified'}` : `العمر: ${d.age ?? 'غير محدد'}`,
+      en ? `Gender: ${d.gender === 'female' ? 'female' : 'male'}` : `الجنس: ${d.gender === 'female' ? 'أنثى' : 'ذكر'}`,
+    ];
+    if (d.height != null) demoParts.push(en ? `Height: ${d.height} cm` : `الطول: ${d.height} سم`);
+    if (d.weight != null) demoParts.push(en ? `Weight: ${d.weight} kg` : `الوزن: ${d.weight} كجم`);
+    lines.push(demoParts.join(' · '));
+  }
   if (d.bmi != null) lines.push(en
     ? `BMI: ${d.bmi}${d.bmiCategory ? ' (' + d.bmiCategory.en + ')' : ''}`
     : `مؤشر كتلة الجسم: ${d.bmi}${d.bmiCategory ? ' (' + d.bmiCategory.ar + ')' : ''}`);
@@ -625,9 +651,21 @@ function coachSummary(hp, lang = 'ar') {
   if (t.proteinTargetG) lines.push(en
     ? `Protein target: ${t.proteinTargetG} g/day · Water target: ${t.hydrationTargetL} L${g.takesCreatine ? ' (raised for creatine use)' : ''}`
     : `هدف البروتين: ${t.proteinTargetG} جم/يوم · هدف الماء: ${t.hydrationTargetL} لتر${g.takesCreatine ? ' (مرفوع بسبب الكرياتين)' : ''}`);
-  if (w) lines.push(en
-    ? `Wearable data (7-day avg): steps ${w.avgSteps ?? '?'} · sleep ${w.avgSleepH ?? '?'}h · heart rate ${w.latestHeartRate ?? '?'}${w.avgExerciseCal ? ' · calories burned exercising (avg on training days) ' + w.avgExerciseCal : ''}`
-    : `بيانات الساعة (متوسط 7 أيام): خطوات ${w.avgSteps ?? '؟'} · نوم ${w.avgSleepH ?? '؟'} ساعة · نبض ${w.latestHeartRate ?? '؟'}${w.avgExerciseCal ? ' · سعرات تمرين محروقة (متوسط أيام التمرين) ' + w.avgExerciseCal : ''}`);
+  // Same "?" placeholder bug as the demographics line above, third real
+  // instance of the same mistake found in this one function - `w` being
+  // truthy doesn't guarantee every one of its own sub-fields is populated
+  // (e.g. a freshly-connected watch with no sleep data reported yet), so
+  // this needs the same "only mention what's actually present" treatment.
+  if (w) {
+    const wearableParts = [];
+    if (w.avgSteps != null) wearableParts.push(en ? `steps ${w.avgSteps}` : `خطوات ${w.avgSteps}`);
+    if (w.avgSleepH != null) wearableParts.push(en ? `sleep ${w.avgSleepH}h` : `نوم ${w.avgSleepH} ساعة`);
+    if (w.latestHeartRate != null) wearableParts.push(en ? `heart rate ${w.latestHeartRate}` : `نبض ${w.latestHeartRate}`);
+    if (w.avgExerciseCal) wearableParts.push(en ? `calories burned exercising (avg on training days) ${w.avgExerciseCal}` : `سعرات تمرين محروقة (متوسط أيام التمرين) ${w.avgExerciseCal}`);
+    if (wearableParts.length) lines.push(en
+      ? `Wearable data (7-day avg): ${wearableParts.join(' · ')}`
+      : `بيانات الساعة (متوسط 7 أيام): ${wearableParts.join(' · ')}`);
+  }
   if (L) lines.push(en
     ? `Latest labs (${L.date}): status ${L.status || 'unanalyzed'}${L.analysis?.analysis_en ? ' — ' + L.analysis.analysis_en : ''}`
     : `آخر تحاليل (${L.date}): الحالة ${L.status || 'غير محللة'}${L.analysis?.analysis_ar ? ' — ' + L.analysis.analysis_ar : ''}`);
