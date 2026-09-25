@@ -1572,6 +1572,31 @@ function getMealNutritionByIdentity(dietId, dayIndex, mealType, nameAr) {
   return getMealNutrition(meal.id);
 }
 
+// Same identity lookup as getMealNutritionByIdentity above, but for the 8
+// tracked micronutrients (2026-09-25, Profile Highlights) - real per-
+// ingredient data via the same recipe_ingredients rows, not a separate,
+// driftable estimate. Added specifically because the nutrient highlight
+// originally only counted custom-logged food, silently excluding anyone
+// who logs via the static meal plan - the more common path - which meant
+// it would rarely fire for most real users. Returns null (not zeros) when
+// no ingredient in the meal resolved to a food, same "can't claim data we
+// don't have" convention as getMicronutrients() itself.
+function getMealMicronutrientsByIdentity(dietId, dayIndex, mealType, nameAr) {
+  const meal = findExistingMealStmt.get(dietId, dayIndex, mealType, nameAr);
+  if (!meal) return null;
+  const rows = getMealIngredients(meal.id);
+  const totals = { iron: 0, vitaminD: 0, vitaminB12: 0, calcium: 0, vitaminC: 0, magnesium: 0, zinc: 0, folate: 0 };
+  let anyMatched = false;
+  for (const r of rows) {
+    const micro = getMicronutrients(r.food_id);
+    if (!micro) continue;
+    const scale = r.grams / 100;
+    for (const key of Object.keys(totals)) totals[key] += (micro[key] || 0) * scale;
+    anyMatched = true;
+  }
+  return anyMatched ? totals : null;
+}
+
 // ─── MEAL OVERRIDES (scalability fix, architecture audit Section 13/14) ────
 // Previously `meal_overrides.json` was a single JSON blob keyed by user,
 // with EVERY user's every override nested inside one document - reading or
@@ -2208,7 +2233,7 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   resolveFood, normalizeFoodName, verifyFoodResolution, getMicronutrients,
   listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
   listFastingProtocols, getFastingProtocol, getFastingContraindications, verifyFastingTablesMatch,
-  seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity,
+  seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity, getMealMicronutrientsByIdentity,
   getMealOverrideRow, saveMealOverrideRow, deleteMealOverrideRow, deleteAllMealOverridesForUser,
   listFoodCategories, listFoodsByCategory,
   getUserRow, getUserProfileRow, getUserAllergyIds, getUserMedicalConditionIds, verifyUsersMigration, seedUsersFromBlob };

@@ -490,10 +490,19 @@ function buildYesterdayStory(store, userId, gender, lang, diet) {
   const totals = computeNutritionToday(store, userId, diet, date);
   const nutritionStory = totals ? { date, cal: totals.cal, protein: totals.protein, carbs: totals.carbs, fat: totals.fat } : null;
 
-  // Sum real micronutrients across yesterday's custom items, re-matching
-  // each logged name against the same resolver everything else in this app
-  // uses - an AI-estimated item (no database match) contributes nothing
-  // here, honestly, rather than a guessed number.
+  // Sum real micronutrients across BOTH sources of yesterday's log:
+  // custom items (re-matched via resolveFood, same as before) AND
+  // plan-based logged meals (2026-09-25 fix - the original version of this
+  // function only counted custom items, so it silently never fired for
+  // anyone logging via the static meal plan, which is the more common
+  // path; that made the whole "nutrient highlight" retention point rarely
+  // show up for most real users). Manually-swapped meals are deliberately
+  // excluded from this sum - a swap's replacement can be AI-generated with
+  // no guaranteed match to real foods, and guessing at its micronutrients
+  // would mean fabricating a number in a health app; the meal's calories/
+  // protein/etc. above still count it correctly via computeNutritionToday
+  // (which uses the override's own declared macros), only THIS nutrient
+  // sum honestly omits it.
   const nutrientTotals = { iron: 0, vitaminD: 0, vitaminB12: 0, calcium: 0, vitaminC: 0, magnesium: 0, zinc: 0, folate: 0 };
   let anyMatched = false;
   for (const item of customItems) {
@@ -503,6 +512,25 @@ function buildYesterdayStory(store, userId, gender, lang, diet) {
     if (!micro) continue;
     const scale = (item.weightGrams || 100) / 100;
     for (const key of Object.keys(nutrientTotals)) nutrientTotals[key] += (micro[key] || 0) * scale;
+    anyMatched = true;
+  }
+  const plans = store.load('meal_plans.json');
+  // Same fallback as computeNutritionToday above, but the identity lookup
+  // below needs to know WHICH diet's row it's actually reading - passing
+  // the original (possibly-missing) `diet` while iterating the atkins
+  // fallback plan would query the wrong diet_id and silently match nothing.
+  const effectiveDiet = plans?.[diet] ? diet : 'atkins';
+  const plan = plans?.[effectiveDiet];
+  const dayMeals = plan?.week?.[0]?.meals || [];
+  for (const i of (dayLog.meals || [])) {
+    const meal = dayMeals[i];
+    if (!meal) continue;
+    const mealTypeKey = meal.typeEn ? meal.typeEn.toLowerCase() : meal.type;
+    const override = getMealOverride(store, userId, date, mealTypeKey);
+    if (override && override.manualSwap) continue; // swapped meal - see comment above
+    const micro = store.getMealMicronutrientsByIdentity(effectiveDiet, 0, mealTypeKey, meal.name);
+    if (!micro) continue;
+    for (const key of Object.keys(nutrientTotals)) nutrientTotals[key] += micro[key] || 0;
     anyMatched = true;
   }
 
