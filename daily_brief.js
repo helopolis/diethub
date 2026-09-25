@@ -46,9 +46,19 @@ async function getBriefText(store, ai, coachSummary, hp, userId, lang) {
 
   const isAr = resolvedLang === 'ar';
   const summary = coachSummary(hp, resolvedLang);
+  // Real UX bug found live (2026-09-25): the old prompt asked for a 4-part
+  // structure (yesterday / status / today's focus / motivation) but let the
+  // model write as many sentences as it wanted within each part - the
+  // client splits the reply one bullet per sentence, so a real response
+  // rendered as 12 numbered bullets instead of a short, scannable brief.
+  // Now asks for exactly 3 sentences (yesterday+status combined into one,
+  // today's focus, one motivating line) - constrained at the source rather
+  // than just truncating whatever comes back, though HomeScreen.js's
+  // splitBriefInsights() still caps at 3 as a safety net regardless of what
+  // an unreliable free-tier model actually returns.
   const productInstructions = isAr
-    ? `اكتب موجزاً صحياً يومياً قصيراً لهذا المستخدم (90 كلمة كحد أقصى، نص عادي بدون تنسيق أو عناوين). الهيكل: ما حدث أمس، الحالة الحالية، تركيز اليوم، جملة تحفيزية واحدة. استخدم كلمات بسيطة جداً وجملاً قصيرة يفهمها طفل في العاشرة من عمره — ليس أسلوب تقرير أو ملخص أكاديمي، ولا مصطلحات معقدة. دافئ ومشجع مثل صديق، ليس رسمياً. استخدم فقط البيانات الحقيقية أدناه، لا تخترع أرقاماً.`
-    : `Write a short daily wellness briefing for this user (max 90 words, plain text, no markdown, no headers). Structure: what happened yesterday, current status, today's focus, one motivating line. Use very simple, everyday words and short sentences — write like you're explaining it to a 10-year-old, not writing a report or an academic summary. No jargon, no complex phrasing. Warm and encouraging like a friend, not formal. Use ONLY the real data given below, never invent numbers.`;
+    ? `اكتب موجزاً صحياً يومياً قصيراً جداً لهذا المستخدم — 3 جمل بالضبط، لا أكثر ولا أقل، كل جملة فكرة كاملة منفصلة (نص عادي بدون تنسيق أو عناوين أو ترقيم). لا تبدأ بتحية أو باسم المستخدم أو بأي جملة ترحيبية عامة — ابدأ مباشرة بالمحتوى الفعلي، فكل جملة من الثلاث ثمينة. الجملة الأولى: خلاصة ما حدث أمس والحالة الحالية معاً. الجملة الثانية: تركيز اليوم. الجملة الثالثة: جملة تحفيزية واحدة. استخدم كلمات بسيطة جداً يفهمها طفل في العاشرة من عمره — ليس أسلوب تقرير. دافئ ومشجع مثل صديق، ليس رسمياً. استخدم فقط البيانات الحقيقية أدناه، لا تخترع أرقاماً.`
+    : `Write a very short daily wellness briefing for this user — exactly 3 sentences, no more, no less, each a complete standalone thought (plain text, no markdown, no headers, no numbering). Do NOT start with a greeting, the user's name, or any generic opener like "Hi" or "Hope you're doing great" — go straight into real content, every one of the 3 sentences is precious. Sentence 1: what happened yesterday and current status combined. Sentence 2: today's focus. Sentence 3: one motivating line. Use very simple, everyday words — write like you're explaining it to a 10-year-old, not writing a report. Warm and encouraging like a friend, not formal. Use ONLY the real data given below, never invent numbers.`;
   const systemPrompt = aiLanguage.buildSystemPrompt({ productInstructions, lang: resolvedLang, userContext: summary });
 
   try {
