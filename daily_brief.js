@@ -88,15 +88,27 @@ function buildMissingDataCards(store, userId, lang) {
 
   const users = store.load('users.json') || [];
   const user = users.find(u => u.id === userId);
+  // Real bug caught live (2026-09-25): `measurementsUpdatedAt` is stamped
+  // unconditionally at registration (server.js's /register and social-login
+  // routes) regardless of whether weight/height were actually provided -
+  // Google/Facebook sign-up collects neither, so every one of those
+  // accounts gets a "just now" timestamp despite never having a real
+  // weight on file. Checking measurementsAge == null for "never recorded"
+  // therefore never fires for exactly the users it's meant to catch -
+  // confirmed live against a real never-weighed-in account, which got zero
+  // weight card. The actual signal for "never recorded" is whether `weight`
+  // itself has a value, not whether this timestamp exists; the timestamp
+  // is still the right signal for "recorded before, now stale", but only
+  // once a real weight is confirmed present.
   const measurementsAge = daysSince(user?.profile?.measurementsUpdatedAt);
-  if (measurementsAge == null) {
+  if (user?.profile?.weight == null) {
     cards.push({
       type: 'weight', severity: 'warning',
       title: en ? 'Weight never recorded' : 'لم يتم تسجيل الوزن من قبل',
       body: en ? 'Record your weight to get accurate calorie and protein targets.' : 'سجل وزنك للحصول على أهداف سعرات وبروتين دقيقة.',
       action: 'log_weight',
     });
-  } else if (measurementsAge >= 14) {
+  } else if (measurementsAge != null && measurementsAge >= 14) {
     cards.push({
       type: 'weight', severity: 'warning',
       title: en ? `Weight not updated in ${measurementsAge} days` : `لم يتم تحديث الوزن منذ ${measurementsAge} يوماً`,
