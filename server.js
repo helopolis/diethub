@@ -20,7 +20,7 @@ const store = require('./db');
 const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS, DIET_CONTRAINDICATIONS, DIET_META, FASTING_META, FASTING_CONTRAINDICATIONS } = require('./health');
 const aiLanguage = require('./ai_language');
 const { runReminderCheck } = require('./reminders');
-const { buildDailyBrief, buildWeeklySummary } = require('./daily_brief');
+const { buildDailyBrief, buildWeeklySummary, computeNutritionToday, buildProfileHighlights } = require('./daily_brief');
 const ai = require('./ai');
 const app = express();
 
@@ -2370,6 +2370,27 @@ app.get(`${BASE}/api/daily-brief`, auth, async (req, res) => {
   } catch (e) {
     console.error('Daily brief error:', e.message);
     res.status(500).json({ error: 'Failed to build daily brief' });
+  }
+});
+
+// ─── PROFILE RETENTION HIGHLIGHTS ───────────────────────────────────────────
+// Founder's own explicit retention-plan request (2026-09-25) — 3 points
+// shown beside the user's photo on the Profile screen. See daily_brief.js's
+// own header comment above buildProfileHighlights for the full design
+// reasoning (why these 3, why a streak freeze, why the nutrient highlight
+// is scoped to custom-logged items only).
+app.get(`${BASE}/api/profile-highlights`, auth, async (req, res) => {
+  try {
+    const hp = buildHealthProfile(store, req.user.id);
+    if (!hp) return res.status(404).json({ error: 'Profile not found' });
+    const lang = aiLanguage.resolveLanguage({ userLang: req.userObj.lang, appLang: req.query.lang });
+    const gender = hp.demographics?.gender || 'male';
+    const diet = hp.goals?.diet || 'atkins';
+    const result = buildProfileHighlights(store, req.user.id, gender, lang, diet);
+    res.json(result);
+  } catch (e) {
+    console.error('Profile highlights error:', e.message);
+    res.status(500).json({ error: 'Failed to build profile highlights' });
   }
 });
 

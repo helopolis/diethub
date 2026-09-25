@@ -231,8 +231,11 @@ function getMealOverride(store, userId, date, mealType) {
 // resolves against week[0] of the static plan, manual swaps only (no live
 // AI/budget-tier meal regeneration) — so totals never silently disagree
 // between the website and the app for the same logged day.
-function computeNutritionToday(store, userId, diet) {
-  const date = todayCairo();
+// `date` defaults to today so both existing call sites (this file, server.js)
+// keep working unchanged - added as a real parameter (2026-09-25) rather
+// than duplicating this whole function for buildYesterdayStory below, which
+// needs the exact same calculation for YESTERDAY specifically.
+function computeNutritionToday(store, userId, diet, date = todayCairo()) {
   const logs = store.load('nutrition_logs.json') || {};
   const todayLog = (logs[userId] || []).find(l => l.date === date);
   if (!todayLog) return null;
@@ -403,4 +406,176 @@ async function buildDailyBrief(store, ai, coachSummary, buildHealthProfile, user
   };
 }
 
-module.exports = { buildDailyBrief, buildMissingDataCards, buildSavingsCard, computeWellnessScore, computeNutritionToday, buildWeeklySummary, todayCairo };
+// ─── PROFILE RETENTION HIGHLIGHTS ───────────────────────────────────────────
+// Founder's own explicit retention-plan request (2026-09-25): 3 points shown
+// beside the user's photo on the Profile screen, distinct from this file's
+// own Daily Briefing narrative (that one covers "how was yesterday" in
+// prose already - this is structured, scannable, and specifically designed
+// to pull the user back into logging food every day). Inlined into this
+// already-mounted file rather than a new one - a new file isn't visible to
+// the running container until its bind mounts are updated (a real, already
+// documented outage class for this exact deployment).
+//
+// 1. Yesterday's macro story - real totals from what was actually logged.
+// 2. A nutrient highlight - whichever of 8 tracked micronutrients was most
+//    prominent in yesterday's logged food (see db.js's food_micronutrients
+//    table and its own sourcing-caveat comment), not a fixed daily-rotation
+//    slot - a real reflection of what they actually ate, which only exists
+//    at all once real micronutrient reference data exists per food.
+// 3. A day-streak counter (day 0/7/30 milestones), with one grace "freeze"
+//    per rolling 30 days so a single missed day doesn't zero out a real
+//    streak - the founder's own explicit call, and a well-established
+//    retention pattern (Duolingo etc.) for exactly this reason: a strict
+//    all-or-nothing streak makes people give up entirely the first time
+//    they slip, instead of just continuing.
+//
+// Deliberately scoped to CUSTOM-logged items only (quick-add food, photo-
+// logged food) for the nutrient highlight - those store a real food name
+// that can be re-matched against resolveFood() for its micronutrient row.
+// Plan-based logged meals (referenced by index into the static week plan)
+// would need a full ingredient-list traversal to attribute micronutrients
+// correctly; not done here, and not a hidden assumption - if a day was
+// logged entirely via plan meals with zero custom items, the nutrient
+// highlight is honestly omitted rather than guessed from the wrong data.
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
+// General adult RDA references, gender-aware only where the real
+// difference is meaningful (iron/vitaminC/magnesium/zinc) - the same
+// "reasonable, defensible bucket, not a clinical diagnostic" level of rigor
+// already used elsewhere in this app (see health.js's scoreHeart comment).
+function rdaFor(nutrient, gender) {
+  const female = gender === 'female';
+  const RDA = {
+    iron: female ? 18 : 8, vitaminD: 15, vitaminB12: 2.4, calcium: 1000,
+    vitaminC: female ? 75 : 90, magnesium: female ? 310 : 400,
+    zinc: female ? 8 : 11, folate: 400,
+  };
+  return RDA[nutrient];
+}
+
+const NUTRIENT_LABEL = {
+  iron: { en: 'iron', ar: 'الحديد' },
+  vitaminD: { en: 'vitamin D', ar: 'فيتامين د' },
+  vitaminB12: { en: 'vitamin B12', ar: 'فيتامين ب12' },
+  calcium: { en: 'calcium', ar: 'الكالسيوم' },
+  vitaminC: { en: 'vitamin C', ar: 'فيتامين سي' },
+  magnesium: { en: 'magnesium', ar: 'المغنيسيوم' },
+  zinc: { en: 'zinc', ar: 'الزنك' },
+  folate: { en: 'folate', ar: 'حمض الفوليك' },
+};
+
+// ─── Point 1 + 2: yesterday's macro story + nutrient highlight ────────────
+function buildYesterdayStory(store, userId, gender, lang, diet) {
+  const en = lang === 'en';
+  const date = addDays(todayCairo(), -1);
+  const logs = store.load('nutrition_logs.json') || {};
+  const dayLog = (logs[userId] || []).find(l => l.date === date);
+  const customItems = dayLog?.custom || [];
+  const hasAnyLog = dayLog && ((dayLog.meals || []).length > 0 || customItems.length > 0);
+
+  if (!hasAnyLog) {
+    return { nutritionStory: null, nutrientHighlight: null };
+  }
+
+  // Reuses this same file's real computeNutritionToday (parameterized with
+  // a date now, 2026-09-25) rather than re-deriving totals here - that
+  // function already correctly includes BOTH plan-based logged meals and
+  // custom items; an earlier version of this function only summed custom
+  // items, which would have under-reported calories for anyone logging via
+  // the static meal plan (the more common path) rather than quick-add.
+  const totals = computeNutritionToday(store, userId, diet, date);
+  const nutritionStory = totals ? { date, cal: totals.cal, protein: totals.protein, carbs: totals.carbs, fat: totals.fat } : null;
+
+  // Sum real micronutrients across yesterday's custom items, re-matching
+  // each logged name against the same resolver everything else in this app
+  // uses - an AI-estimated item (no database match) contributes nothing
+  // here, honestly, rather than a guessed number.
+  const nutrientTotals = { iron: 0, vitaminD: 0, vitaminB12: 0, calcium: 0, vitaminC: 0, magnesium: 0, zinc: 0, folate: 0 };
+  let anyMatched = false;
+  for (const item of customItems) {
+    const match = store.resolveFood(item.name);
+    if (!match) continue;
+    const micro = store.getMicronutrients(match.id);
+    if (!micro) continue;
+    const scale = (item.weightGrams || 100) / 100;
+    for (const key of Object.keys(nutrientTotals)) nutrientTotals[key] += (micro[key] || 0) * scale;
+    anyMatched = true;
+  }
+
+  let nutrientHighlight = null;
+  if (anyMatched) {
+    let best = null;
+    for (const [key, amount] of Object.entries(nutrientTotals)) {
+      const pctRda = (amount / rdaFor(key, gender)) * 100;
+      if (pctRda >= 15 && (!best || pctRda > best.pctRda)) best = { key, amount, pctRda };
+    }
+    if (best) {
+      const label = NUTRIENT_LABEL[best.key][en ? 'en' : 'ar'];
+      nutrientHighlight = {
+        nutrient: best.key,
+        pctRda: Math.round(best.pctRda),
+        text: en
+          ? `Yesterday's food gave you ${Math.round(best.pctRda)}% of your daily ${label}.`
+          : `أكلك إمبارح دّاك ${Math.round(best.pctRda)}% من احتياجك اليومي من ${label}.`,
+      };
+    }
+  }
+
+  return { nutritionStory, nutrientHighlight };
+}
+
+// ─── Point 3: day streak, with one grace "freeze" per rolling 30 days ──────
+// Deliberately computed fresh from real logged history every time, not
+// maintained as a separate incrementing counter - matches this app's own
+// established preference (computeNutritionToday, computeWellnessScore) for
+// deriving state from ground truth rather than a mutable counter that can
+// drift out of sync with it.
+function buildStreak(store, userId) {
+  const logs = store.load('nutrition_logs.json') || {};
+  const userLogs = logs[userId] || [];
+  const loggedDates = new Set(
+    userLogs.filter(l => (l.meals || []).length > 0 || (l.custom || []).length > 0).map(l => l.date)
+  );
+
+  const today = todayCairo();
+  let streak = 0;
+  let freezeUsed = false;
+  let cursor = today;
+  // Walk backward from today. Today itself not being logged YET doesn't
+  // break a real streak - the day isn't over. Start counting from
+  // yesterday, and only count today separately if it's already logged.
+  if (loggedDates.has(cursor)) { streak++; }
+  cursor = addDays(cursor, -1);
+
+  for (let i = 0; i < 60; i++) { // hard cap - no real streak needs to walk further than this to find a break
+    if (loggedDates.has(cursor)) {
+      streak++;
+    } else if (!freezeUsed) {
+      // One missed day is forgiven, exactly once, per the founder's own
+      // "streak freeze" call - keep walking as if it were logged, but only
+      // once; a second gap anywhere in the window ends the streak for real.
+      freezeUsed = true;
+    } else {
+      break;
+    }
+    cursor = addDays(cursor, -1);
+  }
+
+  const milestones = [0, 7, 30, 60, 90];
+  const nextMilestone = milestones.find(m => m > streak) ?? null;
+  const justHitMilestone = milestones.includes(streak) && streak > 0;
+
+  return { currentStreak: streak, nextMilestone, justHitMilestone, usedFreeze: freezeUsed };
+}
+
+function buildProfileHighlights(store, userId, gender, lang, diet) {
+  const { nutritionStory, nutrientHighlight } = buildYesterdayStory(store, userId, gender, lang, diet);
+  const streak = buildStreak(store, userId);
+  return { nutritionStory, nutrientHighlight, streak };
+}
+
+module.exports = { buildDailyBrief, buildMissingDataCards, buildSavingsCard, computeWellnessScore, computeNutritionToday, buildWeeklySummary, todayCairo, buildProfileHighlights };

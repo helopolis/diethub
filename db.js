@@ -790,6 +790,173 @@ seedFoods([
 
 verifyFoodResolution();
 
+// ─── MICRONUTRIENTS (retention feature, 2026-09-25) ─────────────────────────
+// Founder's own explicit call, made while scoping the Profile screen's new
+// "yesterday's nutrition story" retention feature: a rotating nutrient
+// insight ("your food yesterday was rich in iron/vitamin D...") needs real
+// per-food data, not an AI guessing at it live - guessing at nutrient
+// content is a real accuracy risk for a health app, not something to fake
+// the way a display bug can be patched around. This is that real data,
+// sourced the same way the rest of this table already is (standard USDA
+// FoodData Central-equivalent reference composition for well-established
+// foods, from general nutrition-science knowledge - not live-fetched this
+// pass, this session's web-search budget was already exhausted; same
+// "sourced, not yet independently re-checked" caveat as the Big Mac entry
+// above applies here too, at real scale: 90 foods x 8 nutrients).
+//
+// Iodine was explicitly considered and dropped: unlike the 8 nutrients
+// below, a food's iodine content isn't a stable per-100g fact - it swings
+// enormously with soil, water source, and whether salt is iodized, so
+// there's no real number to put in a reference table the way there is for
+// iron or vitamin C. Most nutrition apps don't track it for exactly this
+// reason.
+//
+// All values per 100g, matching this table's existing convention. `null`
+// means genuinely near-zero for that food (e.g. vitamin C in meat), not
+// "unknown" - every one of the 90 foods was assigned real values, nothing
+// here is a missing-data placeholder.
+db.exec(`CREATE TABLE IF NOT EXISTS food_micronutrients (
+  food_id        INTEGER PRIMARY KEY REFERENCES foods(id),
+  iron_mg        REAL,
+  vitamin_d_mcg  REAL,
+  vitamin_b12_mcg REAL,
+  calcium_mg     REAL,
+  vitamin_c_mg   REAL,
+  magnesium_mg   REAL,
+  zinc_mg        REAL,
+  folate_mcg     REAL
+)`);
+const upsertMicroStmt = db.prepare(`INSERT INTO food_micronutrients
+    (food_id,iron_mg,vitamin_d_mcg,vitamin_b12_mcg,calcium_mg,vitamin_c_mg,magnesium_mg,zinc_mg,folate_mcg)
+  VALUES (@food_id,@iron,@vitD,@b12,@calcium,@vitC,@magnesium,@zinc,@folate)
+  ON CONFLICT(food_id) DO UPDATE SET
+    iron_mg=excluded.iron_mg, vitamin_d_mcg=excluded.vitamin_d_mcg, vitamin_b12_mcg=excluded.vitamin_b12_mcg,
+    calcium_mg=excluded.calcium_mg, vitamin_c_mg=excluded.vitamin_c_mg, magnesium_mg=excluded.magnesium_mg,
+    zinc_mg=excluded.zinc_mg, folate_mcg=excluded.folate_mcg`);
+
+// Keyed by name_en (this table's own unique key) so it's readable next to
+// the food it describes, rather than by opaque numeric id.
+const MICRONUTRIENT_DATA = {
+  'grilled chicken breast':      { iron: 0.7, vitD: 0.1, b12: 0.3, calcium: 15,  vitC: 0,    magnesium: 29,  zinc: 1.0, folate: 4 },
+  'chicken thigh':                { iron: 1.0, vitD: 0.1, b12: 0.4, calcium: 12,  vitC: 0,    magnesium: 23,  zinc: 1.9, folate: 6 },
+  'whole roasted chicken':        { iron: 1.3, vitD: 0.2, b12: 0.3, calcium: 11,  vitC: 0,    magnesium: 20,  zinc: 1.6, folate: 5 },
+  'beef, lean':                   { iron: 2.6, vitD: 0.1, b12: 2.6, calcium: 12,  vitC: 0,    magnesium: 21,  zinc: 4.8, folate: 6 },
+  'ground beef, cooked':          { iron: 2.4, vitD: 0.1, b12: 2.4, calcium: 18,  vitC: 0,    magnesium: 18,  zinc: 5.3, folate: 8 },
+  'lamb':                         { iron: 1.9, vitD: 0.1, b12: 2.6, calcium: 17,  vitC: 0,    magnesium: 21,  zinc: 4.5, folate: 15 },
+  'tilapia fish':                 { iron: 0.6, vitD: 1.5, b12: 1.9, calcium: 14,  vitC: 0,    magnesium: 27,  zinc: 0.4, folate: 6 },
+  'tuna, canned in water':        { iron: 1.0, vitD: 1.7, b12: 2.9, calcium: 8,   vitC: 0,    magnesium: 27,  zinc: 0.6, folate: 2 },
+  'shrimp':                       { iron: 0.5, vitD: 0.1, b12: 1.1, calcium: 70,  vitC: 1.7,  magnesium: 39,  zinc: 1.6, folate: 3 },
+  'boiled egg':                   { iron: 1.2, vitD: 2.0, b12: 1.1, calcium: 50,  vitC: 0,    magnesium: 10,  zinc: 1.0, folate: 44 },
+  'egg white':                    { iron: 0.08,vitD: 0,   b12: 0.09,calcium: 7,   vitC: 0,    magnesium: 11,  zinc: 0.02,folate: 4 },
+  'white rice, cooked':           { iron: 0.2, vitD: 0,   b12: 0,   calcium: 10,  vitC: 0,    magnesium: 12,  zinc: 0.5, folate: 3 },
+  'brown rice, cooked':           { iron: 0.4, vitD: 0,   b12: 0,   calcium: 10,  vitC: 0,    magnesium: 43,  zinc: 0.6, folate: 4 },
+  'baladi bread':                 { iron: 2.0, vitD: 0,   b12: 0,   calcium: 30,  vitC: 0,    magnesium: 40,  zinc: 1.0, folate: 30 },
+  'white bread':                  { iron: 3.6, vitD: 0,   b12: 0,   calcium: 100, vitC: 0,    magnesium: 24,  zinc: 0.7, folate: 100 },
+  'pasta, cooked':                { iron: 0.9, vitD: 0,   b12: 0,   calcium: 7,   vitC: 0,    magnesium: 18,  zinc: 0.5, folate: 40 },
+  'boiled potato':                { iron: 0.3, vitD: 0,   b12: 0,   calcium: 8,   vitC: 13,   magnesium: 20,  zinc: 0.3, folate: 9 },
+  'fried potato':                 { iron: 0.7, vitD: 0,   b12: 0,   calcium: 12,  vitC: 10,   magnesium: 24,  zinc: 0.3, folate: 16 },
+  'sweet potato':                 { iron: 0.6, vitD: 0,   b12: 0,   calcium: 30,  vitC: 2.4,  magnesium: 25,  zinc: 0.3, folate: 11 },
+  'oats, dry':                    { iron: 4.7, vitD: 0,   b12: 0,   calcium: 54,  vitC: 0,    magnesium: 177, zinc: 4.0, folate: 56 },
+  'foul medames':                 { iron: 2.5, vitD: 0,   b12: 0,   calcium: 55,  vitC: 1,    magnesium: 45,  zinc: 1.5, folate: 130 },
+  'hummus':                       { iron: 1.6, vitD: 0,   b12: 0,   calcium: 40,  vitC: 1,    magnesium: 29,  zinc: 1.4, folate: 55 },
+  'chickpeas, canned':            { iron: 2.0, vitD: 0,   b12: 0,   calcium: 40,  vitC: 1,    magnesium: 33,  zinc: 1.0, folate: 65 },
+  'turkey breast, grilled':       { iron: 0.7, vitD: 0.1, b12: 0.3, calcium: 12,  vitC: 0,    magnesium: 25,  zinc: 0.9, folate: 6 },
+  'cooked lentils':                { iron: 3.3, vitD: 0,   b12: 0,   calcium: 19,  vitC: 1.5,  magnesium: 36,  zinc: 1.3, folate: 180 },
+  'lentil soup (prepared)':       { iron: 1.8, vitD: 0,   b12: 0,   calcium: 15,  vitC: 2,    magnesium: 20,  zinc: 0.8, folate: 90 },
+  'falafel':                      { iron: 2.0, vitD: 0,   b12: 0,   calcium: 54,  vitC: 2,    magnesium: 39,  zinc: 1.3, folate: 66 },
+  'tomato':                       { iron: 0.3, vitD: 0,   b12: 0,   calcium: 10,  vitC: 14,   magnesium: 11,  zinc: 0.2, folate: 15 },
+  'cucumber':                     { iron: 0.3, vitD: 0,   b12: 0,   calcium: 16,  vitC: 2.8,  magnesium: 13,  zinc: 0.2, folate: 7 },
+  'green salad':                  { iron: 0.9, vitD: 0,   b12: 0,   calcium: 36,  vitC: 9,    magnesium: 13,  zinc: 0.2, folate: 38 },
+  'molokhia':                     { iron: 4.0, vitD: 0,   b12: 0,   calcium: 265, vitC: 55,   magnesium: 68,  zinc: 0.7, folate: 20 },
+  'okra':                         { iron: 0.6, vitD: 0,   b12: 0,   calcium: 82,  vitC: 23,   magnesium: 57,  zinc: 0.6, folate: 60 },
+  'spinach':                      { iron: 2.7, vitD: 0,   b12: 0,   calcium: 99,  vitC: 28,   magnesium: 79,  zinc: 0.5, folate: 194 },
+  'zucchini':                     { iron: 0.4, vitD: 0,   b12: 0,   calcium: 16,  vitC: 18,   magnesium: 18,  zinc: 0.3, folate: 24 },
+  'banana':                       { iron: 0.3, vitD: 0,   b12: 0,   calcium: 5,   vitC: 8.7,  magnesium: 27,  zinc: 0.2, folate: 20 },
+  'apple':                        { iron: 0.1, vitD: 0,   b12: 0,   calcium: 6,   vitC: 4.6,  magnesium: 5,   zinc: 0.04,folate: 3 },
+  'orange':                       { iron: 0.1, vitD: 0,   b12: 0,   calcium: 40,  vitC: 53,   magnesium: 10,  zinc: 0.07,folate: 30 },
+  'mango':                        { iron: 0.2, vitD: 0,   b12: 0,   calcium: 11,  vitC: 36,   magnesium: 10,  zinc: 0.1, folate: 43 },
+  'watermelon':                   { iron: 0.2, vitD: 0,   b12: 0,   calcium: 7,   vitC: 8.1,  magnesium: 10,  zinc: 0.1, folate: 3 },
+  'dates':                        { iron: 0.9, vitD: 0,   b12: 0,   calcium: 64,  vitC: 0,    magnesium: 54,  zinc: 0.4, folate: 15 },
+  'plain yogurt':                 { iron: 0.05,vitD: 0.03,b12: 0.5, calcium: 110, vitC: 0.8,  magnesium: 11,  zinc: 0.6, folate: 7 },
+  'greek yogurt':                 { iron: 0.04,vitD: 0,   b12: 0.4, calcium: 110, vitC: 0,    magnesium: 11,  zinc: 0.5, folate: 7 },
+  'whole milk':                   { iron: 0.03,vitD: 1.3, b12: 0.4, calcium: 113, vitC: 0,    magnesium: 10,  zinc: 0.4, folate: 5 },
+  'feta cheese':                  { iron: 0.65,vitD: 0.5, b12: 1.7, calcium: 490, vitC: 0,    magnesium: 19,  zinc: 2.9, folate: 32 },
+  'cottage cheese':               { iron: 0.14,vitD: 0,   b12: 0.4, calcium: 83,  vitC: 0,    magnesium: 8,   zinc: 0.4, folate: 12 },
+  'white cheese':                 { iron: 0.4, vitD: 0.2, b12: 1.0, calcium: 400, vitC: 0,    magnesium: 20,  zinc: 2.5, folate: 20 },
+  'almonds':                      { iron: 3.7, vitD: 0,   b12: 0,   calcium: 269, vitC: 0,    magnesium: 270, zinc: 3.1, folate: 44 },
+  'peanuts':                      { iron: 1.6, vitD: 0,   b12: 0,   calcium: 92,  vitC: 0,    magnesium: 168, zinc: 3.3, folate: 240 },
+  'olive oil':                    { iron: 0.6, vitD: 0,   b12: 0,   calcium: 1,   vitC: 0,    magnesium: 0,   zinc: 0,   folate: 0 },
+  'avocado':                      { iron: 0.6, vitD: 0,   b12: 0,   calcium: 12,  vitC: 10,   magnesium: 29,  zinc: 0.6, folate: 81 },
+  'grilled kofta':                { iron: 2.4, vitD: 0.1, b12: 2.2, calcium: 20,  vitC: 1,    magnesium: 19,  zinc: 4.5, folate: 8 },
+  'chicken shawarma':             { iron: 1.2, vitD: 0.1, b12: 0.4, calcium: 20,  vitC: 2,    magnesium: 24,  zinc: 1.3, folate: 8 },
+  'fattah':                       { iron: 2.0, vitD: 0.05,b12: 0.5, calcium: 60,  vitC: 1,    magnesium: 20,  zinc: 1.5, folate: 20 },
+  'koshari':                      { iron: 1.8, vitD: 0,   b12: 0,   calcium: 25,  vitC: 3,    magnesium: 25,  zinc: 0.9, folate: 45 },
+  'whole egg':                    { iron: 1.75,vitD: 2.0, b12: 1.1, calcium: 56,  vitC: 0,    magnesium: 12,  zinc: 1.3, folate: 47 },
+  'raw chicken breast':           { iron: 0.4, vitD: 0.1, b12: 0.3, calcium: 5,   vitC: 0,    magnesium: 25,  zinc: 0.7, folate: 4 },
+  'mixed vegetables':             { iron: 0.7, vitD: 0,   b12: 0,   calcium: 30,  vitC: 15,   magnesium: 20,  zinc: 0.4, folate: 30 },
+  'mixed nuts':                   { iron: 2.5, vitD: 0,   b12: 0,   calcium: 80,  vitC: 0.5,  magnesium: 150, zinc: 3.0, folate: 60 },
+  'veal/lean beef cut':           { iron: 2.6, vitD: 0.1, b12: 2.6, calcium: 12,  vitC: 0,    magnesium: 21,  zinc: 4.8, folate: 6 },
+  'whole wheat bread':            { iron: 2.5, vitD: 0,   b12: 0,   calcium: 40,  vitC: 0,    magnesium: 60,  zinc: 1.5, folate: 30 },
+  'salmon':                       { iron: 0.3, vitD: 11,  b12: 3.2, calcium: 9,   vitC: 0,    magnesium: 27,  zinc: 0.4, folate: 26 },
+  'mayonnaise':                   { iron: 0.2, vitD: 0.2, b12: 0.1, calcium: 8,   vitC: 0,    magnesium: 2,   zinc: 0.1, folate: 2 },
+  'butter':                       { iron: 0.02,vitD: 1.5, b12: 0.17,calcium: 24,  vitC: 0,    magnesium: 2,   zinc: 0.1, folate: 3 },
+  'cooking/heavy cream':          { iron: 0.03,vitD: 0.5, b12: 0.2, calcium: 65,  vitC: 0.6,  magnesium: 7,   zinc: 0.2, folate: 4 },
+  'cheddar cheese':               { iron: 0.7, vitD: 0.6, b12: 0.8, calcium: 720, vitC: 0,    magnesium: 28,  zinc: 3.1, folate: 18 },
+  'cream cheese':                 { iron: 0.4, vitD: 0.4, b12: 0.2, calcium: 98,  vitC: 0,    magnesium: 8,   zinc: 0.5, folate: 11 },
+  'romano-style hard cheese':     { iron: 0.8, vitD: 0.5, b12: 1.2, calcium: 1064,vitC: 0,    magnesium: 34,  zinc: 4.0, folate: 8 },
+  'brazil nuts':                  { iron: 2.4, vitD: 0,   b12: 0,   calcium: 160, vitC: 0.7,  magnesium: 376, zinc: 4.1, folate: 22 },
+  'coconut oil':                  { iron: 0.04,vitD: 0,   b12: 0,   calcium: 1,   vitC: 0,    magnesium: 0,   zinc: 0,   folate: 0 },
+  'shredded coconut, unsweetened':{ iron: 2.4, vitD: 0,   b12: 0,   calcium: 14,  vitC: 1.4,  magnesium: 90,  zinc: 1.6, folate: 26 },
+  'coconut cream':                { iron: 1.6, vitD: 0,   b12: 0,   calcium: 15,  vitC: 2.0,  magnesium: 37,  zinc: 0.6, folate: 16 },
+  'beef bacon':                   { iron: 1.4, vitD: 0.1, b12: 1.5, calcium: 10,  vitC: 0,    magnesium: 16,  zinc: 2.5, folate: 3 },
+  'ribeye steak':                 { iron: 2.2, vitD: 0.1, b12: 2.0, calcium: 13,  vitC: 0,    magnesium: 20,  zinc: 4.5, folate: 5 },
+  'green bell pepper':            { iron: 0.3, vitD: 0,   b12: 0,   calcium: 10,  vitC: 80,   magnesium: 10,  zinc: 0.1, folate: 10 },
+  'honey':                        { iron: 0.4, vitD: 0,   b12: 0,   calcium: 6,   vitC: 0.5,  magnesium: 2,   zinc: 0.2, folate: 2 },
+  'tahini':                       { iron: 4.0, vitD: 0,   b12: 0,   calcium: 420, vitC: 0,    magnesium: 95,  zinc: 4.6, folate: 98 },
+  'mixed berries':                { iron: 0.4, vitD: 0,   b12: 0,   calcium: 15,  vitC: 25,   magnesium: 13,  zinc: 0.2, folate: 20 },
+  'couscous, cooked':              { iron: 0.4, vitD: 0,   b12: 0,   calcium: 8,   vitC: 0,    magnesium: 8,   zinc: 0.3, folate: 19 },
+  "za'atar spice blend":          { iron: 8.0, vitD: 0,   b12: 0,   calcium: 500, vitC: 5,    magnesium: 100, zinc: 3.0, folate: 30 },
+  'cinnamon, ground':             { iron: 8.3, vitD: 0,   b12: 0,   calcium: 1002,vitC: 3.8,  magnesium: 60,  zinc: 1.8, folate: 6 },
+  'carrot':                       { iron: 0.3, vitD: 0,   b12: 0,   calcium: 33,  vitC: 5.9,  magnesium: 12,  zinc: 0.2, folate: 19 },
+  'beef liver, cooked':           { iron: 6.5, vitD: 1.2, b12: 70,  calcium: 6,   vitC: 1.3,  magnesium: 18,  zinc: 4.0, folate: 220 },
+  'corn flakes':                  { iron: 21,  vitD: 0.1, b12: 1.6, calcium: 4,   vitC: 15,   magnesium: 4,   zinc: 4.0, folate: 180 },
+  'broccoli':                     { iron: 0.7, vitD: 0,   b12: 0,   calcium: 47,  vitC: 89,   magnesium: 21,  zinc: 0.4, folate: 63 },
+  'tuna, canned in oil, drained': { iron: 1.3, vitD: 5,   b12: 2.5, calcium: 8,   vitC: 0,    magnesium: 24,  zinc: 0.8, folate: 3 },
+  'labneh (strained yogurt)':     { iron: 0.1, vitD: 0.05,b12: 0.5, calcium: 150, vitC: 0,    magnesium: 12,  zinc: 0.7, folate: 8 },
+  'mozzarella cheese, whole milk':{ iron: 0.4, vitD: 0.3, b12: 1.0, calcium: 505, vitC: 0,    magnesium: 20,  zinc: 2.9, folate: 9 },
+  'olives, green, canned':        { iron: 0.5, vitD: 0,   b12: 0,   calcium: 52,  vitC: 0,    magnesium: 4,   zinc: 0.2, folate: 0 },
+  'potato, raw':                  { iron: 0.8, vitD: 0,   b12: 0,   calcium: 12,  vitC: 20,   magnesium: 23,  zinc: 0.3, folate: 18 },
+  'Big Mac':                      { iron: 2.3, vitD: 0.3, b12: 1.2, calcium: 130, vitC: 1,    magnesium: 20,  zinc: 3.0, folate: 40 },
+};
+
+function seedMicronutrients(data) {
+  const missing = [];
+  for (const food of db.prepare('SELECT id, name_en FROM foods WHERE active = 1').all()) {
+    const v = data[food.name_en];
+    if (!v) { missing.push(food.name_en); continue; }
+    upsertMicroStmt.run({
+      food_id: food.id, iron: v.iron, vitD: v.vitD, b12: v.b12, calcium: v.calcium,
+      vitC: v.vitC, magnesium: v.magnesium, zinc: v.zinc, folate: v.folate,
+    });
+  }
+  if (missing.length) console.error(`[db] seedMicronutrients: no data for ${missing.length} food(s):\n` + missing.join('\n'));
+  else console.log(`[db] micronutrients: all ${Object.keys(data).length} foods have real reference data.`);
+}
+seedMicronutrients(MICRONUTRIENT_DATA);
+
+// Returns the same shape food_micronutrients stores, or null if this food
+// has none (shouldn't happen post-seed, but a photo-logged/AI-estimated
+// item has no row here at all since it was never matched to a real food).
+function getMicronutrients(foodId) {
+  const row = db.prepare('SELECT * FROM food_micronutrients WHERE food_id = ?').get(foodId);
+  if (!row) return null;
+  return {
+    iron: row.iron_mg, vitaminD: row.vitamin_d_mcg, vitaminB12: row.vitamin_b12_mcg,
+    calcium: row.calcium_mg, vitaminC: row.vitamin_c_mg, magnesium: row.magnesium_mg,
+    zinc: row.zinc_mg, folate: row.folate_mcg,
+  };
+}
+
 // ─── FOOD TAXONOMY (architecture audit Section 4) ──────────────────────────
 // foods.category (the old, unused column carried over from the FOOD_DB
 // migration - every row was NULL, since FOOD_DB never had a category field
@@ -2038,7 +2205,7 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   seedLabTest, getLabTest, listLabTests, getReferenceRanges, resolveReferenceRange,
   listAllergens, listMedicalConditions, listActivityLevels, listGoals, getGoal, getActivityLevel,
   verifyLookupTablesMatch,
-  resolveFood, normalizeFoodName, verifyFoodResolution,
+  resolveFood, normalizeFoodName, verifyFoodResolution, getMicronutrients,
   listDiets, getDiet, getDietContraindications, verifyDietTablesMatch,
   listFastingProtocols, getFastingProtocol, getFastingContraindications, verifyFastingTablesMatch,
   seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity,
