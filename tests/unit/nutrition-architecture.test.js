@@ -67,9 +67,11 @@ describe('Food resolution — exact-match-only, no substring collisions', () => 
 });
 
 describe('Diets, goals, allergens, medical conditions — real tables, not JS constants', () => {
-  test('all 10 real selectable diets plus the balanced fallback exist', () => {
+  test('all 11 real selectable diets plus the balanced fallback exist', () => {
+    // Stale count fixed 2026-09-26: 'vegan' was added 2026-09-19 and this
+    // assertion was never updated, so it silently drifted from reality.
     const ids = db.listDiets().map(d => d.id).sort();
-    expect(ids).toEqual(['atkins', 'balanced', 'diabetic', 'healthy_lifestyle', 'keto', 'kids', 'mediterranean', 'men', 'men_40', 'women', 'women_40'].sort());
+    expect(ids).toEqual(['atkins', 'balanced', 'diabetic', 'healthy_lifestyle', 'keto', 'kids', 'mediterranean', 'men', 'men_40', 'vegan', 'women', 'women_40'].sort());
   });
 
   test('lose_fat and gain_muscle get a real protein boost; lose_weight/gain_weight/maintain do not', () => {

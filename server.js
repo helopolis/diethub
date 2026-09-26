@@ -17,7 +17,7 @@ const { Webhook } = require('svix');
 const { AppStoreServerAPIClient, SignedDataVerifier, Environment: AppleEnv, Status: AppleSubStatus } = require('@apple/app-store-server-library');
 const { androidpublisher } = require('@googleapis/androidpublisher');
 const store = require('./db');
-const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS, DIET_CONTRAINDICATIONS, DIET_META, FASTING_META, FASTING_CONTRAINDICATIONS } = require('./health');
+const { buildHealthProfile, coachSummary, GOAL_TYPES, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, ACTIVITY_FACTORS, DIET_CONTRAINDICATIONS, DIET_META, FASTING_META, FASTING_CONTRAINDICATIONS, childBmiPercentile } = require('./health');
 const aiLanguage = require('./ai_language');
 const { runReminderCheck } = require('./reminders');
 const { buildDailyBrief, buildWeeklySummary, computeNutritionToday, buildProfileHighlights } = require('./daily_brief');
@@ -2262,6 +2262,10 @@ app.post(`${BASE}/api/account/delete`, auth, (req, res) => {
     update(file, all => { delete all[userId]; return all; }, {});
   }
   store.deleteAllMealOverridesForUser(userId);
+  // Family/Child Growth Profiles (2026-09-26) — a parent's children have no
+  // login of their own, so nothing else ever cleans up their rows; without
+  // this, deleting a parent's account would orphan real child growth data.
+  store.deleteAllFamilyMembersForUser(userId);
   update('pending_verifications.json', list => (list || []).filter(Boolean).filter(p => p.userId !== userId), []);
   update('refresh_tokens.json', tokens => {
     for (const [token, rec] of Object.entries(tokens)) if (rec.userId === userId) delete tokens[token];
@@ -2391,6 +2395,128 @@ app.get(`${BASE}/api/profile-highlights`, auth, async (req, res) => {
   } catch (e) {
     console.error('Profile highlights error:', e.message);
     res.status(500).json({ error: 'Failed to build profile highlights' });
+  }
+});
+
+// ─── FAMILY MEMBERS (child growth profiles, 2026-09-26) ────────────────────
+// A parent's real request: track a child's (age 10-17) growth from inside
+// their own account. A child has no email/phone/username, so there's no
+// separate login to gate this behind — every route here is scoped by the
+// PARENT's own req.user.id (the account already authenticated via `auth`),
+// never a second identity. Deliberately its own namespace, not layered onto
+// any existing personal-data route, so this ships with zero behavior change
+// for every adult-only account. See db.js's family_members table comment
+// for the full ownership-model reasoning.
+function ageInMonthsAt(dobStr, atDateStr) {
+  const dob = new Date(dobStr + 'T00:00:00Z');
+  const at = new Date(atDateStr + 'T00:00:00Z');
+  let months = (at.getUTCFullYear() - dob.getUTCFullYear()) * 12 + (at.getUTCMonth() - dob.getUTCMonth());
+  if (at.getUTCDate() < dob.getUTCDate()) months--;
+  return months;
+}
+function validateChildDob(dob) {
+  if (typeof dob !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null;
+  const d = new Date(dob + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return null;
+  // The CDC reference table itself only covers ages 2-20 (db.js's
+  // CDC_BMI_AGE_LMS comment); the founder's own stated floor is 10 — this
+  // enforces that real, explicit scope decision, not an arbitrary limit.
+  const ageMonths = ageInMonthsAt(dob, todayCairoServer());
+  if (ageMonths < 120 || ageMonths >= 240) return null;
+  return dob;
+}
+// A growth check-in's percentile must use the child's age AT THAT ENTRY'S
+// DATE, not their age today — a log spans months/years, and using today's
+// age for an old entry would silently compute the wrong percentile for
+// every row except the most recent one.
+function enrichGrowthEntry(entry, dob, gender) {
+  const bmi = +(entry.weight / Math.pow(entry.height / 100, 2)).toFixed(1);
+  const ageMonths = ageInMonthsAt(dob, entry.date);
+  const result = childBmiPercentile(bmi, ageMonths, gender, store.CDC_BMI_AGE_LMS);
+  return { date: entry.date, weight: entry.weight, height: entry.height, bmi, ...result };
+}
+
+app.get(`${BASE}/api/family-members`, auth, (req, res) => {
+  try {
+    const members = store.listFamilyMembers(req.user.id);
+    res.json(members.map(m => ({ id: m.id, name: m.name, dob: m.dob, gender: m.gender, createdAt: m.created_at })));
+  } catch (e) {
+    console.error('List family members error:', e.message);
+    res.status(500).json({ error: 'Failed to load family members' });
+  }
+});
+
+app.post(`${BASE}/api/family-members`, auth, (req, res) => {
+  try {
+    const name = sanitize((req.body.name || '').toString().trim());
+    const dob = validateChildDob(req.body.dob);
+    const gender = req.body.gender === 'female' ? 'female' : req.body.gender === 'male' ? 'male' : null;
+    const weight = validateProfileField('weight', req.body.weight);
+    const height = validateProfileField('height', req.body.height);
+    // Explicit, un-skippable consent per this feature's real compliance
+    // exposure — collecting a minor's data, even parent-entered, is not
+    // something to silently default to "yes" on.
+    if (!req.body.consent) return res.status(400).json({ error: 'Parental consent is required' });
+    if (!name || name.length > 60) return res.status(400).json({ error: 'A valid name is required' });
+    if (!dob) return res.status(400).json({ error: 'A valid date of birth (age 10-19) is required' });
+    if (!gender) return res.status(400).json({ error: 'Gender is required' });
+    if (weight == null || height == null) return res.status(400).json({ error: 'Weight and height are required' });
+
+    const member = store.createFamilyMember(req.user.id, { name, dob, gender });
+    const today = todayCairoServer();
+    store.addGrowthLogEntry(member.id, { date: today, weight, height });
+    secLog('FAMILY_MEMBER_CREATED', getIP(req), { userId: req.user.id, familyMemberId: member.id });
+    res.json({ id: member.id, name: member.name, dob: member.dob, gender: member.gender });
+  } catch (e) {
+    console.error('Create family member error:', e.message);
+    res.status(500).json({ error: 'Failed to create family member' });
+  }
+});
+
+app.get(`${BASE}/api/family-members/:id/growth`, auth, (req, res) => {
+  try {
+    const member = store.getFamilyMember(req.params.id);
+    if (!member || member.owner_user_id !== req.user.id) return res.status(404).json({ error: 'Family member not found' });
+    const log = store.listGrowthLog(member.id);
+    const history = log.map(entry => enrichGrowthEntry(entry, member.dob, member.gender));
+    res.json({
+      id: member.id, name: member.name, dob: member.dob, gender: member.gender,
+      history,
+      latest: history.length ? history[history.length - 1] : null,
+    });
+  } catch (e) {
+    console.error('Get family member growth error:', e.message);
+    res.status(500).json({ error: 'Failed to load growth data' });
+  }
+});
+
+app.post(`${BASE}/api/family-members/:id/growth`, auth, (req, res) => {
+  try {
+    const member = store.getFamilyMember(req.params.id);
+    if (!member || member.owner_user_id !== req.user.id) return res.status(404).json({ error: 'Family member not found' });
+    const weight = validateProfileField('weight', req.body.weight);
+    const height = validateProfileField('height', req.body.height);
+    if (weight == null || height == null) return res.status(400).json({ error: 'Weight and height are required' });
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.body.date || '') ? req.body.date : todayCairoServer();
+    store.addGrowthLogEntry(member.id, { date, weight, height });
+    const log = store.listGrowthLog(member.id);
+    const history = log.map(entry => enrichGrowthEntry(entry, member.dob, member.gender));
+    res.json({ history, latest: history[history.length - 1] });
+  } catch (e) {
+    console.error('Add growth entry error:', e.message);
+    res.status(500).json({ error: 'Failed to save growth entry' });
+  }
+});
+
+app.delete(`${BASE}/api/family-members/:id`, auth, (req, res) => {
+  try {
+    const member = store.getFamilyMember(req.params.id);
+    if (!member || member.owner_user_id !== req.user.id) return res.status(404).json({ error: 'Family member not found' });
+    store.archiveFamilyMember(member.id);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Archive family member error:', e.message);
+    res.status(500).json({ error: 'Failed to remove family member' });
   }
 });
 

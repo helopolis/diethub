@@ -7,12 +7,124 @@
 
 function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : null; }
 
-function bmiCategory(bmi) {
+// Standard decade-band taxonomy (matches the CDC/NHANES health-survey
+// convention, not an invented scheme) - used for real segmentation, not
+// stored as an inert field: it's what buildHealthProfile below surfaces
+// alongside bmiCategory, and what the Profile screen actually displays.
+// Finer bands were considered (the founder's own initial idea went down
+// to ~5-year buckets through adulthood) but there's no real evidence that
+// health-risk thresholds shift smoothly decade-by-decade through 18-64 -
+// the two boundaries that DO have real evidence behind them (under 18,
+// 65+) are exactly the two bmiCategory() below treats specially.
+function ageGroup(age) {
+  if (age == null) return null;
+  if (age < 18) return { key: 'under_18', ar: 'أقل من 18', en: 'Under 18' };
+  if (age < 25) return { key: '18_24', ar: '18-24', en: '18-24' };
+  if (age < 35) return { key: '25_34', ar: '25-34', en: '25-34' };
+  if (age < 45) return { key: '35_44', ar: '35-44', en: '35-44' };
+  if (age < 55) return { key: '45_54', ar: '45-54', en: '45-54' };
+  if (age < 65) return { key: '55_64', ar: '55-64', en: '55-64' };
+  if (age < 75) return { key: '65_74', ar: '65-74', en: '65-74' };
+  return          { key: '75_plus', ar: '75+', en: '75+' };
+}
+
+// WHO's flat adult cutoffs (18.5/25/30) are validated for ages 18-64 -
+// applying them outside that range is a real accuracy problem, not just a
+// rounding imprecision:
+// - Under 18: a healthy BMI is age/sex-specific (CDC/WHO growth-chart
+//   percentiles), not one flat adult number - a 16-year-old's normal BMI
+//   isn't the same number as a 30-year-old's. This app has no real,
+//   sourced percentile-table data to compute that correctly, so rather
+//   than fabricate one, this honestly returns "not applicable" instead of
+//   a wrong adult-standard category.
+// - 65+: a 2014 meta-analysis of BMI and all-cause mortality in older
+//   adults (Winter et al., American Journal of Clinical Nutrition) found
+//   the lowest mortality risk sits closer to BMI ~27-28, not the standard
+//   ~18.5-25 "normal" band, and that being underweight by the standard
+//   cutoff (BMI<18.5) carries MORE excess mortality risk than being
+//   moderately overweight - a finding also reflected in geriatric
+//   screening tools like the Mini Nutritional Assessment, which flags
+//   BMI<23 (not <18.5) as an undernutrition risk in older adults. This
+//   isn't an official revised WHO cutoff, just a well-replicated finding -
+//   treated here the same way as this file's other "reasonable, defensible
+//   bucket, not a clinical diagnostic" ranges (see scoreHeart's own note).
+function bmiCategory(bmi, age) {
   if (bmi == null) return null;
+  if (age != null && age < 18) {
+    return { key: 'age_inapplicable_minor', ar: 'غير قابل للتطبيق لمن هم دون 18 سنة', en: 'Not applicable under 18', ageInapplicable: true };
+  }
+  if (age != null && age >= 65) {
+    if (bmi < 23) return { key: 'underweight', ar: 'نقص وزن', en: 'Underweight' };
+    if (bmi < 30) return { key: 'normal', ar: 'وزن طبيعي لهذا العمر', en: 'Normal for age' };
+    return          { key: 'obese', ar: 'سمنة', en: 'Obese' };
+  }
   if (bmi < 18.5) return { key: 'underweight', ar: 'نقص وزن',   en: 'Underweight' };
   if (bmi < 25)   return { key: 'normal',      ar: 'وزن طبيعي', en: 'Normal' };
   if (bmi < 30)   return { key: 'overweight',  ar: 'زيادة وزن', en: 'Overweight' };
   return            { key: 'obese',       ar: 'سمنة',      en: 'Obese' };
+}
+
+// Standard normal CDF via the Abramowitz & Stegun 7.1.26 approximation
+// (accurate to ~1.5e-7) - JS has no built-in erf()/normal-CDF, and this is
+// the well-established standard approximation, not an invented one.
+function normalCdf(z) {
+  const sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.sqrt(2);
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const t = 1 / (1 + p * x);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return 0.5 * (1 + sign * y);
+}
+
+// Linear interpolation between the two nearest CDC reference rows for this
+// exact age-in-months and sex - the table is published at 1-month
+// resolution, real ages rarely land exactly on a table row, and linear
+// interpolation between adjacent L/M/S values is CDC's own documented
+// method (matches their SAS growth-chart macro), not an approximation this
+// app invented. Clamps to the table's own ends rather than extrapolating
+// past what the data actually covers.
+function interpolateLms(lmsTable, ageMonths, sex) {
+  const rows = lmsTable.filter(r => r[0] === sex);
+  if (!rows.length) return null;
+  if (ageMonths <= rows[0][1]) return { l: rows[0][2], m: rows[0][3], s: rows[0][4] };
+  const last = rows[rows.length - 1];
+  if (ageMonths >= last[1]) return { l: last[2], m: last[3], s: last[4] };
+  for (let i = 0; i < rows.length - 1; i++) {
+    const a = rows[i], b = rows[i + 1];
+    if (ageMonths >= a[1] && ageMonths <= b[1]) {
+      const frac = (ageMonths - a[1]) / (b[1] - a[1]);
+      return { l: a[2] + frac * (b[2] - a[2]), m: a[3] + frac * (b[3] - a[3]), s: a[4] + frac * (b[4] - a[4]) };
+    }
+  }
+  return null; // unreachable given the bounds checks above
+}
+
+// The real thing bmiCategory() above intentionally does NOT attempt for
+// minors - an actual age/sex-specific BMI-for-age percentile, computed from
+// real CDC 2-20y reference data (db.js's CDC_BMI_AGE_LMS, passed in here
+// rather than required directly - this file stays fully dependency-free,
+// same convention as buildHealthProfile taking `store` as a parameter).
+// Standard LMS z-score method: z = ((BMI/M)^L - 1)/(L*S) for L != 0, or
+// ln(BMI/M)/S for L == 0, then map z to a percentile via the normal CDF -
+// this is CDC's own published method, not a formula this app invented.
+// Category bands (<5th/5-<85th/85-<95th/>=95th) are CDC's own real,
+// published clinical thresholds for child/teen BMI-for-age, same "real
+// standard, not invented" discipline as bmiCategory()'s adult cutoffs.
+function childBmiPercentile(bmi, ageMonths, sex, lmsTable) {
+  if (bmi == null || ageMonths == null || !lmsTable) return null;
+  const lms = interpolateLms(lmsTable, ageMonths, sex === 'female' ? 'female' : 'male');
+  if (!lms) return null;
+  const { l, m, s } = lms;
+  const z = l !== 0 ? (Math.pow(bmi / m, l) - 1) / (l * s) : Math.log(bmi / m) / s;
+  const percentile = normalCdf(z) * 100;
+  const category = percentile < 5
+    ? { key: 'underweight', en: 'Underweight', ar: 'نقص وزن' }
+    : percentile < 85
+    ? { key: 'healthy_weight', en: 'Healthy weight', ar: 'وزن صحي' }
+    : percentile < 95
+    ? { key: 'overweight', en: 'Overweight', ar: 'زيادة وزن' }
+    : { key: 'obese', en: 'Obese', ar: 'سمنة' };
+  return { percentile: +percentile.toFixed(1), zScore: +z.toFixed(3), category };
 }
 
 const ACTIVITY_FACTORS = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
@@ -277,7 +389,7 @@ function buildHealthProfile(store, userId) {
   const weight = num(p.weight), height = num(p.height), age = num(p.age);
   const gender = p.gender === 'female' ? 'female' : 'male';
   const bmi = (weight && height) ? +(weight / Math.pow(height / 100, 2)).toFixed(1) : num(p.bmi);
-  const cat = bmiCategory(bmi);
+  const cat = bmiCategory(bmi, age);
   const bodyFat = num(p.bodyFat), muscleMass = num(p.muscleMass);
   const lbm = leanBodyMass({ weight, bodyFat });
 
@@ -518,7 +630,7 @@ function buildHealthProfile(store, userId) {
 
   return {
     userId, username: user.username, plan: user.plan, lang: user.lang || 'ar',
-    demographics: { age, gender, height, weight, bmi, bmiCategory: cat, bodyFat, muscleMass, leanBodyMass: lbm },
+    demographics: { age, gender, height, weight, bmi, bmiCategory: cat, ageGroup: ageGroup(age), bodyFat, muscleMass, leanBodyMass: lbm },
     // Raw, non-defaulted gender — demographics.gender above defaults an
     // unset value to 'male' for BMI-formula purposes (some sex has to be
     // assumed to produce a number). Reusing that default to gate a
@@ -606,9 +718,15 @@ function coachSummary(hp, lang = 'ar') {
     if (d.weight != null) demoParts.push(en ? `Weight: ${d.weight} kg` : `الوزن: ${d.weight} كجم`);
     lines.push(demoParts.join(' · '));
   }
+  // The age-inapplicable category (under-18) is real and correct, but a
+  // parenthetical "(Not applicable under 18)" reads oddly stapled onto a
+  // number - the AI coach already gets the user's real age from the demo
+  // line above, so this just omits the category here rather than force it
+  // into an awkward sentence shape.
+  const showBmiCat = d.bmiCategory && !d.bmiCategory.ageInapplicable;
   if (d.bmi != null) lines.push(en
-    ? `BMI: ${d.bmi}${d.bmiCategory ? ' (' + d.bmiCategory.en + ')' : ''}`
-    : `مؤشر كتلة الجسم: ${d.bmi}${d.bmiCategory ? ' (' + d.bmiCategory.ar + ')' : ''}`);
+    ? `BMI: ${d.bmi}${showBmiCat ? ' (' + d.bmiCategory.en + ')' : ''}`
+    : `مؤشر كتلة الجسم: ${d.bmi}${showBmiCat ? ' (' + d.bmiCategory.ar + ')' : ''}`);
   // Real InBody data, when the user provided it - only appears when present,
   // same optional-field pattern as everything else here. This is what lets
   // the coach actually reference body composition instead of just weight.
@@ -678,4 +796,4 @@ function coachSummary(hp, lang = 'ar') {
   return lines.join('\n');
 }
 
-module.exports = { buildHealthProfile, coachSummary, bmiCategory, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, DIET_CONTRAINDICATIONS, FASTING_META, FASTING_CONTRAINDICATIONS };
+module.exports = { buildHealthProfile, coachSummary, bmiCategory, ageGroup, childBmiPercentile, mifflinBMR, activityFromSteps, ACTIVITY_FACTORS, DIET_META, GOAL_TYPES, normalizeGoalType, DEFICIT_PCT, GOAL_PROTEIN_BOOST_PER_KG, DIET_CONTRAINDICATIONS, FASTING_META, FASTING_CONTRAINDICATIONS };

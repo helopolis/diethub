@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const Database = require('better-sqlite3');
 // health.js has zero requires of its own (fully self-contained, takes
 // `store` as a parameter rather than requiring db.js) - safe for db.js to
@@ -1160,16 +1161,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS fasting_contraindications (
 // conflict target). Not repeating that here.
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_fasting_contra_unique ON fasting_contraindications(protocol_id, condition_id)`);
 
-const hasFastingProtocolId = db.prepare("SELECT 1 FROM pragma_table_info('user_profiles') WHERE name='fasting_protocol_id'").get();
-if (!hasFastingProtocolId) db.exec('ALTER TABLE user_profiles ADD COLUMN fasting_protocol_id TEXT REFERENCES fasting_protocols(id)');
-// Hour-of-day (0-23, local to whatever timezone the app already treats
-// everything else as) the eating window opens - e.g. 12 for a noon-8pm 16:8
-// window. NULL means "protocol chosen but no custom start yet" - server.js
-// falls back to a sensible default (noon) rather than requiring this be set
-// before fasting can be turned on at all.
-const hasFastingWindowStartHour = db.prepare("SELECT 1 FROM pragma_table_info('user_profiles') WHERE name='fasting_window_start_hour'").get();
-if (!hasFastingWindowStartHour) db.exec('ALTER TABLE user_profiles ADD COLUMN fasting_window_start_hour INTEGER');
-
 const insFastingProtocolStmt = db.prepare(`INSERT INTO fasting_protocols (id,name_en,name_ar,fast_hours,eat_hours,created_at)
   VALUES (@id,@name_en,@name_ar,@fast_hours,@eat_hours,@now) ON CONFLICT(id) DO NOTHING`);
 const insFastingContraStmt = db.prepare(`INSERT INTO fasting_contraindications (protocol_id,condition_id,severity,message_en,message_ar,created_at)
@@ -1679,6 +1670,545 @@ function migrateMealOverridesBlob() {
 }
 migrateMealOverridesBlob();
 
+// ─── FAMILY MEMBERS (child growth profiles, 2026-09-26) ─────────────────────
+// Founder's real request: let a parent track a child's (age 10-17) growth
+// from inside their own account. A child has no email/phone/username of
+// their own (confirmed: nothing in this app supports that), so this is
+// parent-managed by construction, not a second kind of login - reads/writes
+// go through the PARENT's own req.user.id as owner_user_id, the same
+// plain-string-ownership idiom meal_overrides already uses below, not
+// user_profiles' strict 1:1-by-primary-key shape (one parent owns MANY
+// children).
+//
+// Deliberately scoped to growth tracking only, not a second nutrition app
+// for kids: no meal logging, no diet plan, no calorie target. A growing
+// child's real need is "is my child growing at a healthy rate," which real
+// BMI-for-age percentile tracking already answers on its own - adding a
+// calorie-deficit framing on top would need a pediatric-nutrition model
+// this app has no sourced basis for, and risks framing food restrictively
+// for someone who's supposed to be growing INTO their weight, not losing it.
+db.exec(`CREATE TABLE IF NOT EXISTS family_members (
+  id               TEXT PRIMARY KEY,
+  owner_user_id    TEXT NOT NULL,
+  name             TEXT NOT NULL,
+  dob              TEXT NOT NULL,
+  gender           TEXT NOT NULL,
+  consent_given_at TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  archived_at      TEXT
+)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_family_members_owner ON family_members(owner_user_id)`);
+
+// The actual time series - without repeated check-ins there's no trend to
+// show, just a single snapshot. One row per (child, date); logging twice on
+// the same day updates rather than duplicates.
+db.exec(`CREATE TABLE IF NOT EXISTS family_member_growth_log (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  family_member_id  TEXT NOT NULL,
+  date              TEXT NOT NULL,
+  weight            REAL NOT NULL,
+  height            REAL NOT NULL,
+  created_at        TEXT NOT NULL
+)`);
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_growth_log_member_date ON family_member_growth_log(family_member_id, date)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_growth_log_member ON family_member_growth_log(family_member_id)`);
+
+const insFamilyMemberStmt = db.prepare(`INSERT INTO family_members (id,owner_user_id,name,dob,gender,consent_given_at,created_at)
+  VALUES (@id,@owner_user_id,@name,@dob,@gender,@consent_given_at,@created_at)`);
+const selFamilyMembersByOwnerStmt = db.prepare(`SELECT * FROM family_members WHERE owner_user_id = ? AND archived_at IS NULL ORDER BY created_at`);
+const selFamilyMemberStmt = db.prepare(`SELECT * FROM family_members WHERE id = ? AND archived_at IS NULL`);
+const archiveFamilyMemberStmt = db.prepare(`UPDATE family_members SET archived_at = ? WHERE id = ?`);
+const deleteFamilyMembersByOwnerStmt = db.prepare(`DELETE FROM family_members WHERE owner_user_id = ?`);
+const insGrowthLogStmt = db.prepare(`INSERT INTO family_member_growth_log (family_member_id,date,weight,height,created_at)
+  VALUES (@family_member_id,@date,@weight,@height,@now)
+  ON CONFLICT(family_member_id,date) DO UPDATE SET weight=excluded.weight, height=excluded.height, created_at=excluded.created_at`);
+const selGrowthLogStmt = db.prepare(`SELECT * FROM family_member_growth_log WHERE family_member_id = ? ORDER BY date`);
+const deleteGrowthLogByOwnerStmt = db.prepare(`DELETE FROM family_member_growth_log WHERE family_member_id IN (SELECT id FROM family_members WHERE owner_user_id = ?)`);
+
+// 'c' prefix (vs users' 'u') keeps the two id spaces visually distinguishable
+// in logs/debugging, matching how this codebase already prefixes ids by kind.
+function createFamilyMember(ownerUserId, { name, dob, gender }) {
+  const id = 'c' + Date.now() + crypto.randomBytes(4).toString('hex');
+  const now = new Date().toISOString();
+  insFamilyMemberStmt.run({ id, owner_user_id: ownerUserId, name, dob, gender, consent_given_at: now, created_at: now });
+  return getFamilyMember(id);
+}
+function listFamilyMembers(ownerUserId) { return selFamilyMembersByOwnerStmt.all(ownerUserId); }
+function getFamilyMember(id) { return selFamilyMemberStmt.get(id) || null; }
+// Soft-delete for a parent removing one child from their own list - keeps
+// historical growth data intact rather than destroying it on a single tap.
+function archiveFamilyMember(id) { archiveFamilyMemberStmt.run(new Date().toISOString(), id); }
+// Hard delete, for real account deletion - matches deleteAllMealOverridesForUser's
+// own real-delete convention below, not the single-child soft-delete above.
+// Growth log must be deleted first: the subquery below needs the family_members
+// rows to still exist to find them.
+function deleteAllFamilyMembersForUser(ownerUserId) {
+  deleteGrowthLogByOwnerStmt.run(ownerUserId);
+  deleteFamilyMembersByOwnerStmt.run(ownerUserId);
+}
+function addGrowthLogEntry(familyMemberId, { date, weight, height }) {
+  insGrowthLogStmt.run({ family_member_id: familyMemberId, date, weight, height, now: new Date().toISOString() });
+  return listGrowthLog(familyMemberId);
+}
+function listGrowthLog(familyMemberId) { return selGrowthLogStmt.all(familyMemberId); }
+
+// ─── CDC BMI-FOR-AGE REFERENCE DATA (LMS parameters, 2-20 years) ───────────
+// Real, sourced data - NOT reasoned/estimated the way a few other tables in
+// this file honestly flag themselves as. This is the actual CDC (National
+// Center for Health Statistics) 2000 growth chart reference, as published by
+// CDC's own Division of Nutrition, Physical Activity, and Obesity in their
+// `cdcanthro` R package (github.com/cran/cdcanthro, data/cdc_ref_data.rda,
+// fetched and parsed 2026-09-26 since cdc.gov's own direct CSV download
+// blocked non-browser requests). Verified after parsing: BMI == M yields
+// exactly the 50th percentile at every row (a mathematical identity of the
+// LMS method, confirmed programmatically before trusting this table), and a
+// 10-year-old boy at BMI 23 computes to the 96th percentile - correctly deep
+// in the "obese" band, matching real clinical expectation.
+// Row shape: [sex, ageMonths, L, M, S]. ageMonths runs 23.5-240 in 1-month
+// steps (half-month-centered, CDC's own convention) for each of male/female
+// - i.e. this table is valid for ages 2-20 years, comfortably covering the
+// founder's stated 10-17 floor with real margin on both sides.
+const CDC_BMI_AGE_LMS = 
+[
+  ["male", 23.5, -2.039989, 16.602280, 0.081058],
+  ["male", 24.5, -1.982374, 16.547775, 0.080127],
+  ["male", 25.5, -1.924100, 16.494428, 0.079234],
+  ["male", 26.5, -1.865498, 16.442596, 0.078389],
+  ["male", 27.5, -1.807262, 16.392243, 0.077594],
+  ["male", 28.5, -1.750119, 16.343337, 0.076846],
+  ["male", 29.5, -1.694816, 16.295841, 0.076148],
+  ["male", 30.5, -1.642107, 16.249724, 0.075499],
+  ["male", 31.5, -1.592744, 16.204953, 0.074899],
+  ["male", 32.5, -1.547442, 16.161499, 0.074348],
+  ["male", 33.5, -1.506903, 16.119333, 0.073846],
+  ["male", 34.5, -1.471770, 16.078428, 0.073393],
+  ["male", 35.5, -1.442629, 16.038759, 0.072990],
+  ["male", 36.5, -1.419991, 16.000304, 0.072634],
+  ["male", 37.5, -1.404278, 15.963043, 0.072328],
+  ["male", 38.5, -1.395863, 15.926954, 0.072069],
+  ["male", 39.5, -1.394935, 15.892026, 0.071857],
+  ["male", 40.5, -1.401672, 15.858241, 0.071691],
+  ["male", 41.5, -1.416100, 15.825588, 0.071571],
+  ["male", 42.5, -1.438165, 15.794057, 0.071495],
+  ["male", 43.5, -1.467669, 15.763643, 0.071462],
+  ["male", 44.5, -1.504376, 15.734337, 0.071471],
+  ["male", 45.5, -1.547943, 15.706136, 0.071519],
+  ["male", 46.5, -1.597896, 15.679041, 0.071606],
+  ["male", 47.5, -1.653732, 15.653052, 0.071730],
+  ["male", 48.5, -1.714869, 15.628173, 0.071889],
+  ["male", 49.5, -1.780673, 15.604408, 0.072082],
+  ["male", 50.5, -1.850468, 15.581765, 0.072306],
+  ["male", 51.5, -1.923552, 15.560251, 0.072561],
+  ["male", 52.5, -1.999220, 15.539875, 0.072844],
+  ["male", 53.5, -2.076707, 15.520650, 0.073154],
+  ["male", 54.5, -2.155348, 15.502584, 0.073491],
+  ["male", 55.5, -2.234439, 15.485690, 0.073852],
+  ["male", 56.5, -2.313322, 15.469977, 0.074236],
+  ["male", 57.5, -2.391381, 15.455457, 0.074643],
+  ["male", 58.5, -2.468032, 15.442140, 0.075072],
+  ["male", 59.5, -2.542782, 15.430032, 0.075522],
+  ["male", 60.5, -2.615166, 15.419142, 0.075992],
+  ["male", 61.5, -2.684790, 15.409474, 0.076482],
+  ["male", 62.5, -2.751317, 15.401031, 0.076991],
+  ["male", 63.5, -2.814459, 15.393818, 0.077519],
+  ["male", 64.5, -2.874025, 15.387831, 0.078065],
+  ["male", 65.5, -2.929840, 15.383069, 0.078630],
+  ["male", 66.5, -2.981797, 15.379530, 0.079211],
+  ["male", 67.5, -3.029831, 15.377206, 0.079810],
+  ["male", 68.5, -3.073924, 15.376091, 0.080426],
+  ["male", 69.5, -3.114093, 15.376177, 0.081058],
+  ["male", 70.5, -3.150390, 15.377453, 0.081706],
+  ["male", 71.5, -3.182893, 15.379909, 0.082370],
+  ["male", 72.5, -3.211705, 15.383532, 0.083048],
+  ["male", 73.5, -3.236948, 15.388310, 0.083741],
+  ["male", 74.5, -3.258760, 15.394229, 0.084448],
+  ["male", 75.5, -3.277282, 15.401275, 0.085168],
+  ["male", 76.5, -3.292684, 15.409433, 0.085900],
+  ["male", 77.5, -3.305124, 15.418687, 0.086645],
+  ["male", 78.5, -3.314769, 15.429023, 0.087400],
+  ["male", 79.5, -3.321786, 15.440424, 0.088167],
+  ["male", 80.5, -3.326346, 15.452876, 0.088943],
+  ["male", 81.5, -3.328603, 15.466362, 0.089728],
+  ["male", 82.5, -3.328725, 15.480867, 0.090522],
+  ["male", 83.5, -3.326870, 15.496375, 0.091323],
+  ["male", 84.5, -3.323189, 15.512869, 0.092131],
+  ["male", 85.5, -3.317827, 15.530336, 0.092946],
+  ["male", 86.5, -3.310924, 15.548758, 0.093765],
+  ["male", 87.5, -3.302612, 15.568121, 0.094589],
+  ["male", 88.5, -3.293018, 15.588411, 0.095417],
+  ["male", 89.5, -3.282261, 15.609611, 0.096248],
+  ["male", 90.5, -3.270455, 15.631707, 0.097082],
+  ["male", 91.5, -3.257704, 15.654686, 0.097917],
+  ["male", 92.5, -3.244108, 15.678531, 0.098753],
+  ["male", 93.5, -3.229762, 15.703231, 0.099589],
+  ["male", 94.5, -3.214751, 15.728769, 0.100424],
+  ["male", 95.5, -3.199158, 15.755133, 0.101259],
+  ["male", 96.5, -3.183058, 15.782310, 0.102091],
+  ["male", 97.5, -3.166521, 15.810286, 0.102921],
+  ["male", 98.5, -3.149610, 15.839047, 0.103748],
+  ["male", 99.5, -3.132390, 15.868581, 0.104571],
+  ["male", 100.5, -3.114911, 15.898876, 0.105390],
+  ["male", 101.5, -3.097226, 15.929918, 0.106204],
+  ["male", 102.5, -3.079383, 15.961695, 0.107013],
+  ["male", 103.5, -3.061424, 15.994195, 0.107815],
+  ["male", 104.5, -3.043386, 16.027406, 0.108611],
+  ["male", 105.5, -3.025310, 16.061316, 0.109400],
+  ["male", 106.5, -3.007226, 16.095913, 0.110182],
+  ["male", 107.5, -2.989165, 16.131185, 0.110955],
+  ["male", 108.5, -2.971148, 16.167122, 0.111721],
+  ["male", 109.5, -2.953208, 16.203712, 0.112477],
+  ["male", 110.5, -2.935364, 16.240942, 0.113224],
+  ["male", 111.5, -2.917635, 16.278803, 0.113962],
+  ["male", 112.5, -2.900040, 16.317284, 0.114689],
+  ["male", 113.5, -2.882594, 16.356373, 0.115407],
+  ["male", 114.5, -2.865311, 16.396059, 0.116113],
+  ["male", 115.5, -2.848205, 16.436333, 0.116809],
+  ["male", 116.5, -2.831285, 16.477183, 0.117493],
+  ["male", 117.5, -2.814562, 16.518598, 0.118166],
+  ["male", 118.5, -2.798043, 16.560570, 0.118827],
+  ["male", 119.5, -2.781737, 16.603087, 0.119476],
+  ["male", 120.5, -2.765648, 16.646138, 0.120112],
+  ["male", 121.5, -2.749782, 16.689715, 0.120737],
+  ["male", 122.5, -2.734142, 16.733807, 0.121348],
+  ["male", 123.5, -2.718733, 16.778404, 0.121947],
+  ["male", 124.5, -2.703556, 16.823495, 0.122533],
+  ["male", 125.5, -2.688612, 16.869072, 0.123105],
+  ["male", 126.5, -2.673903, 16.915125, 0.123664],
+  ["male", 127.5, -2.659429, 16.961643, 0.124210],
+  ["male", 128.5, -2.645191, 17.008618, 0.124742],
+  ["male", 129.5, -2.631186, 17.056039, 0.125261],
+  ["male", 130.5, -2.617414, 17.103897, 0.125766],
+  ["male", 131.5, -2.603872, 17.152183, 0.126257],
+  ["male", 132.5, -2.590560, 17.200887, 0.126735],
+  ["male", 133.5, -2.577474, 17.250001, 0.127198],
+  ["male", 134.5, -2.564612, 17.299514, 0.127648],
+  ["male", 135.5, -2.551970, 17.349417, 0.128084],
+  ["male", 136.5, -2.539540, 17.399703, 0.128506],
+  ["male", 137.5, -2.527326, 17.450361, 0.128914],
+  ["male", 138.5, -2.515320, 17.501382, 0.129309],
+  ["male", 139.5, -2.503519, 17.552757, 0.129690],
+  ["male", 140.5, -2.491919, 17.604477, 0.130057],
+  ["male", 141.5, -2.480514, 17.656534, 0.130410],
+  ["male", 142.5, -2.469300, 17.708918, 0.130750],
+  ["male", 143.5, -2.458273, 17.761621, 0.131076],
+  ["male", 144.5, -2.447426, 17.814634, 0.131389],
+  ["male", 145.5, -2.436756, 17.867947, 0.131689],
+  ["male", 146.5, -2.426256, 17.921553, 0.131975],
+  ["male", 147.5, -2.415922, 17.975443, 0.132248],
+  ["male", 148.5, -2.405748, 18.029608, 0.132508],
+  ["male", 149.5, -2.395728, 18.084039, 0.132756],
+  ["male", 150.5, -2.385858, 18.138728, 0.132991],
+  ["male", 151.5, -2.376131, 18.193666, 0.133213],
+  ["male", 152.5, -2.366543, 18.248844, 0.133423],
+  ["male", 153.5, -2.357087, 18.304255, 0.133620],
+  ["male", 154.5, -2.347758, 18.359890, 0.133806],
+  ["male", 155.5, -2.338550, 18.415740, 0.133979],
+  ["male", 156.5, -2.329457, 18.471797, 0.134141],
+  ["male", 157.5, -2.320475, 18.528053, 0.134292],
+  ["male", 158.5, -2.311596, 18.584498, 0.134431],
+  ["male", 159.5, -2.302817, 18.641126, 0.134559],
+  ["male", 160.5, -2.294131, 18.697927, 0.134677],
+  ["male", 161.5, -2.285533, 18.754893, 0.134783],
+  ["male", 162.5, -2.277017, 18.812016, 0.134880],
+  ["male", 163.5, -2.268579, 18.869288, 0.134966],
+  ["male", 164.5, -2.260212, 18.926700, 0.135042],
+  ["male", 165.5, -2.251912, 18.984244, 0.135108],
+  ["male", 166.5, -2.243673, 19.041912, 0.135165],
+  ["male", 167.5, -2.235492, 19.099696, 0.135212],
+  ["male", 168.5, -2.227362, 19.157587, 0.135251],
+  ["male", 169.5, -2.219280, 19.215577, 0.135281],
+  ["male", 170.5, -2.211240, 19.273658, 0.135302],
+  ["male", 171.5, -2.203239, 19.331822, 0.135316],
+  ["male", 172.5, -2.195272, 19.390061, 0.135321],
+  ["male", 173.5, -2.187336, 19.448366, 0.135318],
+  ["male", 174.5, -2.179426, 19.506729, 0.135309],
+  ["male", 175.5, -2.171539, 19.565142, 0.135292],
+  ["male", 176.5, -2.163672, 19.623596, 0.135268],
+  ["male", 177.5, -2.155821, 19.682083, 0.135238],
+  ["male", 178.5, -2.147985, 19.740595, 0.135201],
+  ["male", 179.5, -2.140160, 19.799124, 0.135158],
+  ["male", 180.5, -2.132345, 19.857661, 0.135110],
+  ["male", 181.5, -2.124537, 19.916198, 0.135057],
+  ["male", 182.5, -2.116736, 19.974726, 0.134998],
+  ["male", 183.5, -2.108939, 20.033237, 0.134934],
+  ["male", 184.5, -2.101147, 20.091723, 0.134866],
+  ["male", 185.5, -2.093359, 20.150174, 0.134794],
+  ["male", 186.5, -2.085574, 20.208582, 0.134718],
+  ["male", 187.5, -2.077795, 20.266939, 0.134638],
+  ["male", 188.5, -2.070021, 20.325236, 0.134556],
+  ["male", 189.5, -2.062253, 20.383465, 0.134470],
+  ["male", 190.5, -2.054495, 20.441615, 0.134382],
+  ["male", 191.5, -2.046748, 20.499679, 0.134291],
+  ["male", 192.5, -2.039015, 20.557647, 0.134198],
+  ["male", 193.5, -2.031300, 20.615511, 0.134104],
+  ["male", 194.5, -2.023607, 20.673262, 0.134009],
+  ["male", 195.5, -2.015942, 20.730889, 0.133912],
+  ["male", 196.5, -2.008306, 20.788385, 0.133815],
+  ["male", 197.5, -2.000706, 20.845740, 0.133718],
+  ["male", 198.5, -1.993150, 20.902944, 0.133620],
+  ["male", 199.5, -1.985644, 20.959989, 0.133523],
+  ["male", 200.5, -1.978195, 21.016864, 0.133427],
+  ["male", 201.5, -1.970810, 21.073561, 0.133332],
+  ["male", 202.5, -1.963500, 21.130069, 0.133238],
+  ["male", 203.5, -1.956271, 21.186378, 0.133146],
+  ["male", 204.5, -1.949135, 21.242480, 0.133057],
+  ["male", 205.5, -1.942100, 21.298364, 0.132970],
+  ["male", 206.5, -1.935177, 21.354020, 0.132885],
+  ["male", 207.5, -1.928377, 21.409439, 0.132804],
+  ["male", 208.5, -1.921712, 21.464610, 0.132727],
+  ["male", 209.5, -1.915193, 21.519524, 0.132654],
+  ["male", 210.5, -1.908831, 21.574171, 0.132585],
+  ["male", 211.5, -1.902639, 21.628539, 0.132521],
+  ["male", 212.5, -1.896630, 21.682621, 0.132462],
+  ["male", 213.5, -1.890816, 21.736404, 0.132409],
+  ["male", 214.5, -1.885210, 21.789880, 0.132361],
+  ["male", 215.5, -1.879824, 21.843038, 0.132320],
+  ["male", 216.5, -1.874670, 21.895868, 0.132286],
+  ["male", 217.5, -1.869760, 21.948362, 0.132260],
+  ["male", 218.5, -1.865113, 22.000506, 0.132240],
+  ["male", 219.5, -1.860735, 22.052292, 0.132229],
+  ["male", 220.5, -1.856634, 22.103713, 0.132227],
+  ["male", 221.5, -1.852827, 22.154756, 0.132233],
+  ["male", 222.5, -1.849323, 22.205412, 0.132249],
+  ["male", 223.5, -1.846132, 22.255673, 0.132275],
+  ["male", 224.5, -1.843261, 22.305528, 0.132311],
+  ["male", 225.5, -1.840720, 22.354969, 0.132357],
+  ["male", 226.5, -1.838515, 22.403987, 0.132415],
+  ["male", 227.5, -1.836656, 22.452572, 0.132485],
+  ["male", 228.5, -1.835138, 22.500718, 0.132566],
+  ["male", 229.5, -1.833972, 22.548414, 0.132661],
+  ["male", 230.5, -1.833158, 22.595654, 0.132768],
+  ["male", 231.5, -1.832696, 22.642430, 0.132889],
+  ["male", 232.5, -1.832584, 22.688733, 0.133024],
+  ["male", 233.5, -1.832821, 22.734557, 0.133174],
+  ["male", 234.5, -1.833401, 22.779895, 0.133339],
+  ["male", 235.5, -1.834317, 22.824741, 0.133519],
+  ["male", 236.5, -1.835558, 22.869089, 0.133716],
+  ["male", 237.5, -1.837119, 22.912932, 0.133930],
+  ["male", 238.5, -1.838987, 22.956264, 0.134160],
+  ["male", 239.5, -1.841146, 22.999081, 0.134408],
+  ["male", 240.0, -1.842330, 23.020294, 0.134539],
+  ["female", 23.5, -0.948720, 16.458753, 0.085878],
+  ["female", 24.5, -1.024497, 16.388041, 0.085026],
+  ["female", 25.5, -1.102698, 16.318972, 0.084214],
+  ["female", 26.5, -1.183966, 16.252080, 0.083455],
+  ["female", 27.5, -1.268071, 16.187347, 0.082748],
+  ["female", 28.5, -1.354752, 16.124754, 0.082093],
+  ["female", 29.5, -1.443690, 16.064288, 0.081488],
+  ["female", 30.5, -1.534542, 16.005930, 0.080932],
+  ["female", 31.5, -1.626928, 15.949666, 0.080426],
+  ["female", 32.5, -1.720435, 15.895482, 0.079968],
+  ["female", 33.5, -1.814635, 15.843362, 0.079558],
+  ["female", 34.5, -1.909076, 15.793291, 0.079194],
+  ["female", 35.5, -2.003296, 15.745256, 0.078877],
+  ["female", 36.5, -2.096829, 15.699242, 0.078605],
+  ["female", 37.5, -2.189212, 15.655233, 0.078379],
+  ["female", 38.5, -2.279992, 15.613214, 0.078197],
+  ["female", 39.5, -2.368733, 15.573168, 0.078059],
+  ["female", 40.5, -2.455021, 15.535080, 0.077964],
+  ["female", 41.5, -2.538472, 15.498931, 0.077913],
+  ["female", 42.5, -2.618733, 15.464704, 0.077904],
+  ["female", 43.5, -2.695489, 15.432378, 0.077937],
+  ["female", 44.5, -2.768465, 15.401934, 0.078011],
+  ["female", 45.5, -2.837427, 15.373352, 0.078127],
+  ["female", 46.5, -2.902178, 15.346608, 0.078283],
+  ["female", 47.5, -2.962580, 15.321682, 0.078478],
+  ["female", 48.5, -3.018522, 15.298549, 0.078713],
+  ["female", 49.5, -3.069937, 15.277186, 0.078987],
+  ["female", 50.5, -3.116796, 15.257569, 0.079298],
+  ["female", 51.5, -3.159107, 15.239673, 0.079646],
+  ["female", 52.5, -3.196911, 15.223474, 0.080030],
+  ["female", 53.5, -3.230277, 15.208945, 0.080450],
+  ["female", 54.5, -3.259300, 15.196062, 0.080904],
+  ["female", 55.5, -3.284100, 15.184798, 0.081392],
+  ["female", 56.5, -3.304814, 15.175129, 0.081913],
+  ["female", 57.5, -3.321597, 15.167028, 0.082465],
+  ["female", 58.5, -3.334616, 15.160471, 0.083047],
+  ["female", 59.5, -3.344048, 15.155431, 0.083659],
+  ["female", 60.5, -3.350078, 15.151884, 0.084300],
+  ["female", 61.5, -3.352894, 15.149805, 0.084968],
+  ["female", 62.5, -3.352691, 15.149168, 0.085663],
+  ["female", 63.5, -3.349664, 15.149950, 0.086382],
+  ["female", 64.5, -3.343999, 15.152126, 0.087126],
+  ["female", 65.5, -3.335890, 15.155672, 0.087892],
+  ["female", 66.5, -3.325522, 15.160564, 0.088680],
+  ["female", 67.5, -3.313078, 15.166779, 0.089489],
+  ["female", 68.5, -3.298733, 15.174295, 0.090317],
+  ["female", 69.5, -3.282654, 15.183087, 0.091164],
+  ["female", 70.5, -3.265004, 15.193134, 0.092028],
+  ["female", 71.5, -3.245938, 15.204413, 0.092908],
+  ["female", 72.5, -3.225607, 15.216903, 0.093803],
+  ["female", 73.5, -3.204146, 15.230581, 0.094712],
+  ["female", 74.5, -3.181690, 15.245427, 0.095634],
+  ["female", 75.5, -3.158363, 15.261420, 0.096567],
+  ["female", 76.5, -3.134283, 15.278537, 0.097511],
+  ["female", 77.5, -3.109558, 15.296760, 0.098465],
+  ["female", 78.5, -3.084291, 15.316066, 0.099427],
+  ["female", 79.5, -3.058577, 15.336437, 0.100397],
+  ["female", 80.5, -3.032505, 15.357853, 0.101373],
+  ["female", 81.5, -3.006158, 15.380293, 0.102355],
+  ["female", 82.5, -2.979609, 15.403738, 0.103342],
+  ["female", 83.5, -2.952931, 15.428168, 0.104332],
+  ["female", 84.5, -2.926187, 15.453565, 0.105325],
+  ["female", 85.5, -2.899435, 15.479910, 0.106320],
+  ["female", 86.5, -2.872731, 15.507184, 0.107316],
+  ["female", 87.5, -2.846124, 15.535368, 0.108313],
+  ["female", 88.5, -2.819658, 15.564444, 0.109308],
+  ["female", 89.5, -2.793374, 15.594394, 0.110303],
+  ["female", 90.5, -2.767310, 15.625199, 0.111295],
+  ["female", 91.5, -2.741499, 15.656841, 0.112284],
+  ["female", 92.5, -2.715971, 15.689303, 0.113269],
+  ["female", 93.5, -2.690753, 15.722567, 0.114250],
+  ["female", 94.5, -2.665870, 15.756616, 0.115225],
+  ["female", 95.5, -2.641343, 15.791431, 0.116195],
+  ["female", 96.5, -2.617192, 15.826995, 0.117159],
+  ["female", 97.5, -2.593431, 15.863292, 0.118115],
+  ["female", 98.5, -2.570076, 15.900305, 0.119064],
+  ["female", 99.5, -2.547141, 15.938015, 0.120004],
+  ["female", 100.5, -2.524635, 15.976408, 0.120936],
+  ["female", 101.5, -2.502570, 16.015465, 0.121858],
+  ["female", 102.5, -2.480952, 16.055170, 0.122771],
+  ["female", 103.5, -2.459786, 16.095507, 0.123673],
+  ["female", 104.5, -2.439080, 16.136459, 0.124564],
+  ["female", 105.5, -2.418838, 16.178010, 0.125445],
+  ["female", 106.5, -2.399064, 16.220143, 0.126313],
+  ["female", 107.5, -2.379757, 16.262843, 0.127170],
+  ["female", 108.5, -2.360921, 16.306093, 0.128014],
+  ["female", 109.5, -2.342558, 16.349878, 0.128845],
+  ["female", 110.5, -2.324663, 16.394181, 0.129663],
+  ["female", 111.5, -2.307241, 16.438987, 0.130467],
+  ["female", 112.5, -2.290288, 16.484281, 0.131258],
+  ["female", 113.5, -2.273804, 16.530046, 0.132034],
+  ["female", 114.5, -2.257782, 16.576267, 0.132797],
+  ["female", 115.5, -2.242228, 16.622929, 0.133545],
+  ["female", 116.5, -2.227133, 16.670016, 0.134277],
+  ["female", 117.5, -2.212496, 16.717513, 0.134995],
+  ["female", 118.5, -2.198313, 16.765405, 0.135698],
+  ["female", 119.5, -2.184581, 16.813677, 0.136385],
+  ["female", 120.5, -2.171296, 16.862314, 0.137057],
+  ["female", 121.5, -2.158454, 16.911300, 0.137713],
+  ["female", 122.5, -2.146052, 16.960622, 0.138353],
+  ["female", 123.5, -2.134084, 17.010264, 0.138978],
+  ["female", 124.5, -2.122548, 17.060212, 0.139586],
+  ["female", 125.5, -2.111437, 17.110451, 0.140178],
+  ["female", 126.5, -2.100749, 17.160967, 0.140754],
+  ["female", 127.5, -2.090479, 17.211744, 0.141314],
+  ["female", 128.5, -2.080621, 17.262770, 0.141857],
+  ["female", 129.5, -2.071173, 17.314029, 0.142384],
+  ["female", 130.5, -2.062129, 17.365507, 0.142895],
+  ["female", 131.5, -2.053484, 17.417191, 0.143390],
+  ["female", 132.5, -2.045235, 17.469066, 0.143868],
+  ["female", 133.5, -2.037377, 17.521118, 0.144330],
+  ["female", 134.5, -2.029907, 17.573333, 0.144776],
+  ["female", 135.5, -2.022818, 17.625699, 0.145206],
+  ["female", 136.5, -2.016107, 17.678200, 0.145620],
+  ["female", 137.5, -2.009770, 17.730823, 0.146017],
+  ["female", 138.5, -2.003802, 17.783556, 0.146399],
+  ["female", 139.5, -1.998200, 17.836383, 0.146765],
+  ["female", 140.5, -1.992958, 17.889293, 0.147115],
+  ["female", 141.5, -1.988074, 17.942272, 0.147450],
+  ["female", 142.5, -1.983542, 17.995306, 0.147769],
+  ["female", 143.5, -1.979359, 18.048382, 0.148073],
+  ["female", 144.5, -1.975521, 18.101488, 0.148361],
+  ["female", 145.5, -1.972024, 18.154610, 0.148635],
+  ["female", 146.5, -1.968864, 18.207736, 0.148894],
+  ["female", 147.5, -1.966038, 18.260853, 0.149138],
+  ["female", 148.5, -1.963541, 18.313948, 0.149367],
+  ["female", 149.5, -1.961369, 18.367009, 0.149582],
+  ["female", 150.5, -1.959520, 18.420023, 0.149783],
+  ["female", 151.5, -1.957989, 18.472977, 0.149971],
+  ["female", 152.5, -1.956772, 18.525860, 0.150144],
+  ["female", 153.5, -1.955867, 18.578660, 0.150304],
+  ["female", 154.5, -1.955268, 18.631363, 0.150451],
+  ["female", 155.5, -1.954973, 18.683958, 0.150584],
+  ["female", 156.5, -1.954978, 18.736433, 0.150705],
+  ["female", 157.5, -1.955279, 18.788777, 0.150813],
+  ["female", 158.5, -1.955873, 18.840977, 0.150910],
+  ["female", 159.5, -1.956756, 18.893022, 0.150994],
+  ["female", 160.5, -1.957923, 18.944900, 0.151066],
+  ["female", 161.5, -1.959373, 18.996601, 0.151127],
+  ["female", 162.5, -1.961100, 19.048111, 0.151176],
+  ["female", 163.5, -1.963100, 19.099421, 0.151215],
+  ["female", 164.5, -1.965371, 19.150519, 0.151243],
+  ["female", 165.5, -1.967908, 19.201394, 0.151261],
+  ["female", 166.5, -1.970707, 19.252035, 0.151269],
+  ["female", 167.5, -1.973763, 19.302431, 0.151267],
+  ["female", 168.5, -1.977074, 19.352572, 0.151256],
+  ["female", 169.5, -1.980633, 19.402447, 0.151235],
+  ["female", 170.5, -1.984438, 19.452045, 0.151206],
+  ["female", 171.5, -1.988483, 19.501355, 0.151169],
+  ["female", 172.5, -1.992764, 19.550369, 0.151123],
+  ["female", 173.5, -1.997276, 19.599075, 0.151070],
+  ["female", 174.5, -2.002014, 19.647463, 0.151010],
+  ["female", 175.5, -2.006973, 19.695523, 0.150942],
+  ["female", 176.5, -2.012148, 19.743246, 0.150868],
+  ["female", 177.5, -2.017533, 19.790621, 0.150787],
+  ["female", 178.5, -2.023123, 19.837639, 0.150701],
+  ["female", 179.5, -2.028912, 19.884291, 0.150609],
+  ["female", 180.5, -2.034893, 19.930566, 0.150512],
+  ["female", 181.5, -2.041061, 19.976456, 0.150410],
+  ["female", 182.5, -2.047409, 20.021952, 0.150303],
+  ["female", 183.5, -2.053929, 20.067044, 0.150193],
+  ["female", 184.5, -2.060617, 20.111723, 0.150079],
+  ["female", 185.5, -2.067462, 20.155980, 0.149962],
+  ["female", 186.5, -2.074460, 20.199808, 0.149843],
+  ["female", 187.5, -2.081600, 20.243196, 0.149720],
+  ["female", 188.5, -2.088876, 20.286136, 0.149596],
+  ["female", 189.5, -2.096278, 20.328621, 0.149471],
+  ["female", 190.5, -2.103799, 20.370641, 0.149344],
+  ["female", 191.5, -2.111428, 20.412189, 0.149217],
+  ["female", 192.5, -2.119157, 20.453256, 0.149090],
+  ["female", 193.5, -2.126975, 20.493835, 0.148963],
+  ["female", 194.5, -2.134873, 20.533916, 0.148837],
+  ["female", 195.5, -2.142840, 20.573494, 0.148712],
+  ["female", 196.5, -2.150865, 20.612559, 0.148589],
+  ["female", 197.5, -2.158937, 20.651105, 0.148468],
+  ["female", 198.5, -2.167045, 20.689124, 0.148349],
+  ["female", 199.5, -2.175177, 20.726607, 0.148234],
+  ["female", 200.5, -2.183317, 20.763550, 0.148123],
+  ["female", 201.5, -2.191458, 20.799943, 0.148015],
+  ["female", 202.5, -2.199584, 20.835781, 0.147913],
+  ["female", 203.5, -2.207682, 20.871054, 0.147815],
+  ["female", 204.5, -2.215738, 20.905758, 0.147723],
+  ["female", 205.5, -2.223740, 20.939885, 0.147638],
+  ["female", 206.5, -2.231668, 20.973429, 0.147559],
+  ["female", 207.5, -2.239512, 21.006382, 0.147488],
+  ["female", 208.5, -2.247257, 21.038737, 0.147424],
+  ["female", 209.5, -2.254885, 21.070490, 0.147369],
+  ["female", 210.5, -2.262382, 21.101632, 0.147323],
+  ["female", 211.5, -2.269732, 21.132158, 0.147287],
+  ["female", 212.5, -2.276917, 21.162062, 0.147260],
+  ["female", 213.5, -2.283925, 21.191335, 0.147245],
+  ["female", 214.5, -2.290731, 21.219975, 0.147241],
+  ["female", 215.5, -2.297324, 21.247973, 0.147248],
+  ["female", 216.5, -2.303688, 21.275322, 0.147269],
+  ["female", 217.5, -2.309800, 21.302019, 0.147302],
+  ["female", 218.5, -2.315652, 21.328055, 0.147350],
+  ["female", 219.5, -2.321217, 21.353426, 0.147411],
+  ["female", 220.5, -2.326482, 21.378125, 0.147488],
+  ["female", 221.5, -2.331428, 21.402146, 0.147580],
+  ["female", 222.5, -2.336038, 21.425484, 0.147689],
+  ["female", 223.5, -2.340295, 21.448132, 0.147815],
+  ["female", 224.5, -2.344182, 21.470084, 0.147959],
+  ["female", 225.5, -2.347680, 21.491335, 0.148121],
+  ["female", 226.5, -2.350773, 21.511879, 0.148302],
+  ["female", 227.5, -2.353445, 21.531710, 0.148502],
+  ["female", 228.5, -2.355678, 21.550822, 0.148724],
+  ["female", 229.5, -2.357456, 21.569208, 0.148966],
+  ["female", 230.5, -2.358764, 21.586864, 0.149230],
+  ["female", 231.5, -2.359585, 21.603783, 0.149517],
+  ["female", 232.5, -2.359906, 21.619959, 0.149827],
+  ["female", 233.5, -2.359710, 21.635387, 0.150161],
+  ["female", 234.5, -2.358980, 21.650061, 0.150521],
+  ["female", 235.5, -2.357715, 21.663973, 0.150905],
+  ["female", 236.5, -2.355892, 21.677117, 0.151317],
+  ["female", 237.5, -2.353501, 21.689489, 0.151755],
+  ["female", 238.5, -2.350529, 21.701083, 0.152221],
+  ["female", 239.5, -2.346962, 21.711892, 0.152716],
+  ["female", 240.0, -2.344958, 21.716999, 0.152975]
+];
+
+
 // ─── USERS (architecture audit's other critical scalability finding) ──────
 // The last, and highest-stakes, blob-store migration: users.json held
 // EVERY user's identity, password hash, subscription/billing state, and
@@ -1752,6 +2282,24 @@ db.exec(`CREATE TABLE IF NOT EXISTS user_profiles (
   profile_lang            TEXT,
   updated_at              TEXT NOT NULL
 )`);
+// Ordering fix (2026-09-26): these two ALTERs used to run right after the
+// fasting_contraindications table, long before user_profiles existed at all
+// (created down here). Silent in production only because that table already
+// existed there from an earlier boot, before this migration was even
+// written - on any genuinely fresh database (a new environment, or this
+// project's own test suite, which builds a real fresh scratch DB per run)
+// it crashed immediately with "no such table: user_profiles", blocking
+// require('./db.js') entirely. Moved to their only valid location: after
+// the table they alter actually exists.
+const hasFastingProtocolId = db.prepare("SELECT 1 FROM pragma_table_info('user_profiles') WHERE name='fasting_protocol_id'").get();
+if (!hasFastingProtocolId) db.exec('ALTER TABLE user_profiles ADD COLUMN fasting_protocol_id TEXT REFERENCES fasting_protocols(id)');
+// Hour-of-day (0-23, local to whatever timezone the app already treats
+// everything else as) the eating window opens - e.g. 12 for a noon-8pm 16:8
+// window. NULL means "protocol chosen but no custom start yet" - server.js
+// falls back to a sensible default (noon) rather than requiring this be set
+// before fasting can be turned on at all.
+const hasFastingWindowStartHour = db.prepare("SELECT 1 FROM pragma_table_info('user_profiles') WHERE name='fasting_window_start_hour'").get();
+if (!hasFastingWindowStartHour) db.exec('ALTER TABLE user_profiles ADD COLUMN fasting_window_start_hour INTEGER');
 db.exec(`CREATE TABLE IF NOT EXISTS user_allergies (
   user_id     TEXT NOT NULL REFERENCES users(id),
   allergen_id TEXT NOT NULL REFERENCES allergens(id),
@@ -2235,5 +2783,7 @@ module.exports = { db, load, save, update, migrateFromJson, backup,
   listFastingProtocols, getFastingProtocol, getFastingContraindications, verifyFastingTablesMatch,
   seedMealsFromDietPlans, getMeal, getMealIngredients, getMealNutrition, listMealsForDiet, getMealNutritionByIdentity, getMealMicronutrientsByIdentity,
   getMealOverrideRow, saveMealOverrideRow, deleteMealOverrideRow, deleteAllMealOverridesForUser,
+  createFamilyMember, listFamilyMembers, getFamilyMember, archiveFamilyMember, deleteAllFamilyMembersForUser,
+  addGrowthLogEntry, listGrowthLog, CDC_BMI_AGE_LMS,
   listFoodCategories, listFoodsByCategory,
   getUserRow, getUserProfileRow, getUserAllergyIds, getUserMedicalConditionIds, verifyUsersMigration, seedUsersFromBlob };
